@@ -12,8 +12,8 @@ export async function getAccountBalances(workspaceId: string) {
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     database.transaction.findMany({
-      where: { workspaceId, status: "SETTLED" },
-      select: { accountId: true, amount: true, status: true, type: true },
+      where: { workspaceId, status: "SETTLED", affectsBalance: true },
+      select: { accountId: true, affectsBalance: true, amount: true, status: true, type: true },
     }),
     database.transfer.findMany({
       where: { workspaceId, status: "SETTLED" },

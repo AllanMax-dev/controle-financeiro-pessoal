@@ -3,6 +3,7 @@ import Link from "next/link";
 const navigationItems = [
   { href: "/painel", label: "Visão geral" },
   { href: "/lancamentos", label: "Lançamentos" },
+  { href: "/dividas", label: "Dívidas" },
   { href: "/transferencias", label: "Transferências" },
   { href: "/contas", label: "Contas" },
   { href: "/categorias", label: "Categorias" },

@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { getDatabase } from "@/lib/db";
 import { hashAccessToken, isAccessTokenShapeValid } from "@/modules/access/domain/access-token";
 import { ACCESS_COOKIE_NAME } from "@/modules/access/infrastructure/access-cookie";
 
-export async function getCurrentAccess() {
+export const getCurrentAccess = cache(async function getCurrentAccess() {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
 
@@ -40,4 +41,4 @@ export async function getCurrentAccess() {
     workspaceId: session.grant.editor.workspace.id,
     workspaceName: session.grant.editor.workspace.name,
   };
-}
+});
