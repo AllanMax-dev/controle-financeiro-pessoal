@@ -1,0 +1,196 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CASH
+  DIGITAL
+  OTHER
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionStatus {
+  PENDING
+  SETTLED
+  CANCELED
+}
+
+model Workspace {
+  id           String             @id @default(uuid()) @db.Uuid
+  slug         String             @unique @db.VarChar(80)
+  name         String             @db.VarChar(120)
+  currency     String             @default("BRL") @db.Char(3)
+  timezone     String             @default("America/Sao_Paulo") @db.VarChar(64)
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime           @updatedAt @db.Timestamptz(3)
+  editors      Editor[]
+  accounts     FinancialAccount[]
+  categories   Category[]
+  transactions Transaction[]
+  transfers    Transfer[]
+  auditLogs    AuditLog[]
+}
+
+model Editor {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @db.Uuid
+  displayName String        @db.VarChar(80)
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  grants      AccessGrant[]
+  auditLogs   AuditLog[]
+
+  @@unique([workspaceId, displayName])
+  @@index([workspaceId, active])
+}
+
+model AccessGrant {
+  id         String          @id @default(uuid()) @db.Uuid
+  editorId   String          @db.Uuid
+  tokenHash  String          @unique @db.Char(64)
+  active     Boolean         @default(true)
+  lastUsedAt DateTime?       @db.Timestamptz(3)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(3)
+  editor     Editor          @relation(fields: [editorId], references: [id], onDelete: Cascade)
+  sessions   AccessSession[]
+
+  @@index([editorId, active])
+}
+
+model AccessSession {
+  id        String      @id @default(uuid()) @db.Uuid
+  grantId   String      @db.Uuid
+  tokenHash String      @unique @db.Char(64)
+  expiresAt DateTime    @db.Timestamptz(3)
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  grant     AccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId])
+  @@index([expiresAt])
+}
+
+model FinancialAccount {
+  id             String      @id @default(uuid()) @db.Uuid
+  workspaceId    String      @db.Uuid
+  name           String      @db.VarChar(100)
+  type           AccountType
+  initialBalance Decimal     @default(0) @db.Decimal(19, 2)
+  color          String?     @db.VarChar(7)
+  active         Boolean     @default(true)
+  version        Int         @default(1)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  outgoing       Transfer[]  @relation("TransferSource")
+  incoming       Transfer[]  @relation("TransferDestination")
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, active])
+}
+
+model Category {
+  id           String       @id @default(uuid()) @db.Uuid
+  workspaceId  String       @db.Uuid
+  parentId     String?      @db.Uuid
+  name         String       @db.VarChar(100)
+  kind         CategoryKind
+  color        String?      @db.VarChar(7)
+  active       Boolean      @default(true)
+  version      Int          @default(1)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent       Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Category[]   @relation("CategoryHierarchy")
+  transactions Transaction[]
+
+  @@index([workspaceId, kind, active])
+  @@index([parentId])
+}
+
+model Transaction {
+  id             String            @id @default(uuid()) @db.Uuid
+  workspaceId    String            @db.Uuid
+  accountId      String            @db.Uuid
+  categoryId     String?           @db.Uuid
+  type           TransactionType
+  status         TransactionStatus @default(PENDING)
+  description    String            @db.VarChar(160)
+  amount         Decimal           @db.Decimal(19, 2)
+  competenceDate DateTime          @db.Date
+  dueDate        DateTime?         @db.Date
+  settledAt      DateTime?         @db.Timestamptz(3)
+  notes          String?           @db.VarChar(1000)
+  version        Int               @default(1)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account        FinancialAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category       Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, competenceDate])
+  @@index([workspaceId, status, dueDate])
+  @@index([accountId, competenceDate])
+  @@index([categoryId])
+}
+
+model Transfer {
+  id                   String            @id @default(uuid()) @db.Uuid
+  workspaceId          String            @db.Uuid
+  sourceAccountId      String            @db.Uuid
+  destinationAccountId String            @db.Uuid
+  status               TransactionStatus @default(SETTLED)
+  description          String            @db.VarChar(160)
+  amount               Decimal           @db.Decimal(19, 2)
+  transferDate         DateTime          @db.Date
+  settledAt            DateTime?         @db.Timestamptz(3)
+  notes                String?           @db.VarChar(1000)
+  version              Int               @default(1)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceAccount        FinancialAccount  @relation("TransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount   FinancialAccount  @relation("TransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, transferDate])
+  @@index([sourceAccountId, transferDate])
+  @@index([destinationAccountId, transferDate])
+}
+
+model AuditLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid
+  actorEditorId String?   @db.Uuid
+  action        String    @db.VarChar(80)
+  entityType    String    @db.VarChar(80)
+  entityId      String?   @db.Uuid
+  metadata      Json?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor         Editor?   @relation(fields: [actorEditorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+}

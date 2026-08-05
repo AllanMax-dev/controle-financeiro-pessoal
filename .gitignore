@@ -18,6 +18,10 @@ test-results/
 # Build artifacts
 dist/
 build/
+src/generated/
+
+# TypeScript
+*.tsbuildinfo
 
 # Logs
 *.log
