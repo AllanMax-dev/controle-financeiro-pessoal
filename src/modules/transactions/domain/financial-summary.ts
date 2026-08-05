@@ -9,6 +9,7 @@ export type BalanceAccount = {
 
 export type BalanceTransaction = {
   accountId: string;
+  affectsBalance?: boolean;
   amount: MoneyInput;
   status: "PENDING" | "SETTLED" | "CANCELED";
   type: "INCOME" | "EXPENSE";
@@ -29,7 +30,11 @@ export function calculateAccountBalances(
   const balances = new Map(accounts.map((account) => [account.id, money(account.initialBalance)]));
 
   for (const transaction of transactions) {
-    if (transaction.status !== "SETTLED" || !balances.has(transaction.accountId)) {
+    if (
+      transaction.status !== "SETTLED" ||
+      transaction.affectsBalance === false ||
+      !balances.has(transaction.accountId)
+    ) {
       continue;
     }
 

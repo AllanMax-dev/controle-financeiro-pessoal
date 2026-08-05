@@ -206,7 +206,13 @@ export async function updateTransactionAction(
   try {
     const updated = await database.$transaction(async (transaction) => {
       const result = await transaction.transaction.updateMany({
-        where: { id, workspaceId: access.workspaceId, version, status: { not: "CANCELED" } },
+        where: {
+          id,
+          workspaceId: access.workspaceId,
+          version,
+          status: { not: "CANCELED" },
+          debtInstallment: { is: null },
+        },
         data: {
           ...data,
           settledAt: data.status === "SETTLED" ? settledDate : null,
@@ -265,6 +271,7 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
         workspaceId: access.workspaceId,
         version: parsed.data.version,
         status: { not: "CANCELED" },
+        debtInstallment: { is: null },
       },
       data: { status: "CANCELED", settledAt: null, version: { increment: 1 } },
     });

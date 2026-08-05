@@ -33,6 +33,17 @@ enum TransactionStatus {
   CANCELED
 }
 
+enum DebtPaymentMethod {
+  CREDIT_CARD
+  OTHER
+}
+
+enum DebtInstallmentStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
 model Workspace {
   id           String             @id @default(uuid()) @db.Uuid
   slug         String             @unique @db.VarChar(80)
@@ -47,6 +58,7 @@ model Workspace {
   transactions Transaction[]
   transfers    Transfer[]
   budgets      Budget[]
+  debts        Debt[]
   auditLogs    AuditLog[]
 }
 
@@ -60,6 +72,7 @@ model Editor {
   workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   grants      AccessGrant[]
   auditLogs   AuditLog[]
+  debtShares  DebtInstallmentShare[]
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
@@ -127,6 +140,7 @@ model Category {
   children     Category[]   @relation("CategoryHierarchy")
   transactions Transaction[]
   budgets      Budget[]
+  debts        Debt[]
 
   @@unique([workspaceId, kind, name])
   @@index([workspaceId, kind, active])
@@ -146,12 +160,14 @@ model Transaction {
   dueDate        DateTime?         @db.Date
   settledAt      DateTime?         @db.Timestamptz(3)
   notes          String?           @db.VarChar(1000)
+  affectsBalance Boolean           @default(true)
   version        Int               @default(1)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
   workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   account        FinancialAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  debtInstallment DebtInstallment?
 
   @@index([workspaceId, competenceDate])
   @@index([workspaceId, status, dueDate])
@@ -197,6 +213,64 @@ model Budget {
   @@unique([workspaceId, categoryId, month])
   @@index([workspaceId, month])
   @@index([categoryId])
+}
+
+model Debt {
+  id               String            @id @default(uuid()) @db.Uuid
+  workspaceId      String            @db.Uuid
+  categoryId       String            @db.Uuid
+  description      String            @db.VarChar(160)
+  paymentMethod    DebtPaymentMethod
+  cardName         String?           @db.VarChar(100)
+  totalAmount      Decimal           @db.Decimal(19, 2)
+  purchaseDate     DateTime          @db.Date
+  firstDueDate     DateTime          @db.Date
+  installmentCount Int
+  notes            String?           @db.VarChar(1000)
+  canceledAt       DateTime?         @db.Timestamptz(3)
+  version          Int               @default(1)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  installments     DebtInstallment[]
+
+  @@index([workspaceId, purchaseDate])
+  @@index([workspaceId, canceledAt])
+  @@index([categoryId])
+}
+
+model DebtInstallment {
+  id            String                  @id @default(uuid()) @db.Uuid
+  debtId        String                  @db.Uuid
+  transactionId String?                 @unique @db.Uuid
+  number        Int
+  amount        Decimal                 @db.Decimal(19, 2)
+  dueDate       DateTime                @db.Date
+  status        DebtInstallmentStatus   @default(PENDING)
+  historical    Boolean                 @default(false)
+  paidAt        DateTime?               @db.Timestamptz(3)
+  version       Int                     @default(1)
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime                @updatedAt @db.Timestamptz(3)
+  debt          Debt                    @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  transaction   Transaction?            @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  shares        DebtInstallmentShare[]
+
+  @@unique([debtId, number])
+  @@index([debtId, status])
+  @@index([status, dueDate])
+}
+
+model DebtInstallmentShare {
+  installmentId String          @db.Uuid
+  editorId      String          @db.Uuid
+  amount        Decimal         @db.Decimal(19, 2)
+  installment   DebtInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  editor        Editor          @relation(fields: [editorId], references: [id], onDelete: Restrict)
+
+  @@id([installmentId, editorId])
+  @@index([editorId])
 }
 
 model AuditLog {

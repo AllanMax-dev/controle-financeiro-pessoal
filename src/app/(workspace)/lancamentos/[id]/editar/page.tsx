@@ -11,7 +11,12 @@ export default async function EditTransactionPage({ params }: { params: Promise<
   const { id } = await params;
   const database = getDatabase();
   const transaction = await database.transaction.findFirst({
-    where: { id, workspaceId: access.workspaceId, status: { not: "CANCELED" } },
+    where: {
+      id,
+      workspaceId: access.workspaceId,
+      status: { not: "CANCELED" },
+      debtInstallment: { is: null },
+    },
   });
 
   if (!transaction) {

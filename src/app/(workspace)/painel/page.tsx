@@ -4,10 +4,14 @@ import { ExpenseCategoryChart } from "@/components/expense-category-chart";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getDashboardSummary } from "@/modules/dashboard/application/get-dashboard-summary";
+import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
 
 export default async function DashboardPage() {
   const access = await requireCurrentAccess();
-  const summary = await getDashboardSummary(access.workspaceId);
+  const [summary, debtOverview] = await Promise.all([
+    getDashboardSummary(access.workspaceId),
+    getDebtOverview(access.workspaceId),
+  ]);
 
   return (
     <>
@@ -43,6 +47,36 @@ export default async function DashboardPage() {
           <strong>{formatCurrency(summary.periodResult.result)}</strong>
           <small>Receitas menos despesas realizadas</small>
         </article>
+      </section>
+
+      <section className="panel-card dashboard-debt-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Casal</p>
+            <h2>Dívidas em aberto</h2>
+          </div>
+          <Link className="text-button" href="/dividas">
+            Ver dívidas
+          </Link>
+        </div>
+        <div className="dashboard-debt-grid">
+          <div>
+            <span>Total do casal</span>
+            <strong>{formatCurrency(debtOverview.coupleOutstanding)}</strong>
+          </div>
+          {debtOverview.editors.slice(0, 2).map((editor) => (
+            <div key={editor.id}>
+              <span>{editor.displayName}</span>
+              <strong>{formatCurrency(editor.outstanding)}</strong>
+            </div>
+          ))}
+          <div>
+            <span>Em atraso</span>
+            <strong className={debtOverview.overdue.isPositive() ? "value-expense" : ""}>
+              {formatCurrency(debtOverview.overdue)}
+            </strong>
+          </div>
+        </div>
       </section>
 
       <section className="dashboard-columns">

@@ -61,7 +61,7 @@ export default async function TransactionsPage({
   const [transactions, accounts, categories] = await Promise.all([
     database.transaction.findMany({
       where,
-      include: { account: true, category: true },
+      include: { account: true, category: true, debtInstallment: { select: { debtId: true } } },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
       take: 200,
     }),
@@ -184,7 +184,11 @@ export default async function TransactionsPage({
                 </span>
               </div>
               <div className="row-actions">
-                {transaction.status !== "CANCELED" ? (
+                {transaction.debtInstallment ? (
+                  <Link className="text-button" href="/dividas">
+                    Ver dívida
+                  </Link>
+                ) : transaction.status !== "CANCELED" ? (
                   <>
                     <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
                       Editar

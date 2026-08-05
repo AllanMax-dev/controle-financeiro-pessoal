@@ -21,6 +21,31 @@ describe("financial summary", () => {
     expect(balances.get("checking")?.toFixed(2)).toBe("130.00");
   });
 
+  it("keeps imported historical expenses out of the current account balance", () => {
+    const balances = calculateAccountBalances(
+      [{ id: "checking", initialBalance: "1000.00" }],
+      [
+        {
+          accountId: "checking",
+          affectsBalance: false,
+          amount: "600.00",
+          status: "SETTLED",
+          type: "EXPENSE",
+        },
+        {
+          accountId: "checking",
+          affectsBalance: true,
+          amount: "150.00",
+          status: "SETTLED",
+          type: "EXPENSE",
+        },
+      ],
+      [],
+    );
+
+    expect(balances.get("checking")?.toFixed(2)).toBe("850.00");
+  });
+
   it("moves money between accounts without changing the consolidated balance", () => {
     const balances = calculateAccountBalances(
       [

@@ -684,7 +684,8 @@ button:disabled {
   font-weight: 750;
 }
 
-.status-settled {
+.status-settled,
+.status-paid {
   background: #e1f3e8;
   color: #187344 !important;
 }
@@ -1183,5 +1184,324 @@ button:disabled {
 
   .report-table-header {
     display: none !important;
+  }
+}
+
+.dashboard-debt-panel {
+  margin: 24px 0;
+}
+
+.dashboard-debt-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-debt-grid > div {
+  display: grid;
+  gap: 7px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.dashboard-debt-grid span,
+.dashboard-debt-grid small {
+  color: var(--muted);
+}
+
+.dashboard-debt-grid strong {
+  font-size: 1.25rem;
+}
+
+.debt-form {
+  align-items: start;
+}
+
+.check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.check-field input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.check-field span {
+  display: grid;
+  gap: 4px;
+}
+
+.check-field small,
+.debt-split p,
+.field small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.debt-split {
+  min-width: 0;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+.debt-split legend {
+  padding: 0 7px;
+  font-weight: 800;
+}
+
+.debt-split p {
+  margin: 0 0 16px;
+}
+
+.debt-split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.person-filter {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 22px;
+  overflow-x: auto;
+}
+
+.person-filter a {
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.person-filter a.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.debt-list {
+  display: grid;
+  gap: 18px;
+}
+
+.debt-card {
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.debt-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.debt-card h2 {
+  margin: 10px 0 6px;
+}
+
+.debt-card header p,
+.debt-next,
+.debt-overdue {
+  margin: 0;
+  color: var(--muted);
+}
+
+.debt-total {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 5px;
+  text-align: right;
+}
+
+.debt-total span,
+.debt-total small {
+  color: var(--muted);
+}
+
+.debt-total strong {
+  font-size: 1.55rem;
+}
+
+.debt-responsibility {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.debt-responsibility span {
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.debt-responsibility strong {
+  color: var(--ink);
+}
+
+.debt-next,
+.debt-overdue {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  font-weight: 700;
+}
+
+.debt-overdue {
+  background: #fff0ef;
+  color: #a33832;
+}
+
+.installment-details {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.installment-details summary {
+  padding: 16px 0 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.installment-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.installment-list > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.installment-list article > div:first-child,
+.installment-value {
+  display: grid;
+  gap: 5px;
+}
+
+.installment-list article > div:first-child span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.installment-value {
+  justify-items: end;
+}
+
+.installment-payment-form {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.installment-payment-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.installment-payment-form select,
+.installment-payment-form input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+
+.installment-payment-form .inline-error {
+  grid-column: 1 / -1;
+}
+
+.debt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.workspace-loading {
+  display: grid;
+  gap: 14px;
+  padding: 34px 0;
+}
+
+.workspace-loading span {
+  height: 82px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, var(--surface-soft), var(--surface), var(--surface-soft));
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.2s infinite linear;
+}
+
+@keyframes loading-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-debt-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .debt-card > header {
+    flex-direction: column;
+  }
+
+  .debt-total {
+    text-align: left;
+  }
+
+  .installment-payment-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-debt-grid,
+  .debt-split-grid,
+  .debt-responsibility,
+  .installment-list > article {
+    grid-template-columns: 1fr;
+  }
+
+  .installment-value {
+    justify-items: start;
   }
 }
