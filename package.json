@@ -1,0 +1,56 @@
+{
+  "name": "controle-financeiro-pessoal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "seed": "prisma db seed",
+    "access:create": "tsx scripts/create-access-link.ts",
+    "access:revoke": "tsx scripts/revoke-access.ts",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "5.7.1",
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
+    "decimal.js": "10.6.0",
+    "next": "16.3.0",
+    "pg": "8.22.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-hook-form": "7.84.0",
+    "recharts": "3.10.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "26.1.2",
+    "@types/pg": "8.20.4",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "dotenv": "17.3.1",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.0",
+    "jsdom": "30.0.1",
+    "prisma": "7.9.1",
+    "tsx": "4.23.8",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
