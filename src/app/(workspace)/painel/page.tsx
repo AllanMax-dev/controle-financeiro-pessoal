@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import {
+  BudgetComparisonChart,
+  MonthlyEvolutionChart,
+} from "@/components/dashboard-analytics-charts";
 import { ExpenseCategoryChart } from "@/components/expense-category-chart";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
@@ -26,7 +30,7 @@ export default async function DashboardPage() {
         </Link>
       </section>
 
-      <section className="metric-grid" aria-label="Indicadores financeiros">
+      <section className="metric-grid dashboard-metrics" aria-label="Indicadores financeiros">
         <article className="metric-card metric-card-featured">
           <span>Saldo consolidado</span>
           <strong>{formatCurrency(summary.totalBalance)}</strong>
@@ -46,6 +50,14 @@ export default async function DashboardPage() {
           <span>Resultado do mês</span>
           <strong>{formatCurrency(summary.periodResult.result)}</strong>
           <small>Receitas menos despesas realizadas</small>
+        </article>
+        <article className="metric-card">
+          <span>Saldo projetado</span>
+          <strong>{formatCurrency(summary.projectedBalance)}</strong>
+          <small>
+            {formatCurrency(summary.pendingIncome)} a receber -{" "}
+            {formatCurrency(summary.pendingExpense)} a pagar
+          </small>
         </article>
       </section>
 
@@ -79,11 +91,51 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      <section className="dashboard-analytics-grid">
+        <article className="panel-card">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Tendência</p>
+              <h2>Evolução mensal</h2>
+            </div>
+          </div>
+          <MonthlyEvolutionChart data={summary.monthlyEvolution} />
+        </article>
+
+        <article className="panel-card">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Orçamento</p>
+              <h2>Planejado versus realizado</h2>
+            </div>
+          </div>
+          <div className="budget-comparison-totals">
+            <div>
+              <span>Planejado</span>
+              <strong>{formatCurrency(summary.budgetComparison.totalPlanned)}</strong>
+            </div>
+            <div>
+              <span>Realizado</span>
+              <strong>{formatCurrency(summary.budgetComparison.totalRealized)}</strong>
+            </div>
+            <div>
+              <span>Restante</span>
+              <strong
+                className={summary.budgetComparison.remaining.isNegative() ? "value-expense" : ""}
+              >
+                {formatCurrency(summary.budgetComparison.remaining)}
+              </strong>
+            </div>
+          </div>
+          <BudgetComparisonChart data={summary.budgetComparison.categories} />
+        </article>
+      </section>
+
       <section className="dashboard-columns">
         <article className="panel-card">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">Composição</p>
+              <p className="eyebrow">Distribuição</p>
               <h2>Despesas por categoria</h2>
             </div>
           </div>

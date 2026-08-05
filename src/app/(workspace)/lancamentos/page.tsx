@@ -4,67 +4,22 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { identifierSchema } from "@/modules/shared/application/form-schemas";
 import { cancelTransactionAction } from "@/modules/transactions/application/transaction-actions";
+import {
+  normalizeTransactionListFilters,
+  type TransactionListSearchParams,
+} from "@/modules/transactions/application/transaction-list-filters";
 import { ConfirmActionForm } from "@/components/confirm-action-form";
-
-type TransactionSearchParams = {
-  accountId?: string;
-  categoryId?: string;
-  month?: string;
-  status?: string;
-  type?: string;
-};
-
-function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function monthInterval(month: string) {
-  const safeMonth = /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
-  const start = new Date(`${safeMonth}-01T00:00:00.000Z`);
-  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
-
-  return { end, month: safeMonth, start };
-}
 
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<TransactionSearchParams>;
+  searchParams: Promise<TransactionListSearchParams>;
 }) {
   const access = await requireCurrentAccess();
-  const filters = await searchParams;
-  const { end, month, start } = monthInterval(filters.month ?? currentMonth());
-  const type = filters.type === "INCOME" || filters.type === "EXPENSE" ? filters.type : undefined;
-  const status =
-    filters.status === "PENDING" ||
-    filters.status === "SETTLED" ||
-    filters.status === "CANCELED"
-      ? filters.status
-      : undefined;
-  const accountId = identifierSchema.safeParse(filters.accountId).success
-    ? filters.accountId
-    : undefined;
-  const categoryId = identifierSchema.safeParse(filters.categoryId).success
-    ? filters.categoryId
-    : undefined;
-  const where: Prisma.TransactionWhereInput = {
-    workspaceId: access.workspaceId,
-    competenceDate: { gte: start, lt: end },
-    ...(type ? { type } : {}),
-    ...(status ? { status } : {}),
-    ...(accountId ? { accountId } : {}),
-    ...(categoryId ? { categoryId } : {}),
-  };
+  const filters = normalizeTransactionListFilters(await searchParams);
   const database = getDatabase();
-  const [transactions, accounts, categories] = await Promise.all([
-    database.transaction.findMany({
-      where,
-      include: { account: true, category: true, debtInstallment: { select: { debtId: true } } },
-      orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
-      take: 200,
-    }),
+  const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
@@ -73,7 +28,60 @@ export default async function TransactionsPage({
       where: { workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
     }),
+    database.editor.findMany({
+      where: { workspaceId: access.workspaceId, active: true },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
+  const accountId = filters.accountId && accounts.some(({ id }) => id === filters.accountId)
+    ? filters.accountId
+    : undefined;
+  const categoryId = filters.categoryId && categories.some(({ id }) => id === filters.categoryId)
+    ? filters.categoryId
+    : undefined;
+  const personId = filters.personId && editors.some(({ id }) => id === filters.personId)
+    ? filters.personId
+    : undefined;
+  const invalidScopedFilter =
+    Boolean(filters.accountId && !accountId) ||
+    Boolean(filters.categoryId && !categoryId) ||
+    Boolean(filters.personId && !personId);
+  const where: Prisma.TransactionWhereInput = {
+    workspaceId: access.workspaceId,
+    competenceDate: { gte: filters.start, lt: filters.end },
+    ...(filters.type ? { type: filters.type } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(accountId ? { accountId } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(personId ? { debtInstallment: { is: { shares: { some: { editorId: personId } } } } } : {}),
+    ...(filters.search
+      ? {
+          OR: [
+            { description: { contains: filters.search, mode: "insensitive" } },
+            { notes: { contains: filters.search, mode: "insensitive" } },
+            { account: { name: { contains: filters.search, mode: "insensitive" } } },
+            { category: { name: { contains: filters.search, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+  const transactions = invalidScopedFilter
+    ? []
+    : await database.transaction.findMany({
+        where,
+        include: {
+          account: true,
+          category: true,
+          debtInstallment: {
+            select: {
+              debtId: true,
+              shares: { select: { editorId: true, editor: { select: { displayName: true } } } },
+            },
+          },
+        },
+        orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
+        take: 200,
+      });
 
   return (
     <>
@@ -89,13 +97,27 @@ export default async function TransactionsPage({
       </section>
 
       <form className="filter-bar" method="get">
-        <label>
-          <span>Mês</span>
-          <input name="month" type="month" defaultValue={month} />
+        <label className="filter-search">
+          <span>Pesquisa</span>
+          <input
+            maxLength={120}
+            name="q"
+            placeholder="Descrição, nota, conta ou categoria"
+            type="search"
+            defaultValue={filters.search ?? ""}
+          />
         </label>
         <label>
-          <span>Tipo</span>
-          <select name="type" defaultValue={type ?? ""}>
+          <span>Início</span>
+          <input name="startDate" type="date" defaultValue={filters.startDate} />
+        </label>
+        <label>
+          <span>Fim</span>
+          <input name="endDate" type="date" defaultValue={filters.endDate} />
+        </label>
+        <label>
+          <span>Tipo de lançamento</span>
+          <select name="type" defaultValue={filters.type ?? ""}>
             <option value="">Todos</option>
             <option value="INCOME">Receitas</option>
             <option value="EXPENSE">Despesas</option>
@@ -103,7 +125,7 @@ export default async function TransactionsPage({
         </label>
         <label>
           <span>Status</span>
-          <select name="status" defaultValue={status ?? ""}>
+          <select name="status" defaultValue={filters.status ?? ""}>
             <option value="">Todos</option>
             <option value="PENDING">Pendentes</option>
             <option value="SETTLED">Realizados</option>
@@ -132,6 +154,17 @@ export default async function TransactionsPage({
             ))}
           </select>
         </label>
+        <label>
+          <span>Pessoa</span>
+          <select name="personId" defaultValue={personId ?? ""}>
+            <option value="">Todas</option>
+            {editors.map((editor) => (
+              <option key={editor.id} value={editor.id}>
+                {editor.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="filter-actions">
           <Link className="secondary-button" href="/lancamentos">
             Limpar
@@ -152,11 +185,16 @@ export default async function TransactionsPage({
         </section>
       ) : (
         <section className="transaction-list" aria-label="Lançamentos encontrados">
-          {transactions.map((transaction) => (
-            <article
-              className={`transaction-row${transaction.status === "CANCELED" ? " entity-row-muted" : ""}`}
-              key={transaction.id}
-            >
+          {transactions.map((transaction) => {
+            const personNames = transaction.debtInstallment?.shares
+              .map(({ editor }) => editor.displayName)
+              .join(" · ");
+
+            return (
+              <article
+                className={`transaction-row${transaction.status === "CANCELED" ? " entity-row-muted" : ""}`}
+                key={transaction.id}
+              >
               <span
                 className={`transaction-sign ${transaction.type === "INCOME" ? "income" : "expense"}`}
                 aria-hidden="true"
@@ -168,6 +206,12 @@ export default async function TransactionsPage({
                 <span>
                   {transaction.account.name} · {transaction.category?.name ?? "Sem categoria"} ·{" "}
                   {formatDate(transaction.competenceDate)}
+                  {personNames ? (
+                    <>
+                      {" · "}
+                      {personNames}
+                    </>
+                  ) : null}
                 </span>
               </div>
               <div className="entity-value">
@@ -202,8 +246,9 @@ export default async function TransactionsPage({
                   </>
                 ) : null}
               </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </section>
       )}
     </>
