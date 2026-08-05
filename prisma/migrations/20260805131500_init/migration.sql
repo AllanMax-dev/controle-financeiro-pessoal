@@ -135,6 +135,20 @@ CREATE TABLE "Transfer" (
 );
 
 -- CreateTable
+CREATE TABLE "Budget" (
+    "id" UUID NOT NULL,
+    "workspaceId" UUID NOT NULL,
+    "categoryId" UUID NOT NULL,
+    "month" DATE NOT NULL,
+    "amount" DECIMAL(19,2) NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
+
+    CONSTRAINT "Budget_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "AuditLog" (
     "id" UUID NOT NULL,
     "workspaceId" UUID NOT NULL,
@@ -209,6 +223,15 @@ CREATE INDEX "Transfer_sourceAccountId_transferDate_idx" ON "Transfer"("sourceAc
 CREATE INDEX "Transfer_destinationAccountId_transferDate_idx" ON "Transfer"("destinationAccountId", "transferDate");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Budget_workspaceId_categoryId_month_key" ON "Budget"("workspaceId", "categoryId", "month");
+
+-- CreateIndex
+CREATE INDEX "Budget_workspaceId_month_idx" ON "Budget"("workspaceId", "month");
+
+-- CreateIndex
+CREATE INDEX "Budget_categoryId_idx" ON "Budget"("categoryId");
+
+-- CreateIndex
 CREATE INDEX "AuditLog_workspaceId_createdAt_idx" ON "AuditLog"("workspaceId", "createdAt");
 
 -- CreateIndex
@@ -251,6 +274,12 @@ ALTER TABLE "Transfer" ADD CONSTRAINT "Transfer_sourceAccountId_fkey" FOREIGN KE
 ALTER TABLE "Transfer" ADD CONSTRAINT "Transfer_destinationAccountId_fkey" FOREIGN KEY ("destinationAccountId") REFERENCES "FinancialAccount"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Budget" ADD CONSTRAINT "Budget_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Budget" ADD CONSTRAINT "Budget_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -266,3 +295,5 @@ ALTER TABLE "Transfer" ADD CONSTRAINT "Transfer_version_positive" CHECK ("versio
 ALTER TABLE "FinancialAccount" ADD CONSTRAINT "FinancialAccount_version_positive" CHECK ("version" > 0);
 ALTER TABLE "Category" ADD CONSTRAINT "Category_version_positive" CHECK ("version" > 0);
 ALTER TABLE "AccessSession" ADD CONSTRAINT "AccessSession_expiry_after_creation" CHECK ("expiresAt" > "createdAt");
+ALTER TABLE "Budget" ADD CONSTRAINT "Budget_amount_nonnegative" CHECK ("amount" >= 0);
+ALTER TABLE "Budget" ADD CONSTRAINT "Budget_version_positive" CHECK ("version" > 0);

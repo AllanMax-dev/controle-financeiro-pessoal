@@ -30,6 +30,9 @@ Não existem contas, senhas ou formulário de login. Cada uma das duas pessoas r
 - Receitas e despesas com competência, vencimento, realização, conta, categoria e observações.
 - Filtros por mês, tipo, status, conta e categoria.
 - Cancelamento confirmado de lançamentos sem remoção do histórico.
+- Transferências entre contas com edição e cancelamento.
+- Planejamento mensal de despesas por categoria.
+- Relatório mensal por categoria e exportação CSV protegida contra fórmulas maliciosas.
 - Registro de auditoria associado à pessoa que realizou a alteração.
 - Controle de versão para impedir sobrescritas silenciosas entre dispositivos.
 

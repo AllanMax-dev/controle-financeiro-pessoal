@@ -6,8 +6,10 @@ test("creates and updates the core financial records", async ({ page }, testInfo
 
   const suffix = `${testInfo.project.name}-${Date.now()}`;
   const accountName = `Conta ${suffix}`;
+  const destinationAccountName = `Destino ${suffix}`;
   const categoryName = `Categoria ${suffix}`;
   const transactionName = `Despesa ${suffix}`;
+  const transferName = `Transferência ${suffix}`;
 
   await page.goto(accessUrl!);
   await expect(page).toHaveURL(/\/painel$/);
@@ -52,4 +54,38 @@ test("creates and updates the core financial records", async ({ page }, testInfo
 
   await page.getByRole("link", { name: "Contas", exact: true }).click();
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(/R\$\s*1\.000,00/);
+
+  await page.getByRole("link", { name: "Nova conta" }).click();
+  await page.getByLabel("Nome da conta").fill(destinationAccountName);
+  await page.getByLabel("Saldo inicial").fill("0,00");
+  await page.getByRole("button", { name: "Criar conta" }).click();
+
+  await page.getByRole("link", { name: "Transferências", exact: true }).click();
+  await page.getByRole("link", { name: "Nova transferência" }).click();
+  await page.getByLabel("Descrição").fill(transferName);
+  await page.getByLabel("Valor").fill("250,00");
+  await page.getByLabel("Conta de origem").selectOption({ label: accountName });
+  await page.getByLabel("Conta de destino").selectOption({ label: destinationAccountName });
+  await page.getByLabel("Status").selectOption("SETTLED");
+  await page.getByRole("button", { name: "Criar transferência" }).click();
+  await expect(page.getByText(transferName)).toBeVisible();
+
+  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await expect(page.locator("article").filter({ hasText: accountName })).toContainText(/R\$\s*750,00/);
+  await expect(page.locator("article").filter({ hasText: destinationAccountName })).toContainText(
+    /R\$\s*250,00/,
+  );
+
+  await page.getByRole("link", { name: "Planejamento", exact: true }).click();
+  const budgetInput = page.getByLabel(`Orçamento de ${categoryName}`);
+  const budgetForm = page.locator("form").filter({ has: budgetInput });
+  await budgetInput.fill("500,00");
+  await budgetForm.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Orçamento salvo.")).toBeVisible();
+
+  await page.getByRole("link", { name: "Relatórios", exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Exportar CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^relatorio-\d{4}-\d{2}\.csv$/);
 });

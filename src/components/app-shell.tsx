@@ -3,8 +3,11 @@ import Link from "next/link";
 const navigationItems = [
   { href: "/painel", label: "Visão geral" },
   { href: "/lancamentos", label: "Lançamentos" },
+  { href: "/transferencias", label: "Transferências" },
   { href: "/contas", label: "Contas" },
   { href: "/categorias", label: "Categorias" },
+  { href: "/planejamento", label: "Planejamento" },
+  { href: "/relatorios", label: "Relatórios" },
 ] as const;
 
 export function AppShell({

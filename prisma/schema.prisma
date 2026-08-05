@@ -46,6 +46,7 @@ model Workspace {
   categories   Category[]
   transactions Transaction[]
   transfers    Transfer[]
+  budgets      Budget[]
   auditLogs    AuditLog[]
 }
 
@@ -125,6 +126,7 @@ model Category {
   parent       Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children     Category[]   @relation("CategoryHierarchy")
   transactions Transaction[]
+  budgets      Budget[]
 
   @@unique([workspaceId, kind, name])
   @@index([workspaceId, kind, active])
@@ -178,6 +180,23 @@ model Transfer {
   @@index([workspaceId, transferDate])
   @@index([sourceAccountId, transferDate])
   @@index([destinationAccountId, transferDate])
+}
+
+model Budget {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  categoryId  String    @db.Uuid
+  month       DateTime  @db.Date
+  amount      Decimal   @db.Decimal(19, 2)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, categoryId, month])
+  @@index([workspaceId, month])
+  @@index([categoryId])
 }
 
 model AuditLog {
