@@ -126,6 +126,7 @@ model Category {
   children     Category[]   @relation("CategoryHierarchy")
   transactions Transaction[]
 
+  @@unique([workspaceId, kind, name])
   @@index([workspaceId, kind, active])
   @@index([parentId])
 }

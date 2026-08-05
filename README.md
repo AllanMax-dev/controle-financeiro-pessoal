@@ -4,7 +4,7 @@ Aplicação autoral de controle financeiro pessoal, criada para organizar contas
 
 ## Status do projeto
 
-A fundação técnica está implementada com Next.js, TypeScript, PostgreSQL e Prisma. O desenvolvimento continua em etapas pequenas, verificáveis e versionadas.
+O núcleo financeiro está implementado com Next.js, TypeScript, PostgreSQL e Prisma. A aplicação já permite gerenciar contas, categorias e lançamentos em desktop e celular.
 
 ## Diretrizes
 
@@ -21,6 +21,26 @@ Não existem contas, senhas ou formulário de login. Cada uma das duas pessoas r
 - Cada pessoa pode usar seu link no computador e no celular.
 - Criar um novo link para uma pessoa revoga o link e as sessões anteriores dela.
 - O endereço privado nunca deve ser publicado ou incluído no código-fonte.
+
+## Funcionalidades atuais
+
+- Dashboard com saldo consolidado, receitas, despesas, resultado e valores pendentes.
+- Contas financeiras com saldo inicial, saldo calculado, edição e arquivamento.
+- Categorias separadas entre receitas e despesas, com edição e arquivamento.
+- Receitas e despesas com competência, vencimento, realização, conta, categoria e observações.
+- Filtros por mês, tipo, status, conta e categoria.
+- Cancelamento confirmado de lançamentos sem remoção do histórico.
+- Registro de auditoria associado à pessoa que realizou a alteração.
+- Controle de versão para impedir sobrescritas silenciosas entre dispositivos.
+
+## Regras financeiras atuais
+
+- Valores são armazenados em `Decimal(19,2)` e arredondados por `ROUND_HALF_UP`.
+- O saldo da conta é o saldo inicial somado às receitas realizadas e subtraído das despesas realizadas.
+- Lançamentos pendentes não alteram o saldo atual.
+- Lançamentos cancelados não afetam saldos ou indicadores.
+- O resultado mensal considera a data de competência e somente valores realizados.
+- Transferências internas não alteram o saldo consolidado.
 
 ## Requisitos
 

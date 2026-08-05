@@ -185,6 +185,9 @@ CREATE INDEX "Category_workspaceId_kind_active_idx" ON "Category"("workspaceId",
 CREATE INDEX "Category_parentId_idx" ON "Category"("parentId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Category_workspaceId_kind_name_key" ON "Category"("workspaceId", "kind", "name");
+
+-- CreateIndex
 CREATE INDEX "Transaction_workspaceId_competenceDate_idx" ON "Transaction"("workspaceId", "competenceDate");
 
 -- CreateIndex

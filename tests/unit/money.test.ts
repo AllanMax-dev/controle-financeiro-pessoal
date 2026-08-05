@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateMoney, money, sumMoney } from "../../src/modules/shared/domain/money";
+import {
+  allocateMoney,
+  money,
+  parseMoneyInput,
+  sumMoney,
+} from "../../src/modules/shared/domain/money";
 
 describe("money", () => {
   it("rounds monetary values to two decimal places using half up", () => {
@@ -10,6 +15,11 @@ describe("money", () => {
 
   it("sums values without floating-point drift", () => {
     expect(sumMoney(["0.10", "0.20"]).toFixed(2)).toBe("0.30");
+  });
+
+  it("parses Brazilian and database monetary formats", () => {
+    expect(parseMoneyInput("1.234,56").toFixed(2)).toBe("1234.56");
+    expect(parseMoneyInput("1234.56").toFixed(2)).toBe("1234.56");
   });
 
   it("distributes residual cents while preserving the exact total", () => {
@@ -22,5 +32,6 @@ describe("money", () => {
   it("rejects an invalid installment count", () => {
     expect(() => allocateMoney("100.00", 0)).toThrow(RangeError);
     expect(() => allocateMoney("100.00", 2.5)).toThrow(RangeError);
+    expect(() => allocateMoney("-1.00", 2)).toThrow(RangeError);
   });
 });

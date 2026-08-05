@@ -10,6 +10,21 @@ Decimal.set({
 
 export type MoneyInput = Decimal.Value;
 
+export function parseMoneyInput(value: string): Decimal {
+  const compactValue = value.trim().replace(/\s/g, "");
+  const normalizedValue = compactValue.includes(",")
+    ? compactValue.replace(/\./g, "").replace(",", ".")
+    : compactValue;
+
+  const parsedValue = money(normalizedValue);
+
+  if (!parsedValue.isFinite()) {
+    throw new TypeError("Informe um valor monetário válido.");
+  }
+
+  return parsedValue;
+}
+
 export function money(value: MoneyInput): Decimal {
   return new Decimal(value).toDecimalPlaces(MONEY_SCALE, Decimal.ROUND_HALF_UP);
 }
@@ -24,6 +39,10 @@ export function allocateMoney(total: MoneyInput, installmentCount: number): Deci
   }
 
   const normalizedTotal = money(total);
+
+  if (normalizedTotal.isNegative()) {
+    throw new RangeError("O valor total não pode ser negativo.");
+  }
   const baseInstallment = normalizedTotal
     .dividedBy(installmentCount)
     .toDecimalPlaces(MONEY_SCALE, Decimal.ROUND_DOWN);
