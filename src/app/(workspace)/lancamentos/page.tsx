@@ -10,6 +10,8 @@ import {
   type TransactionListSearchParams,
 } from "@/modules/transactions/application/transaction-list-filters";
 import { ConfirmActionForm } from "@/components/confirm-action-form";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 
 export default async function TransactionsPage({
   searchParams,
@@ -17,7 +19,18 @@ export default async function TransactionsPage({
   searchParams: Promise<TransactionListSearchParams>;
 }) {
   const access = await requireCurrentAccess();
-  const filters = normalizeTransactionListFilters(await searchParams);
+  const rawFilters = await searchParams;
+  const filters = normalizeTransactionListFilters(rawFilters);
+  const activeFilterCount = [
+    rawFilters.q?.trim(),
+    rawFilters.startDate,
+    rawFilters.endDate,
+    rawFilters.type,
+    rawFilters.status,
+    rawFilters.accountId,
+    rawFilters.categoryId,
+    rawFilters.personId,
+  ].filter(Boolean).length;
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
@@ -96,93 +109,115 @@ export default async function TransactionsPage({
         </Link>
       </section>
 
-      <form className="filter-bar" method="get">
-        <label className="filter-search">
-          <span>Pesquisa</span>
-          <input
-            maxLength={120}
-            name="q"
-            placeholder="Descrição, nota, conta ou categoria"
-            type="search"
-            defaultValue={filters.search ?? ""}
-          />
-        </label>
-        <label>
-          <span>Início</span>
-          <input name="startDate" type="date" defaultValue={filters.startDate} />
-        </label>
-        <label>
-          <span>Fim</span>
-          <input name="endDate" type="date" defaultValue={filters.endDate} />
-        </label>
-        <label>
-          <span>Tipo de lançamento</span>
-          <select name="type" defaultValue={filters.type ?? ""}>
-            <option value="">Todos</option>
-            <option value="INCOME">Receitas</option>
-            <option value="EXPENSE">Despesas</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select name="status" defaultValue={filters.status ?? ""}>
-            <option value="">Todos</option>
-            <option value="PENDING">Pendentes</option>
-            <option value="SETTLED">Realizados</option>
-            <option value="CANCELED">Cancelados</option>
-          </select>
-        </label>
-        <label>
-          <span>Conta</span>
-          <select name="accountId" defaultValue={accountId ?? ""}>
-            <option value="">Todas</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Categoria</span>
-          <select name="categoryId" defaultValue={categoryId ?? ""}>
-            <option value="">Todas</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Pessoa</span>
-          <select name="personId" defaultValue={personId ?? ""}>
-            <option value="">Todas</option>
-            {editors.map((editor) => (
-              <option key={editor.id} value={editor.id}>
-                {editor.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="filter-actions">
-          <Link className="secondary-button" href="/lancamentos">
-            Limpar
-          </Link>
-          <button className="primary-button" type="submit">
-            Aplicar
-          </button>
+      <section className="filter-panel" aria-label="Filtros e pesquisa">
+        <div className="filter-panel-header">
+          <div>
+            <p className="eyebrow">Filtros e pesquisa</p>
+            <h2>Refinar lançamentos</h2>
+          </div>
+          <span className="filter-count">
+            {activeFilterCount} {activeFilterCount === 1 ? "filtro ativo" : "filtros ativos"}
+          </span>
         </div>
-      </form>
+        <form className="filter-bar transaction-filter-bar" method="get">
+          <details className="filter-disclosure" open>
+            <summary>
+              <span>
+                <Icon name="filter" />
+                Filtros
+              </span>
+              <strong>{activeFilterCount}</strong>
+            </summary>
+            <div className="filter-fields">
+              <label className="filter-search">
+                <span>Pesquisa</span>
+                <input
+                  maxLength={120}
+                  name="q"
+                  placeholder="Descrição, nota, conta ou categoria"
+                  type="search"
+                  defaultValue={filters.search ?? ""}
+                />
+              </label>
+              <label>
+                <span>Início</span>
+                <input name="startDate" type="date" defaultValue={filters.startDate} />
+              </label>
+              <label>
+                <span>Fim</span>
+                <input name="endDate" type="date" defaultValue={filters.endDate} />
+              </label>
+              <label>
+                <span>Tipo de lançamento</span>
+                <select name="type" defaultValue={filters.type ?? ""}>
+                  <option value="">Todos</option>
+                  <option value="INCOME">Receitas</option>
+                  <option value="EXPENSE">Despesas</option>
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select name="status" defaultValue={filters.status ?? ""}>
+                  <option value="">Todos</option>
+                  <option value="PENDING">Pendentes</option>
+                  <option value="SETTLED">Realizados</option>
+                  <option value="CANCELED">Cancelados</option>
+                </select>
+              </label>
+              <label>
+                <span>Conta</span>
+                <select name="accountId" defaultValue={accountId ?? ""}>
+                  <option value="">Todas</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Categoria</span>
+                <select name="categoryId" defaultValue={categoryId ?? ""}>
+                  <option value="">Todas</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Pessoa</span>
+                <select name="personId" defaultValue={personId ?? ""}>
+                  <option value="">Todas</option>
+                  {editors.map((editor) => (
+                    <option key={editor.id} value={editor.id}>
+                      {editor.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </details>
+          <div className="filter-actions">
+            <Link className="secondary-button" href="/lancamentos">
+              Limpar
+            </Link>
+            <button className="primary-button" type="submit">
+              <Icon name="search" />
+              Aplicar
+            </button>
+          </div>
+        </form>
+      </section>
 
       {transactions.length === 0 ? (
-        <section className="empty-state">
-          <h2>Nenhum lançamento encontrado</h2>
-          <p>Altere os filtros ou adicione uma movimentação neste mês.</p>
-          <Link className="primary-button" href="/lancamentos/novo">
-            Adicionar lançamento
-          </Link>
-        </section>
+        <EmptyState
+          action={{ href: "/lancamentos/novo", label: "Adicionar lançamento" }}
+          description="Altere os filtros ou adicione uma movimentação para este período."
+          icon="income"
+          title="Nenhum lançamento encontrado"
+        />
       ) : (
         <section className="transaction-list" aria-label="Lançamentos encontrados">
           {transactions.map((transaction) => {
@@ -192,7 +227,9 @@ export default async function TransactionsPage({
 
             return (
               <article
-                className={`transaction-row${transaction.status === "CANCELED" ? " entity-row-muted" : ""}`}
+                className={`transaction-row transaction-row-${transaction.type.toLowerCase()}${
+                  transaction.status === "CANCELED" ? " entity-row-muted" : ""
+                }`}
                 key={transaction.id}
               >
               <span

@@ -43,6 +43,11 @@ export function TransferForm({
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
 
+      <div className="form-section-title field-wide">
+        <h2>Origem, destino e valor</h2>
+        <p>Transferências movimentam contas sem classificar receita ou despesa.</p>
+      </div>
+
       <label className="field field-wide-on-mobile">
         <span>Descrição</span>
         <input
@@ -90,6 +95,11 @@ export function TransferForm({
           ))}
         </select>
       </label>
+
+      <div className="form-section-title field-wide">
+        <h2>Datas, status e observações</h2>
+        <p>Somente transferências realizadas alteram os saldos consolidados.</p>
+      </div>
 
       <label className="field">
         <span>Data da transferência</span>

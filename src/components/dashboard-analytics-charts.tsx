@@ -42,19 +42,77 @@ function tooltipCurrency(value: unknown): string {
   return formatCurrency(Number(value));
 }
 
+function ChartTooltipContent({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{ color?: string; name?: string; value?: unknown }>;
+}) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="chart-tooltip">
+      <strong>{label}</strong>
+      {payload.map((item) => (
+        <span key={item.name}>
+          <i style={{ backgroundColor: item.color }} />
+          {item.name}: {tooltipCurrency(item.value)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function MonthlyEvolutionChart({ data }: { data: MonthlyEvolutionItem[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="chart-empty chart-empty-large">
+        <p>A evolução mensal aparecerá quando houver lançamentos no histórico.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="analytics-chart" aria-label="Evolução mensal">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
-          <CartesianGrid stroke="#dce2dc" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tickLine={false} />
-          <YAxis tickFormatter={compactCurrency} tickLine={false} width={72} />
-          <Tooltip formatter={tooltipCurrency} />
+          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+          <XAxis axisLine={false} dataKey="label" tickLine={false} />
+          <YAxis axisLine={false} tickFormatter={compactCurrency} tickLine={false} width={72} />
+          <Tooltip content={<ChartTooltipContent />} />
           <Legend />
-          <Line dataKey="income" name="Receitas" stroke="#187344" strokeWidth={3} type="monotone" />
-          <Line dataKey="expense" name="Despesas" stroke="#9f3f3f" strokeWidth={3} type="monotone" />
-          <Line dataKey="result" name="Resultado" stroke="#405b9b" strokeWidth={3} type="monotone" />
+          <Line
+            activeDot={{ r: 6 }}
+            dataKey="income"
+            dot={{ r: 3 }}
+            name="Receitas"
+            stroke="#15803d"
+            strokeWidth={3}
+            type="monotone"
+          />
+          <Line
+            activeDot={{ r: 6 }}
+            dataKey="expense"
+            dot={{ r: 3 }}
+            name="Despesas"
+            stroke="#b42318"
+            strokeWidth={3}
+            type="monotone"
+          />
+          <Line
+            activeDot={{ r: 6 }}
+            dataKey="result"
+            dot={{ r: 3 }}
+            name="Resultado"
+            stroke="#175cd3"
+            strokeWidth={3}
+            type="monotone"
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -74,13 +132,13 @@ export function BudgetComparisonChart({ data }: { data: BudgetComparisonItem[] }
     <div className="analytics-chart" aria-label="Planejado versus realizado">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data.slice(0, 6)} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
-          <CartesianGrid stroke="#dce2dc" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="name" tickLine={false} />
-          <YAxis tickFormatter={compactCurrency} tickLine={false} width={72} />
-          <Tooltip formatter={tooltipCurrency} />
+          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+          <XAxis axisLine={false} dataKey="name" tickLine={false} />
+          <YAxis axisLine={false} tickFormatter={compactCurrency} tickLine={false} width={72} />
+          <Tooltip content={<ChartTooltipContent />} />
           <Legend />
-          <Bar dataKey="planned" fill="#405b9b" name="Planejado" radius={[8, 8, 0, 0]} />
-          <Bar dataKey="realized" fill="#9f3f3f" name="Realizado" radius={[8, 8, 0, 0]} />
+          <Bar dataKey="planned" fill="#175cd3" name="Planejado" radius={[8, 8, 0, 0]} />
+          <Bar dataKey="realized" fill="#b42318" name="Realizado" radius={[8, 8, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

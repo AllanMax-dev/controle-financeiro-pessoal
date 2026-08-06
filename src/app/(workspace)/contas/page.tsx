@@ -4,6 +4,8 @@ import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import { toggleAccountActiveAction } from "@/modules/accounts/application/account-actions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 
 const accountTypeLabels = {
   CHECKING: "Conta corrente",
@@ -26,6 +28,7 @@ export default async function AccountsPage() {
           <p>O saldo consolidado considera lançamentos realizados e transferências concluídas.</p>
         </div>
         <Link className="primary-button" href="/contas/nova">
+          <Icon name="add" />
           Nova conta
         </Link>
       </section>
@@ -37,17 +40,19 @@ export default async function AccountsPage() {
       </section>
 
       {accounts.length === 0 ? (
-        <section className="empty-state">
-          <h2>Nenhuma conta cadastrada</h2>
-          <p>Crie a primeira conta para começar a registrar suas movimentações.</p>
-          <Link className="primary-button" href="/contas/nova">
-            Criar conta
-          </Link>
-        </section>
+        <EmptyState
+          action={{ href: "/contas/nova", label: "Criar conta" }}
+          description="Crie a primeira conta para registrar saldos, lançamentos e transferências."
+          icon="account"
+          title="Nenhuma conta cadastrada"
+        />
       ) : (
         <section className="entity-list" aria-label="Contas cadastradas">
           {accounts.map((account) => (
-            <article className={`entity-row${account.active ? "" : " entity-row-muted"}`} key={account.id}>
+            <article
+              className={`entity-row account-row${account.active ? "" : " entity-row-muted"}`}
+              key={account.id}
+            >
               <span className="entity-color" style={{ backgroundColor: account.color ?? "#256b4b" }} />
               <div className="entity-main">
                 <strong>{account.name}</strong>
@@ -55,7 +60,9 @@ export default async function AccountsPage() {
               </div>
               <div className="entity-value">
                 <strong>{formatCurrency(account.balance)}</strong>
-                <span>{account.active ? "Ativa" : "Arquivada"}</span>
+                <span className={`status-pill ${account.active ? "status-settled" : "status-canceled"}`}>
+                  {account.active ? "Ativa" : "Arquivada"}
+                </span>
               </div>
               <div className="row-actions">
                 <Link className="text-button" href={`/contas/${account.id}/editar`}>

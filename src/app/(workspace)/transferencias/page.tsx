@@ -4,6 +4,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { ConfirmActionForm } from "@/components/confirm-action-form";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { cancelTransferAction } from "@/modules/transfers/application/transfer-actions";
 
@@ -53,42 +55,44 @@ export default async function TransfersPage({
           <p>Transferências movimentam contas, mas não são contabilizadas como receita ou despesa.</p>
         </div>
         <Link className="primary-button" href="/transferencias/nova">
+          <Icon name="add" />
           Nova transferência
         </Link>
       </section>
 
-      <form className="filter-bar compact-filter" method="get">
-        <label>
-          <span>Mês</span>
-          <input name="month" type="month" defaultValue={month} />
-        </label>
-        <label>
-          <span>Status</span>
-          <select name="status" defaultValue={status ?? ""}>
-            <option value="">Todos</option>
-            <option value="PENDING">Pendentes</option>
-            <option value="SETTLED">Realizadas</option>
-            <option value="CANCELED">Canceladas</option>
-          </select>
-        </label>
-        <div className="filter-actions">
-          <Link className="secondary-button" href="/transferencias">
-            Limpar
-          </Link>
-          <button className="primary-button" type="submit">
-            Aplicar
-          </button>
-        </div>
-      </form>
+      <section className="filter-panel compact-filter-panel" aria-label="Filtros de transferências">
+        <form className="filter-bar compact-filter" method="get">
+          <label>
+            <span>Mês</span>
+            <input name="month" type="month" defaultValue={month} />
+          </label>
+          <label>
+            <span>Status</span>
+            <select name="status" defaultValue={status ?? ""}>
+              <option value="">Todos</option>
+              <option value="PENDING">Pendentes</option>
+              <option value="SETTLED">Realizadas</option>
+              <option value="CANCELED">Canceladas</option>
+            </select>
+          </label>
+          <div className="filter-actions">
+            <Link className="secondary-button" href="/transferencias">
+              Limpar
+            </Link>
+            <button className="primary-button" type="submit">
+              Aplicar
+            </button>
+          </div>
+        </form>
+      </section>
 
       {transfers.length === 0 ? (
-        <section className="empty-state">
-          <h2>Nenhuma transferência encontrada</h2>
-          <p>Movimente valores entre duas contas sem alterar receitas e despesas.</p>
-          <Link className="primary-button" href="/transferencias/nova">
-            Criar transferência
-          </Link>
-        </section>
+        <EmptyState
+          action={{ href: "/transferencias/nova", label: "Criar transferência" }}
+          description="Movimente valores entre duas contas sem alterar receitas e despesas."
+          icon="transfer"
+          title="Nenhuma transferência encontrada"
+        />
       ) : (
         <section className="transaction-list" aria-label="Transferências encontradas">
           {transfers.map((transfer) => (
@@ -97,13 +101,15 @@ export default async function TransfersPage({
               key={transfer.id}
             >
               <span className="transaction-sign transfer-sign" aria-hidden="true">
-                →
+                <Icon name="transfer" />
               </span>
               <div className="entity-main">
                 <strong>{transfer.description}</strong>
-                <span>
-                  {transfer.sourceAccount.name} → {transfer.destinationAccount.name} ·{" "}
-                  {formatDate(transfer.transferDate)}
+                <span className="transfer-path">
+                  <span>{transfer.sourceAccount.name}</span>
+                  <span aria-hidden="true">→</span>
+                  <span>{transfer.destinationAccount.name}</span>
+                  <small>{formatDate(transfer.transferDate)}</small>
                 </span>
               </div>
               <div className="entity-value">

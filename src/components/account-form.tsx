@@ -44,6 +44,11 @@ export function AccountForm({
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
 
+      <div className="form-section-title field-wide">
+        <h2>Identificação da conta</h2>
+        <p>Dados usados para exibir a conta, calcular saldos e diferenciar registros.</p>
+      </div>
+
       <label className="field field-wide">
         <span>Nome da conta</span>
         <input

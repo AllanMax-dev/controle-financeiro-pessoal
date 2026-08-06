@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 
 import { BudgetForm } from "@/components/budget-form";
+import { EmptyState } from "@/components/ui/empty-state";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
@@ -54,6 +55,12 @@ export default async function PlanningPage({
   const totalPlanned = sumMoney(budgets.map(({ amount }) => amount));
   const totalRealized = sumMoney(realizedGroups.map(({ _sum }) => _sum.amount ?? money(0)));
   const totalRemaining = money(totalPlanned.minus(totalRealized));
+  const totalProgress = totalPlanned.greaterThan(0)
+    ? Decimal.min(totalRealized.dividedBy(totalPlanned).times(100), 100).toNumber()
+    : 0;
+  const totalProgressLabel = totalPlanned.greaterThan(0)
+    ? totalRealized.dividedBy(totalPlanned).times(100).toFixed(0)
+    : "0";
 
   return (
     <>
@@ -94,11 +101,26 @@ export default async function PlanningPage({
         </article>
       </section>
 
+      <section className="panel-card planning-overview" aria-label="Progresso geral do planejamento">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Uso do orçamento</p>
+            <h2>Progresso geral</h2>
+          </div>
+          <strong>{totalProgressLabel}% utilizado</strong>
+        </div>
+        <div className="progress-track progress-track-large" aria-label={`${totalProgressLabel}% utilizado`}>
+          <span style={{ width: `${totalProgress}%` }} />
+        </div>
+      </section>
+
       {categories.length === 0 ? (
-        <section className="empty-state">
-          <h2>Nenhuma categoria de despesa ativa</h2>
-          <p>Crie uma categoria de despesa antes de definir o planejamento mensal.</p>
-        </section>
+        <EmptyState
+          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          description="Crie uma categoria de despesa antes de definir o planejamento mensal."
+          icon="planning"
+          title="Nenhuma categoria de despesa ativa"
+        />
       ) : (
         <section className="planning-list" aria-label="Orçamentos por categoria">
           {categories.map((category) => {
@@ -106,12 +128,24 @@ export default async function PlanningPage({
             const planned = budget?.amount ?? money(0);
             const realized = realizedByCategory.get(category.id) ?? money(0);
             const remaining = money(planned.minus(realized));
+            const actualProgress = planned.greaterThan(0)
+              ? realized.dividedBy(planned).times(100).toNumber()
+              : 0;
             const progress = planned.greaterThan(0)
-              ? Decimal.min(realized.dividedBy(planned).times(100), 100).toNumber()
+              ? Decimal.min(actualProgress, 100).toNumber()
               : 0;
 
             return (
-              <article className="planning-row" key={category.id}>
+              <article
+                className={`planning-row${
+                  remaining.isNegative()
+                    ? " planning-row-over"
+                    : actualProgress >= 80
+                      ? " planning-row-warning"
+                      : ""
+                }`}
+                key={category.id}
+              >
                 <div className="planning-category">
                   <span className="entity-color" style={{ backgroundColor: category.color ?? "#256b4b" }} />
                   <div>
@@ -121,12 +155,15 @@ export default async function PlanningPage({
                     </span>
                   </div>
                 </div>
-                <div className="progress-track" aria-label={`${progress.toFixed(0)}% utilizado`}>
+                <div className="progress-track" aria-label={`${actualProgress.toFixed(0)}% utilizado`}>
                   <span style={{ width: `${progress}%` }} />
                 </div>
-                <strong className={remaining.isNegative() ? "value-expense" : ""}>
-                  {formatCurrency(remaining)}
-                </strong>
+                <div className="planning-balance">
+                  <strong className={remaining.isNegative() ? "value-expense" : ""}>
+                    {formatCurrency(remaining)}
+                  </strong>
+                  <span>{actualProgress.toFixed(0)}% utilizado</span>
+                </div>
                 <BudgetForm
                   action={saveBudgetAction}
                   amount={planned.toFixed(2).replace(".", ",")}

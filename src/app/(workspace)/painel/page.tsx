@@ -5,6 +5,8 @@ import {
   MonthlyEvolutionChart,
 } from "@/components/dashboard-analytics-charts";
 import { ExpenseCategoryChart } from "@/components/expense-category-chart";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getDashboardSummary } from "@/modules/dashboard/application/get-dashboard-summary";
@@ -25,78 +27,72 @@ export default async function DashboardPage() {
           <h1>Olá, {access.editorName}.</h1>
           <p>Valores realizados atualizam os saldos; valores pendentes aparecem separadamente.</p>
         </div>
-        <Link className="primary-button" href="/lancamentos/novo">
-          Novo lançamento
-        </Link>
+        <div className="page-actions">
+          <Link className="primary-button" href="/lancamentos/novo">
+            <Icon name="add" />
+            Novo lançamento
+          </Link>
+          <Link className="secondary-button" href="/transferencias/nova">
+            <Icon name="transfer" />
+            Nova transferência
+          </Link>
+        </div>
       </section>
 
       <section className="metric-grid dashboard-metrics" aria-label="Indicadores financeiros">
         <article className="metric-card metric-card-featured">
+          <span className="metric-icon metric-icon-info" aria-hidden="true">
+            <Icon name="account" />
+          </span>
           <span>Saldo consolidado</span>
           <strong>{formatCurrency(summary.totalBalance)}</strong>
           <small>{summary.accounts.filter(({ active }) => active).length} contas ativas</small>
         </article>
-        <article className="metric-card">
-          <span>Receitas realizadas</span>
-          <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
-          <small>{formatCurrency(summary.pendingIncome)} a receber</small>
+        <article className="metric-card metric-card-projected">
+          <span className="metric-icon metric-icon-primary" aria-hidden="true">
+            <Icon name="planning" />
+          </span>
+          <span>Saldo projetado</span>
+          <strong>{formatCurrency(summary.projectedBalance)}</strong>
+          <small>Considera pendências a receber e a pagar</small>
         </article>
-        <article className="metric-card">
-          <span>Despesas realizadas</span>
-          <strong className="value-expense">{formatCurrency(summary.periodResult.expense)}</strong>
-          <small>{formatCurrency(summary.pendingExpense)} a pagar</small>
-        </article>
-        <article className="metric-card">
+        <article className="metric-card metric-card-result">
+          <span className="metric-icon metric-icon-income" aria-hidden="true">
+            <Icon name="dashboard" />
+          </span>
           <span>Resultado do mês</span>
           <strong>{formatCurrency(summary.periodResult.result)}</strong>
           <small>Receitas menos despesas realizadas</small>
         </article>
-        <article className="metric-card">
-          <span>Saldo projetado</span>
-          <strong>{formatCurrency(summary.projectedBalance)}</strong>
+        <article className="metric-card metric-card-warning">
+          <span className="metric-icon metric-icon-warning" aria-hidden="true">
+            <Icon name="calendar" />
+          </span>
+          <span>Valores pendentes</span>
+          <strong>{formatCurrency(summary.pendingExpense)}</strong>
+          <small>{formatCurrency(summary.pendingIncome)} a receber</small>
+        </article>
+        <article className="metric-card metric-card-compact">
+          <span>Receitas realizadas</span>
+          <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
+          <small>{formatCurrency(summary.pendingIncome)} pendentes</small>
+        </article>
+        <article className="metric-card metric-card-compact">
+          <span>Despesas realizadas</span>
+          <strong className="value-expense">{formatCurrency(summary.periodResult.expense)}</strong>
           <small>
-            {formatCurrency(summary.pendingIncome)} a receber -{" "}
-            {formatCurrency(summary.pendingExpense)} a pagar
+            {formatCurrency(summary.pendingExpense)} pendentes
           </small>
         </article>
       </section>
 
-      <section className="panel-card dashboard-debt-panel">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Casal</p>
-            <h2>Dívidas em aberto</h2>
-          </div>
-          <Link className="text-button" href="/dividas">
-            Ver dívidas
-          </Link>
-        </div>
-        <div className="dashboard-debt-grid">
-          <div>
-            <span>Total do casal</span>
-            <strong>{formatCurrency(debtOverview.coupleOutstanding)}</strong>
-          </div>
-          {debtOverview.editors.slice(0, 2).map((editor) => (
-            <div key={editor.id}>
-              <span>{editor.displayName}</span>
-              <strong>{formatCurrency(editor.outstanding)}</strong>
-            </div>
-          ))}
-          <div>
-            <span>Em atraso</span>
-            <strong className={debtOverview.overdue.isPositive() ? "value-expense" : ""}>
-              {formatCurrency(debtOverview.overdue)}
-            </strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="dashboard-analytics-grid">
-        <article className="panel-card">
+      <section className="dashboard-analytics-grid dashboard-analytics-main">
+        <article className="panel-card dashboard-primary-chart">
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Tendência</p>
               <h2>Evolução mensal</h2>
+              <p>Receitas, despesas e resultado em uma leitura de longo prazo.</p>
             </div>
           </div>
           <MonthlyEvolutionChart data={summary.monthlyEvolution} />
@@ -107,6 +103,7 @@ export default async function DashboardPage() {
             <div>
               <p className="eyebrow">Orçamento</p>
               <h2>Planejado versus realizado</h2>
+              <p>Comparação das categorias com orçamento definido no período.</p>
             </div>
           </div>
           <div className="budget-comparison-totals">
@@ -131,7 +128,7 @@ export default async function DashboardPage() {
         </article>
       </section>
 
-      <section className="dashboard-columns">
+      <section className="dashboard-columns dashboard-secondary-grid">
         <article className="panel-card">
           <div className="panel-heading">
             <div>
@@ -153,12 +150,12 @@ export default async function DashboardPage() {
             </Link>
           </div>
           {summary.accounts.length === 0 ? (
-            <div className="compact-empty">
-              <p>Cadastre uma conta para acompanhar o saldo.</p>
-              <Link className="text-button" href="/contas/nova">
-                Criar conta
-              </Link>
-            </div>
+            <EmptyState
+              action={{ href: "/contas/nova", label: "Criar conta" }}
+              description="Cadastre uma conta para acompanhar saldos e disponibilidade."
+              icon="account"
+              title="Nenhuma conta cadastrada"
+            />
           ) : (
             <ul className="account-summary-list">
               {summary.accounts.slice(0, 6).map((account) => (
@@ -170,6 +167,36 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
+        </article>
+
+        <article className="panel-card dashboard-debt-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Casal</p>
+              <h2>Dívidas em aberto</h2>
+            </div>
+            <Link className="text-button" href="/dividas">
+              Ver dívidas
+            </Link>
+          </div>
+          <div className="dashboard-debt-grid">
+            <div>
+              <span>Total do casal</span>
+              <strong>{formatCurrency(debtOverview.coupleOutstanding)}</strong>
+            </div>
+            {debtOverview.editors.slice(0, 2).map((editor) => (
+              <div key={editor.id}>
+                <span>{editor.displayName}</span>
+                <strong>{formatCurrency(editor.outstanding)}</strong>
+              </div>
+            ))}
+            <div>
+              <span>Em atraso</span>
+              <strong className={debtOverview.overdue.isPositive() ? "value-expense" : ""}>
+                {formatCurrency(debtOverview.overdue)}
+              </strong>
+            </div>
+          </div>
         </article>
       </section>
 
@@ -184,9 +211,11 @@ export default async function DashboardPage() {
           </Link>
         </div>
         {summary.recentTransactions.length === 0 ? (
-          <div className="compact-empty">
-            <p>Os lançamentos mais recentes aparecerão aqui.</p>
-          </div>
+          <EmptyState
+            description="Os lançamentos mais recentes aparecerão aqui assim que houver movimentação."
+            icon="income"
+            title="Nenhuma movimentação recente"
+          />
         ) : (
           <div className="compact-transaction-list">
             {summary.recentTransactions.map((transaction) => (

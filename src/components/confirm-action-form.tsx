@@ -1,5 +1,7 @@
 "use client";
 
+import { Icon } from "@/components/ui/icons";
+
 export function ConfirmActionForm({
   action,
   fields,
@@ -24,6 +26,7 @@ export function ConfirmActionForm({
         <input key={name} name={name} type="hidden" value={value} />
       ))}
       <button className="text-button text-button-danger" type="submit">
+        <Icon name="archive" />
         {label}
       </button>
     </form>

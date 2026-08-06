@@ -49,6 +49,11 @@ export function TransactionForm({
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
 
+      <div className="form-section-title field-wide">
+        <h2>Classificação e valor</h2>
+        <p>Defina se o lançamento é receita ou despesa e associe conta e categoria.</p>
+      </div>
+
       <label className="field">
         <span>Tipo</span>
         <select
@@ -113,6 +118,11 @@ export function TransactionForm({
           ))}
         </select>
       </label>
+
+      <div className="form-section-title field-wide">
+        <h2>Datas, status e observações</h2>
+        <p>Valores pendentes ficam separados dos realizados até a data de pagamento ou recebimento.</p>
+      </div>
 
       <label className="field">
         <span>Competência</span>

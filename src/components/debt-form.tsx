@@ -88,6 +88,11 @@ export function DebtForm({
 
   return (
     <form action={formAction} className="entity-form debt-form">
+      <div className="form-section-title field-wide">
+        <h2>Dados da compra</h2>
+        <p>Identifique a dívida, valor total, categoria e forma de pagamento.</p>
+      </div>
+
       <label className="field field-wide-on-mobile">
         <span>Descrição da compra ou dívida</span>
         <input
@@ -174,6 +179,11 @@ export function DebtForm({
         />
       </label>
 
+      <div className="form-section-title field-wide">
+        <h2>Parcelamento</h2>
+        <p>Defina datas e quantidade de parcelas geradas para acompanhamento.</p>
+      </div>
+
       <label className="field">
         <span>Primeiro vencimento</span>
         <input
@@ -205,6 +215,11 @@ export function DebtForm({
           required
         />
       </label>
+
+      <div className="form-section-title field-wide">
+        <h2>Dívida preexistente</h2>
+        <p>Use somente quando parte das parcelas já havia sido paga antes do sistema.</p>
+      </div>
 
       <label className="check-field field-wide">
         <input
@@ -254,6 +269,11 @@ export function DebtForm({
         </select>
         <small>Parcelas antigas entram no histórico sem reduzir novamente o saldo.</small>
       </label>
+
+      <div className="form-section-title field-wide">
+        <h2>Responsabilidade por pessoa</h2>
+        <p>Distribua o valor total entre uma ou duas pessoas sem alterar a soma da dívida.</p>
+      </div>
 
       <fieldset className="debt-split field-wide">
         <legend>Responsabilidade pela dívida</legend>
@@ -322,6 +342,11 @@ export function DebtForm({
           </label>
         </div>
       </fieldset>
+
+      <div className="form-section-title field-wide">
+        <h2>Observações</h2>
+        <p>Registre contexto adicional para consulta futura.</p>
+      </div>
 
       <label className="field field-wide">
         <span>Observações</span>

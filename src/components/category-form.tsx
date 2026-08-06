@@ -35,6 +35,11 @@ export function CategoryForm({
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
 
+      <div className="form-section-title field-wide">
+        <h2>Definição da categoria</h2>
+        <p>Nome, aplicação e cor usados para classificar lançamentos e relatórios.</p>
+      </div>
+
       <label className="field field-wide">
         <span>Nome da categoria</span>
         <input

@@ -1,5 +1,7 @@
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import {
   getMonthlyReport,
   normalizeReportMonth,
@@ -34,6 +36,7 @@ export default async function ReportsPage({
             </button>
           </form>
           <a className="primary-button" href={`/api/relatorios/mensal?month=${month}`}>
+            <Icon name="download" />
             Exportar CSV
           </a>
         </div>
@@ -70,9 +73,11 @@ export default async function ReportsPage({
           </div>
         </div>
         {report.categoryTotals.length === 0 ? (
-          <div className="compact-empty">
-            <p>Não existem valores realizados neste mês.</p>
-          </div>
+          <EmptyState
+            description="Não existem valores realizados neste mês para compor a tabela."
+            icon="report"
+            title="Sem composição realizada"
+          />
         ) : (
           <div className="report-table" role="table" aria-label="Totais por categoria">
             <div className="report-table-header" role="row">

@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { ConfirmActionForm } from "@/components/confirm-action-form";
 import { PayInstallmentForm } from "@/components/pay-installment-form";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
@@ -47,6 +49,7 @@ export default async function DebtsPage({
           <p>Acompanhe valores individuais, compras conjuntas, parcelas e pagamentos.</p>
         </div>
         <Link className="primary-button" href="/dividas/nova">
+          <Icon name="add" />
           Nova dívida
         </Link>
       </section>
@@ -89,18 +92,20 @@ export default async function DebtsPage({
       </nav>
 
       {debts.length === 0 ? (
-        <section className="empty-state">
-          <h2>Nenhuma dívida encontrada</h2>
-          <p>Cadastre uma compra individual ou conjunta para começar o acompanhamento.</p>
-          <Link className="primary-button" href="/dividas/nova">
-            Cadastrar dívida
-          </Link>
-        </section>
+        <EmptyState
+          action={{ href: "/dividas/nova", label: "Cadastrar dívida" }}
+          description="Cadastre uma compra individual ou conjunta para começar o acompanhamento."
+          icon="debt"
+          title="Nenhuma dívida encontrada"
+        />
       ) : (
         <section className="debt-list" aria-label="Dívidas cadastradas">
           {debts.map((debt) => {
             const canceled = Boolean(debt.canceledAt);
             const settled = !canceled && debt.outstanding.isZero();
+            const installmentProgress = debt.installmentCount > 0
+              ? Math.min((debt.paidCount / debt.installmentCount) * 100, 100)
+              : 0;
             const responsiblePeople = [...debt.originalByEditor.entries()].map(
               ([editorId, amount]) => ({
                 amount,
@@ -116,7 +121,11 @@ export default async function DebtsPage({
               <article className={`debt-card${canceled ? " entity-row-muted" : ""}`} key={debt.id}>
                 <header>
                   <div>
-                    <span className="status-pill">
+                    <span
+                      className={`status-pill ${
+                        canceled ? "status-canceled" : settled ? "status-settled" : "status-pending"
+                      }`}
+                    >
                       {canceled ? "Cancelada" : settled ? "Quitada" : "Em aberto"}
                     </span>
                     <h2>{debt.description}</h2>
@@ -133,6 +142,21 @@ export default async function DebtsPage({
                     </small>
                   </div>
                 </header>
+
+                <div
+                  className="debt-progress"
+                  aria-label={`${debt.paidCount} de ${debt.installmentCount} parcelas pagas`}
+                >
+                  <div>
+                    <span>Progresso das parcelas</span>
+                    <strong>
+                      {debt.paidCount}/{debt.installmentCount}
+                    </strong>
+                  </div>
+                  <div className="progress-track">
+                    <span style={{ width: `${installmentProgress}%` }} />
+                  </div>
+                </div>
 
                 <div className="debt-responsibility">
                   {responsiblePeople.map((person) => (
@@ -157,7 +181,7 @@ export default async function DebtsPage({
                   <summary>Ver todas as parcelas</summary>
                   <div className="installment-list">
                     {debt.installments.map((installment) => (
-                      <article key={installment.id}>
+                      <article className="installment-row" key={installment.id}>
                         <div>
                           <strong>
                             Parcela {installment.number}/{debt.installmentCount}
