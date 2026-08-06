@@ -1,9 +1,10 @@
 import Link from "next/link";
+import type { Route } from "next";
 
 import { Icon, type IconName } from "@/components/ui/icons";
 
 type EmptyStateAction = {
-  href: string;
+  href: Route;
   label: string;
 };
 
