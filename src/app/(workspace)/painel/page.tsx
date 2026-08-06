@@ -72,6 +72,16 @@ export default async function DashboardPage() {
           <strong>{formatCurrency(summary.pendingExpense)}</strong>
           <small>{formatCurrency(summary.pendingIncome)} a receber</small>
         </article>
+        <article className="metric-card">
+          <span className="metric-icon metric-icon-warning" aria-hidden="true">
+            <Icon name="calendar" />
+          </span>
+          <span>Despesas fixas do mês</span>
+          <strong>{formatCurrency(summary.fixedExpenses.expected)}</strong>
+          <small>
+            {formatCurrency(summary.fixedExpenses.paid)} pagas · {formatCurrency(summary.fixedExpenses.pending)} pendentes
+          </small>
+        </article>
         <article className="metric-card metric-card-compact">
           <span>Receitas realizadas</span>
           <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
@@ -197,6 +207,58 @@ export default async function DashboardPage() {
               </strong>
             </div>
           </div>
+        </article>
+
+        <article className="panel-card dashboard-fixed-expense-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Recorrência mensal</p>
+              <h2>Despesas fixas</h2>
+            </div>
+            <Link className="text-button" href="/despesas-fixas">
+              Ver despesas fixas
+            </Link>
+          </div>
+          {summary.fixedExpenses.items.length === 0 ? (
+            <EmptyState
+              action={{ href: "/despesas-fixas/nova", label: "Cadastrar despesa fixa" }}
+              description="Aluguel, feira e outras despesas recorrentes aparecerão aqui."
+              icon="calendar"
+              title="Nenhuma despesa fixa"
+            />
+          ) : (
+            <>
+              <div className="fixed-expense-dashboard-summary">
+                <div>
+                  <span>Previsto</span>
+                  <strong>{formatCurrency(summary.fixedExpenses.expected)}</strong>
+                </div>
+                <div>
+                  <span>Pago</span>
+                  <strong>{formatCurrency(summary.fixedExpenses.paid)}</strong>
+                </div>
+                <div>
+                  <span>Pendente</span>
+                  <strong className={summary.fixedExpenses.pending.isPositive() ? "value-expense" : ""}>
+                    {formatCurrency(summary.fixedExpenses.pending)}
+                  </strong>
+                </div>
+              </div>
+              <ul className="fixed-expense-dashboard-list">
+                {summary.fixedExpenses.items.slice(0, 4).map((fixedExpense) => (
+                  <li key={fixedExpense.id}>
+                    <span>
+                      <strong>{fixedExpense.description}</strong>
+                      <small>{fixedExpense.editor.displayName} · {formatDate(fixedExpense.dueDate)}</small>
+                    </span>
+                    <strong className={fixedExpense.overdue ? "value-expense" : ""}>
+                      {fixedExpense.paid ? "Paga" : formatCurrency(fixedExpense.amount)}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </article>
       </section>
 

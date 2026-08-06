@@ -66,7 +66,18 @@ export default async function TransactionsPage({
     ...(filters.status ? { status: filters.status } : {}),
     ...(accountId ? { accountId } : {}),
     ...(categoryId ? { categoryId } : {}),
-    ...(personId ? { debtInstallment: { is: { shares: { some: { editorId: personId } } } } } : {}),
+    ...(personId
+      ? {
+          AND: [
+            {
+              OR: [
+                { debtInstallment: { is: { shares: { some: { editorId: personId } } } } },
+                { fixedExpense: { is: { editorId: personId } } },
+              ],
+            },
+          ],
+        }
+      : {}),
     ...(filters.search
       ? {
           OR: [
@@ -91,6 +102,7 @@ export default async function TransactionsPage({
               shares: { select: { editorId: true, editor: { select: { displayName: true } } } },
             },
           },
+          fixedExpense: { select: { editor: { select: { displayName: true } } } },
         },
         orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
         take: 200,
@@ -223,7 +235,7 @@ export default async function TransactionsPage({
           {transactions.map((transaction) => {
             const personNames = transaction.debtInstallment?.shares
               .map(({ editor }) => editor.displayName)
-              .join(" · ");
+              .join(" · ") ?? transaction.fixedExpense?.editor.displayName;
 
             return (
               <article
@@ -268,6 +280,10 @@ export default async function TransactionsPage({
                 {transaction.debtInstallment ? (
                   <Link className="text-button" href="/dividas">
                     Ver dívida
+                  </Link>
+                ) : transaction.fixedExpense ? (
+                  <Link className="text-button" href="/despesas-fixas">
+                    Ver despesa fixa
                   </Link>
                 ) : transaction.status !== "CANCELED" ? (
                   <>
