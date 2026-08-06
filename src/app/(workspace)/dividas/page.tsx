@@ -74,6 +74,13 @@ export default async function DebtsPage({
             {formatCurrency(overview.overdue)} em atraso
           </small>
         </article>
+        {overview.editors.slice(0, 2).map((editor) => (
+          <article className="metric-card" key={`monthly-${editor.id}`}>
+            <span>Parcela de {editor.displayName} neste mês</span>
+            <strong>{formatCurrency(editor.dueThisMonth)}</strong>
+            <small>Responsabilidade individual neste mês</small>
+          </article>
+        ))}
       </section>
 
       <nav className="person-filter" aria-label="Filtrar dívidas por pessoa">
