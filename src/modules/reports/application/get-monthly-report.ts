@@ -1,5 +1,6 @@
 import { getDatabase } from "@/lib/db";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
@@ -19,8 +20,9 @@ export function reportMonthInterval(monthValue?: string) {
 export async function getMonthlyReport(workspaceId: string, monthValue?: string) {
   const { end, month, start } = reportMonthInterval(monthValue);
   const database = getDatabase();
+  await synchronizeDueFixedExpenses(workspaceId);
   const [{ accounts, totalBalance }, transactions, transfers] = await Promise.all([
-    getAccountBalances(workspaceId),
+    getAccountBalances(workspaceId, false),
     database.transaction.findMany({
       where: { workspaceId, competenceDate: { gte: start, lt: end } },
       include: { account: true, category: true },

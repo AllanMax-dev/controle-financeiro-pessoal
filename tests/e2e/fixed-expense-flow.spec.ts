@@ -8,6 +8,11 @@ test("registers and pays a monthly fixed expense", async ({ page }, testInfo) =>
   const accountName = `Conta fixa ${suffix}`;
   const categoryName = `Categoria fixa ${suffix}`;
   const expenseName = `Feira ${suffix}`;
+  const editedExpenseName = `${expenseName} editada`;
+  const now = new Date();
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+    .toISOString()
+    .slice(0, 7);
 
   await page.goto(accessUrl!);
   await expect(page).toHaveURL(/\/painel$/);
@@ -29,24 +34,41 @@ test("registers and pays a monthly fixed expense", async ({ page }, testInfo) =>
   await page.getByLabel("Valor mensal previsto").fill("700,00");
   await page.getByLabel("Conta de pagamento").selectOption({ label: accountName });
   await page.getByLabel("Categoria").selectOption({ label: categoryName });
+  await page.getByLabel("Mês inicial").fill(nextMonth);
   await page.getByLabel("Dia do vencimento").fill("15");
   await page.getByRole("button", { name: "Cadastrar despesa fixa" }).click();
+
+  await page.getByLabel("Mês", { exact: true }).fill(nextMonth);
+  await page.getByRole("button", { name: "Exibir" }).click();
 
   const fixedExpenseCard = page.locator("article.fixed-expense-card").filter({ hasText: expenseName });
   await expect(fixedExpenseCard).toContainText(/R\$\s*700,00/);
   await fixedExpenseCard.getByLabel("Valor pago").fill("745,50");
   await fixedExpenseCard.getByRole("button", { name: "Registrar pagamento" }).click();
-  await expect(fixedExpenseCard).toContainText("Paga");
+  await expect(fixedExpenseCard).toContainText("Baixada");
   await expect(fixedExpenseCard).toContainText(/R\$\s*745,50/);
+
+  await fixedExpenseCard.getByRole("link", { name: "Editar recorrência" }).click();
+  await page.getByLabel("Descrição").fill(editedExpenseName);
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await page.getByLabel("Mês", { exact: true }).fill(nextMonth);
+  await page.getByRole("button", { name: "Exibir" }).click();
+
+  const editedFixedExpenseCard = page
+    .locator("article.fixed-expense-card")
+    .filter({ hasText: editedExpenseName });
+  await expect(editedFixedExpenseCard).toContainText("Baixada");
+  await editedFixedExpenseCard.getByRole("link", { name: "Editar baixa" }).click();
+  await page.getByLabel("Valor").fill("700,00");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
 
   await page.getByRole("link", { name: "Contas", exact: true }).click();
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(
-    /R\$\s*1\.254,50/,
+    /R\$\s*1\.300,00/,
   );
 
   await page.getByRole("link", { name: "Visão geral", exact: true }).click();
   await expect(page.getByText("Despesas fixas do mês")).toBeVisible();
   const dashboardPanel = page.locator("article.dashboard-fixed-expense-panel");
   await expect(dashboardPanel.getByRole("heading", { name: "Despesas fixas" })).toBeVisible();
-  await expect(dashboardPanel.getByText(expenseName)).toBeVisible();
 });

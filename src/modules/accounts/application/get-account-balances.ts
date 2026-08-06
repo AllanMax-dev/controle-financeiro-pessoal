@@ -1,11 +1,15 @@
 import { getDatabase } from "@/lib/db";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import {
   calculateAccountBalances,
   calculateConsolidatedBalance,
 } from "@/modules/transactions/domain/financial-summary";
 
-export async function getAccountBalances(workspaceId: string) {
+export async function getAccountBalances(workspaceId: string, synchronize = true) {
   const database = getDatabase();
+  if (synchronize) {
+    await synchronizeDueFixedExpenses(workspaceId);
+  }
   const [accounts, transactions, transfers] = await Promise.all([
     database.financialAccount.findMany({
       where: { workspaceId },

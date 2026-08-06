@@ -17,8 +17,10 @@ export async function getDashboardSummary(workspaceId: string) {
   const monthBuckets = createTrailingMonthBuckets(6);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
-  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, fixedExpenses, salaries] = await Promise.all([
-    getAccountBalances(workspaceId),
+  // Sincroniza antes das consultas paralelas para que todos os indicadores usem a mesma base.
+  const fixedExpenses = await getFixedExpenseOverview(workspaceId);
+  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, salaries] = await Promise.all([
+    getAccountBalances(workspaceId, false),
     database.transaction.findMany({
       where: { workspaceId, competenceDate: { gte: firstMonth.start, lt: currentMonth.end } },
       select: {
@@ -43,7 +45,6 @@ export async function getDashboardSummary(workspaceId: string) {
         category: { select: { color: true, id: true, name: true } },
       },
     }),
-    getFixedExpenseOverview(workspaceId),
     getSalaryOverview(workspaceId),
   ]);
   const periodTransactions = transactions.filter(

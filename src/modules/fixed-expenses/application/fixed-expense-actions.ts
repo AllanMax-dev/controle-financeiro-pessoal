@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { fixedExpenseDueDate } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -42,6 +43,11 @@ const fixedExpenseSchema = z.object({
   startMonth: monthInputSchema,
 });
 
+const updateFixedExpenseSchema = fixedExpenseSchema.extend({
+  id: identifierSchema,
+  version: versionSchema,
+});
+
 const payFixedExpenseSchema = z.object({
   amount: positiveMoneyInputSchema,
   id: identifierSchema,
@@ -50,6 +56,19 @@ const payFixedExpenseSchema = z.object({
 });
 
 const archiveFixedExpenseSchema = z.object({ id: identifierSchema, version: versionSchema });
+
+function fixedExpenseInput(formData: FormData) {
+  return {
+    accountId: formData.get("accountId"),
+    amount: formData.get("amount"),
+    categoryId: formData.get("categoryId"),
+    description: formData.get("description"),
+    dueDay: formData.get("dueDay"),
+    editorId: formData.get("editorId"),
+    notes: formData.get("notes"),
+    startMonth: formData.get("startMonth"),
+  };
+}
 
 function revalidateFixedExpensePaths() {
   revalidatePath("/despesas-fixas");
@@ -63,16 +82,7 @@ export async function createFixedExpenseAction(
   _state: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const parsed = fixedExpenseSchema.safeParse({
-    accountId: formData.get("accountId"),
-    amount: formData.get("amount"),
-    categoryId: formData.get("categoryId"),
-    description: formData.get("description"),
-    dueDay: formData.get("dueDay"),
-    editorId: formData.get("editorId"),
-    notes: formData.get("notes"),
-    startMonth: formData.get("startMonth"),
-  });
+  const parsed = fixedExpenseSchema.safeParse(fixedExpenseInput(formData));
 
   if (!parsed.success) {
     return { error: firstValidationMessage(parsed.error) };
@@ -122,6 +132,116 @@ export async function createFixedExpenseAction(
     });
   } catch {
     return { error: "Não foi possível cadastrar a despesa fixa. Tente novamente." };
+  }
+
+  revalidateFixedExpensePaths();
+  redirect("/despesas-fixas");
+}
+
+export async function updateFixedExpenseAction(
+  _state: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = updateFixedExpenseSchema.safeParse({
+    ...fixedExpenseInput(formData),
+    id: formData.get("id"),
+    version: formData.get("version"),
+  });
+
+  if (!parsed.success) {
+    return { error: firstValidationMessage(parsed.error) };
+  }
+
+  const access = await requireCurrentAccess();
+  const database = getDatabase();
+  const current = await database.fixedExpense.findFirst({
+    where: {
+      active: true,
+      id: parsed.data.id,
+      version: parsed.data.version,
+      workspaceId: access.workspaceId,
+    },
+    select: { accountId: true, categoryId: true, editorId: true },
+  });
+
+  if (!current) {
+    return { error: "Esta despesa fixa foi alterada em outro dispositivo. Recarregue a página." };
+  }
+
+  const [account, category, editor] = await Promise.all([
+    database.financialAccount.findFirst({
+      where: {
+        id: parsed.data.accountId,
+        workspaceId: access.workspaceId,
+        OR: [{ active: true }, { id: current.accountId }],
+      },
+      select: { id: true },
+    }),
+    database.category.findFirst({
+      where: {
+        id: parsed.data.categoryId,
+        workspaceId: access.workspaceId,
+        kind: "EXPENSE",
+        OR: [{ active: true }, { id: current.categoryId }],
+      },
+      select: { id: true },
+    }),
+    database.editor.findFirst({
+      where: {
+        id: parsed.data.editorId,
+        workspaceId: access.workspaceId,
+        OR: [{ active: true }, { id: current.editorId }],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!account || !category || !editor) {
+    return { error: "A conta, categoria ou pessoa responsável não está disponível." };
+  }
+
+  const { id, version, ...data } = parsed.data;
+
+  try {
+    // Preserva os meses já vencidos com os dados históricos anteriores à edição.
+    await synchronizeDueFixedExpenses(access.workspaceId);
+    const updated = await database.$transaction(async (transaction) => {
+      const result = await transaction.fixedExpense.updateMany({
+        where: {
+          active: true,
+          id,
+          version,
+          workspaceId: access.workspaceId,
+        },
+        data: { ...data, version: { increment: 1 } },
+      });
+
+      if (result.count !== 1) {
+        return false;
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          workspaceId: access.workspaceId,
+          actorEditorId: access.editorId,
+          action: "fixed_expense.updated",
+          entityType: "FixedExpense",
+          entityId: id,
+          metadata: { amount: data.amount, dueDay: data.dueDay },
+        },
+      });
+
+      return true;
+    });
+
+    if (!updated) {
+      return { error: "Esta despesa fixa foi alterada em outro dispositivo. Recarregue a página." };
+    }
+
+    // Se o novo vencimento já passou, a ocorrência atual é baixada imediatamente.
+    await synchronizeDueFixedExpenses(access.workspaceId);
+  } catch {
+    return { error: "Não foi possível salvar a despesa fixa. Tente novamente." };
   }
 
   revalidateFixedExpensePaths();
@@ -231,6 +351,7 @@ export async function archiveFixedExpenseAction(formData: FormData): Promise<voi
   const access = await requireCurrentAccess();
   const database = getDatabase();
 
+  await synchronizeDueFixedExpenses(access.workspaceId);
   await database.$transaction(async (transaction) => {
     const result = await transaction.fixedExpense.updateMany({
       where: {

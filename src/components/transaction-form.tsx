@@ -31,12 +31,14 @@ export function TransactionForm({
   action,
   categories,
   defaults,
+  lockedType = false,
   submitLabel,
 }: {
   accounts: { id: string; name: string }[];
   action: TransactionFormAction;
   categories: { id: string; kind: "INCOME" | "EXPENSE"; name: string }[];
   defaults: TransactionFormDefaults;
+  lockedType?: boolean;
   submitLabel: string;
 }) {
   const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
@@ -48,6 +50,7 @@ export function TransactionForm({
     <form action={formAction} className="entity-form transaction-form">
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
+      {lockedType ? <input name="type" type="hidden" value={type} /> : null}
 
       <div className="form-section-title field-wide">
         <h2>Classificação e valor</h2>
@@ -57,9 +60,10 @@ export function TransactionForm({
       <label className="field">
         <span>Tipo</span>
         <select
-          name="type"
+          name={lockedType ? undefined : "type"}
           value={type}
           onChange={(event) => setType(event.target.value as "INCOME" | "EXPENSE")}
+          disabled={lockedType}
           required
         >
           <option value="EXPENSE">Despesa</option>

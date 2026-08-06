@@ -188,6 +188,26 @@ export async function updateTransactionAction(
   }
 
   const access = await requireCurrentAccess();
+  const database = getDatabase();
+  const existing = await database.transaction.findFirst({
+    where: {
+      id: parsed.data.id,
+      workspaceId: access.workspaceId,
+      status: { not: "CANCELED" },
+      debtInstallment: { is: null },
+      salary: { is: null },
+    },
+    select: { fixedExpenseId: true },
+  });
+
+  if (!existing) {
+    return { error: "Este lançamento não está mais disponível para edição." };
+  }
+
+  if (existing.fixedExpenseId && parsed.data.type !== "EXPENSE") {
+    return { error: "A baixa de uma despesa fixa deve permanecer como despesa." };
+  }
+
   const validRelations = await relationsAreValid(
     access.workspaceId,
     parsed.data.accountId,
@@ -201,7 +221,6 @@ export async function updateTransactionAction(
   }
 
   const { id, settledDate, version, ...data } = parsed.data;
-  const database = getDatabase();
 
   try {
     const updated = await database.$transaction(async (transaction) => {
@@ -212,7 +231,6 @@ export async function updateTransactionAction(
           version,
           status: { not: "CANCELED" },
           debtInstallment: { is: null },
-          fixedExpense: { is: null },
           salary: { is: null },
         },
         data: {

@@ -4,19 +4,25 @@ import {
   fixedExpenseDueDate,
   monthStart,
 } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { money } from "@/modules/shared/domain/money";
 
 export async function getFixedExpenseOverview(
   workspaceId: string,
   referenceDate = new Date(),
+  asOfDate = new Date(),
 ) {
   const database = getDatabase();
   const month = monthStart(referenceDate);
-  const today = new Date(
-    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()),
-  );
+  const today = await synchronizeDueFixedExpenses(workspaceId, asOfDate);
   const fixedExpenses = await database.fixedExpense.findMany({
-    where: { workspaceId, active: true, startMonth: { lte: month } },
+    where: {
+      workspaceId,
+      OR: [
+        { active: true, startMonth: { lte: month } },
+        { transactions: { some: { recurrenceMonth: month } } },
+      ],
+    },
     include: {
       account: true,
       category: true,
@@ -48,22 +54,40 @@ export async function getFixedExpenseOverview(
       payment: payment ? { amount: payment.amount, status: payment.status } : null,
     })),
   );
-  const byEditor = new Map<string, { expected: ReturnType<typeof money>; pending: ReturnType<typeof money> }>();
+  const groupsByEditor = new Map<
+    string,
+    {
+      editor: (typeof items)[number]["editor"];
+      expected: ReturnType<typeof money>;
+      items: typeof items;
+      paid: ReturnType<typeof money>;
+      pending: ReturnType<typeof money>;
+    }
+  >();
 
   for (const item of items) {
-    const current = byEditor.get(item.editorId) ?? { expected: money(0), pending: money(0) };
+    const current = groupsByEditor.get(item.editorId) ?? {
+      editor: item.editor,
+      expected: money(0),
+      items: [],
+      paid: money(0),
+      pending: money(0),
+    };
     current.expected = money(current.expected.plus(item.amount));
+    current.items.push(item);
 
-    if (!item.paid) {
+    if (item.paid && item.payment) {
+      current.paid = money(current.paid.plus(item.payment.amount));
+    } else {
       current.pending = money(current.pending.plus(item.amount));
     }
 
-    byEditor.set(item.editorId, current);
+    groupsByEditor.set(item.editorId, current);
   }
 
   return {
     ...totals,
-    byEditor,
+    editorGroups: [...groupsByEditor.values()],
     items,
     month,
     overdueCount: items.filter(({ overdue }) => overdue).length,

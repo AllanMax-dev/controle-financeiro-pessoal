@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { saveBudgetAction } from "@/modules/planning/application/budget-actions";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
@@ -28,6 +29,7 @@ export default async function PlanningPage({
   const filters = await searchParams;
   const { end, month, start } = monthInterval(filters.month ?? currentMonth());
   const database = getDatabase();
+  await synchronizeDueFixedExpenses(access.workspaceId);
   const [categories, budgets, realizedGroups] = await Promise.all([
     database.category.findMany({
       where: { workspaceId: access.workspaceId, kind: "EXPENSE", active: true },

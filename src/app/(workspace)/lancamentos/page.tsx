@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { cancelTransactionAction } from "@/modules/transactions/application/transaction-actions";
 import {
   normalizeTransactionListFilters,
@@ -32,6 +33,7 @@ export default async function TransactionsPage({
     rawFilters.personId,
   ].filter(Boolean).length;
   const database = getDatabase();
+  await synchronizeDueFixedExpenses(access.workspaceId);
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
       where: { workspaceId: access.workspaceId },
@@ -103,7 +105,9 @@ export default async function TransactionsPage({
               shares: { select: { editorId: true, editor: { select: { displayName: true } } } },
             },
           },
-          fixedExpense: { select: { editor: { select: { displayName: true } } } },
+          fixedExpense: {
+            select: { id: true, editor: { select: { displayName: true } } },
+          },
           salary: { select: { editor: { select: { displayName: true } } } },
         },
         orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
@@ -284,9 +288,16 @@ export default async function TransactionsPage({
                     Ver dívida
                   </Link>
                 ) : transaction.fixedExpense ? (
-                  <Link className="text-button" href="/despesas-fixas">
-                    Ver despesa fixa
-                  </Link>
+                  <>
+                    {transaction.status !== "CANCELED" ? (
+                      <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
+                        Editar baixa
+                      </Link>
+                    ) : null}
+                    <Link className="text-button" href="/despesas-fixas">
+                      Ver recorrência
+                    </Link>
+                  </>
                 ) : transaction.salary ? (
                   <Link className="text-button" href="/salarios">
                     Ver salário

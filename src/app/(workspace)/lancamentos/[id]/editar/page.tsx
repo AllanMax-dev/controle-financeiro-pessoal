@@ -16,7 +16,6 @@ export default async function EditTransactionPage({ params }: { params: Promise<
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
-      fixedExpense: { is: null },
       salary: { is: null },
     },
   });
@@ -50,7 +49,11 @@ export default async function EditTransactionPage({ params }: { params: Promise<
         <div>
           <p className="eyebrow">Lançamentos</p>
           <h1>Editar lançamento</h1>
-          <p>O saldo e os indicadores serão recalculados após o salvamento.</p>
+          <p>
+            {transaction.fixedExpenseId
+              ? "A alteração vale somente para esta baixa mensal; a recorrência permanece inalterada."
+              : "O saldo e os indicadores serão recalculados após o salvamento."}
+          </p>
         </div>
       </section>
       <TransactionForm
@@ -71,6 +74,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
           type: transaction.type,
           version: transaction.version,
         }}
+        lockedType={Boolean(transaction.fixedExpenseId)}
         submitLabel="Salvar alterações"
       />
     </>
