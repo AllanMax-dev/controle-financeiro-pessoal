@@ -52,6 +52,14 @@ test("splits an imported installment debt between two people", async ({ page }, 
   await expect(debtCard).toContainText("4 de 10 parcelas pagas");
   await expect(debtCard).toContainText(/R\$\s*900,00/);
 
+  const individualMonthlyCards = page
+    .locator("article.metric-card")
+    .filter({ hasText: "Responsabilidade individual neste mês" });
+  await expect(individualMonthlyCards).toHaveCount(2);
+  await expect(
+    individualMonthlyCards.filter({ hasText: `Parcela de ${secondEditorName} neste mês` }),
+  ).toContainText(/R\$\s*60,00/);
+
   await debtCard.getByText("Ver todas as parcelas").click();
   const fifthInstallment = debtCard.locator("article").filter({ hasText: "Parcela 5/10" });
   await fifthInstallment.getByLabel("Conta do pagamento").selectOption({ label: accountName });
