@@ -7,6 +7,8 @@ export type DebtShareInput = {
   editorId: string;
 };
 
+export type DebtInstallmentFrequency = "MONTHLY" | "FORTNIGHTLY";
+
 export type DebtInstallmentPlanItem = {
   amount: Decimal;
   dueDate: Date;
@@ -25,7 +27,62 @@ export function addCalendarMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(year, month, Math.min(day, lastDay)));
 }
 
-export function defaultFirstDueDate(purchaseDate: Date): Date {
+function lastDayOfMonth(date: Date): number {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
+export function isFortnightlyDueDate(date: Date): boolean {
+  return date.getUTCDate() === 15 || date.getUTCDate() === Math.min(30, lastDayOfMonth(date));
+}
+
+export function addFortnightlyPeriods(date: Date, periods: number): Date {
+  let dueDate = new Date(date.getTime());
+
+  for (let index = 0; index < periods; index += 1) {
+    dueDate = dueDate.getUTCDate() === 15
+      ? new Date(
+          Date.UTC(
+            dueDate.getUTCFullYear(),
+            dueDate.getUTCMonth(),
+            Math.min(30, lastDayOfMonth(dueDate)),
+          ),
+        )
+      : new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth() + 1, 15));
+  }
+
+  return dueDate;
+}
+
+export function installmentDueDate(
+  firstDueDate: Date,
+  installmentIndex: number,
+  installmentFrequency: DebtInstallmentFrequency,
+): Date {
+  return installmentFrequency === "FORTNIGHTLY"
+    ? addFortnightlyPeriods(firstDueDate, installmentIndex)
+    : addCalendarMonths(firstDueDate, installmentIndex);
+}
+
+export function defaultFirstDueDate(
+  purchaseDate: Date,
+  installmentFrequency: DebtInstallmentFrequency = "MONTHLY",
+): Date {
+  if (installmentFrequency === "FORTNIGHTLY") {
+    const secondDueDay = Math.min(30, lastDayOfMonth(purchaseDate));
+
+    if (purchaseDate.getUTCDate() < 15) {
+      return new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), 15));
+    }
+
+    if (purchaseDate.getUTCDate() < secondDueDay) {
+      return new Date(
+        Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), secondDueDay),
+      );
+    }
+
+    return new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth() + 1, 15));
+  }
+
   return addCalendarMonths(purchaseDate, 1);
 }
 
@@ -33,6 +90,7 @@ export function inferPaidInstallmentCount(
   firstDueDate: Date,
   installmentCount: number,
   asOf = new Date(),
+  installmentFrequency: DebtInstallmentFrequency = "MONTHLY",
 ): number {
   if (!Number.isInteger(installmentCount) || installmentCount <= 0) {
     return 0;
@@ -41,7 +99,7 @@ export function inferPaidInstallmentCount(
   let paidCount = 0;
 
   for (let index = 0; index < installmentCount; index += 1) {
-    if (addCalendarMonths(firstDueDate, index) <= asOf) {
+    if (installmentDueDate(firstDueDate, index, installmentFrequency) <= asOf) {
       paidCount += 1;
     }
   }
@@ -52,12 +110,14 @@ export function inferPaidInstallmentCount(
 export function createDebtInstallmentPlan({
   firstDueDate,
   installmentCount,
+  installmentFrequency = "MONTHLY",
   paidInstallments,
   shares,
   totalAmount,
 }: {
   firstDueDate: Date;
   installmentCount: number;
+  installmentFrequency?: DebtInstallmentFrequency;
   paidInstallments: number;
   shares: DebtShareInput[];
   totalAmount: MoneyInput;
@@ -68,6 +128,10 @@ export function createDebtInstallmentPlan({
 
   if (!Number.isInteger(paidInstallments) || paidInstallments < 0 || paidInstallments > installmentCount) {
     throw new RangeError("A quantidade de parcelas pagas é inválida.");
+  }
+
+  if (installmentFrequency === "FORTNIGHTLY" && !isFortnightlyDueDate(firstDueDate)) {
+    throw new RangeError("O primeiro vencimento quinzenal deve ocorrer no dia 15 ou 30.");
   }
 
   if (new Set(shares.map(({ editorId }) => editorId)).size !== shares.length) {
@@ -107,7 +171,7 @@ export function createDebtInstallmentPlan({
 
     return {
       amount,
-      dueDate: addCalendarMonths(firstDueDate, index),
+      dueDate: installmentDueDate(firstDueDate, index, installmentFrequency),
       historical: index < paidInstallments,
       number: index + 1,
       shares: itemShares.filter(({ amount: shareAmount }) => shareAmount.isPositive()),

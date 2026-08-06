@@ -130,7 +130,7 @@ export default async function DebtsPage({
                     </span>
                     <h2>{debt.description}</h2>
                     <p>
-                      {debt.category.name} · {debt.paymentMethod === "CREDIT_CARD" ? debt.cardName : "Outra dívida"} · compra em{" "}
+                      {debt.category.name} · {debt.paymentMethod === "CREDIT_CARD" ? debt.cardName : "Outra dívida"} · {debt.installmentFrequency === "FORTNIGHTLY" ? "quinzenal" : "mensal"} · compra em{" "}
                       {formatDate(debt.purchaseDate)}
                     </p>
                   </div>
@@ -228,8 +228,8 @@ export default async function DebtsPage({
                     <ConfirmActionForm
                       action={cancelDebtAction}
                       fields={{ id: debt.id, version: String(debt.version) }}
-                      label="Cancelar dívida"
-                      message="Cancelar esta dívida? Parcelas já pagas permanecerão no histórico."
+                      label="Cancelar e excluir"
+                      message="Cancelar e excluir esta dívida? Todas as parcelas e os lançamentos vinculados serão removidos do histórico."
                     />
                   </div>
                 ) : null}

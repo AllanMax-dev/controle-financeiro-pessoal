@@ -6,7 +6,10 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { createDebtInstallmentPlan } from "@/modules/debts/domain/installment-plan";
+import {
+  createDebtInstallmentPlan,
+  isFortnightlyDueDate,
+} from "@/modules/debts/domain/installment-plan";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   firstValidationMessage,
@@ -47,6 +50,7 @@ const debtSchema = z
     firstDueDate: dateInputSchema,
     historicalAccountId: optionalIdentifierSchema,
     installmentCount: z.coerce.number().int().min(1).max(120),
+    installmentFrequency: z.enum(["MONTHLY", "FORTNIGHTLY"]),
     notes: optionalNotesSchema,
     paidInstallments: z.coerce.number().int().min(0).max(120),
     paymentMethod: z.enum(["CREDIT_CARD", "OTHER"]),
@@ -67,6 +71,17 @@ const debtSchema = z
         code: "custom",
         message: "As parcelas pagas não podem superar o total de parcelas.",
         path: ["paidInstallments"],
+      });
+    }
+
+    if (
+      value.installmentFrequency === "FORTNIGHTLY" &&
+      !isFortnightlyDueDate(value.firstDueDate)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "O primeiro vencimento quinzenal deve ocorrer no dia 15 ou 30.",
+        path: ["firstDueDate"],
       });
     }
 
@@ -123,6 +138,7 @@ export async function createDebtAction(
     firstDueDate: formData.get("firstDueDate"),
     historicalAccountId: formData.get("historicalAccountId"),
     installmentCount: formData.get("installmentCount"),
+    installmentFrequency: formData.get("installmentFrequency"),
     notes: formData.get("notes"),
     paidInstallments: formData.get("paidInstallments"),
     paymentMethod: formData.get("paymentMethod"),
@@ -153,6 +169,7 @@ export async function createDebtAction(
     plan = createDebtInstallmentPlan({
       firstDueDate: parsed.data.firstDueDate,
       installmentCount: parsed.data.installmentCount,
+      installmentFrequency: parsed.data.installmentFrequency,
       paidInstallments: parsed.data.paidInstallments,
       shares,
       totalAmount: parsed.data.totalAmount,
@@ -207,6 +224,7 @@ export async function createDebtAction(
           description: parsed.data.description,
           firstDueDate: parsed.data.firstDueDate,
           installmentCount: parsed.data.installmentCount,
+          installmentFrequency: parsed.data.installmentFrequency,
           notes: parsed.data.notes,
           paymentMethod: parsed.data.paymentMethod,
           purchaseDate: parsed.data.purchaseDate,
@@ -264,6 +282,7 @@ export async function createDebtAction(
           entityId: debt.id,
           metadata: {
             installments: parsed.data.installmentCount,
+            installmentFrequency: parsed.data.installmentFrequency,
             paidInstallments: parsed.data.paidInstallments,
             totalAmount: parsed.data.totalAmount,
           },
@@ -402,6 +421,20 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
+    const debt = await transaction.debt.findFirst({
+      where: {
+        id: parsed.data.id,
+        workspaceId: access.workspaceId,
+        canceledAt: null,
+        version: parsed.data.version,
+      },
+      select: { description: true },
+    });
+
+    if (!debt) {
+      return;
+    }
+
     const result = await transaction.debt.updateMany({
       where: {
         id: parsed.data.id,
@@ -416,21 +449,36 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
       return;
     }
 
-    await transaction.debtInstallment.updateMany({
-      where: { debtId: parsed.data.id, status: "PENDING" },
-      data: { status: "CANCELED", version: { increment: 1 } },
+    const linkedTransactions = await transaction.debtInstallment.findMany({
+      where: { debtId: parsed.data.id, transactionId: { not: null } },
+      select: { transactionId: true },
     });
+    const transactionIds = linkedTransactions.flatMap(({ transactionId }) =>
+      transactionId ? [transactionId] : [],
+    );
+
+    if (transactionIds.length > 0) {
+      await transaction.transaction.deleteMany({
+        where: { id: { in: transactionIds }, workspaceId: access.workspaceId },
+      });
+    }
+
+    await transaction.debt.delete({ where: { id: parsed.data.id } });
     await transaction.auditLog.create({
       data: {
         workspaceId: access.workspaceId,
         actorEditorId: access.editorId,
-        action: "debt.canceled",
+        action: "debt.deleted",
         entityType: "Debt",
         entityId: parsed.data.id,
+        metadata: { description: debt.description, removedTransactions: transactionIds.length },
       },
     });
   });
 
   revalidatePath("/dividas");
   revalidatePath("/painel");
+  revalidatePath("/contas");
+  revalidatePath("/lancamentos");
+  revalidatePath("/relatorios");
 }
