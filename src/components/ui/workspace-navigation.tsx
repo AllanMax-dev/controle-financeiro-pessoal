@@ -93,26 +93,21 @@ export function WorkspaceNavigation({
     };
   }, [open]);
 
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 861px)");
+useEffect(() => {
+  const query = window.matchMedia("(min-width: 861px)");
 
-    function closeDrawerOnDesktop(event: MediaQueryListEvent) {
-      if (event.matches) {
-        setOpen(false);
-      }
-    }
-
-    if (query.matches) {
+  function closeDrawerOnDesktop(event: MediaQueryListEvent) {
+    if (event.matches) {
       setOpen(false);
     }
+  }
 
-    query.addEventListener("change", closeDrawerOnDesktop);
+  query.addEventListener("change", closeDrawerOnDesktop);
 
-    return () => {
-      query.removeEventListener("change", closeDrawerOnDesktop);
-    };
-  }, []);
-
+  return () => {
+    query.removeEventListener("change", closeDrawerOnDesktop);
+  };
+}, []);
   return (
     <>
       <aside className="workspace-sidebar">
