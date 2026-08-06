@@ -7,7 +7,8 @@ import {
   calculateProjectedBalance,
   createTrailingMonthBuckets,
 } from "@/modules/dashboard/domain/dashboard-analytics";
-import { sumMoney } from "@/modules/shared/domain/money";
+import { getFixedExpenseOverview } from "@/modules/fixed-expenses/application/get-fixed-expense-overview";
+import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
 export async function getDashboardSummary(workspaceId: string) {
@@ -15,7 +16,7 @@ export async function getDashboardSummary(workspaceId: string) {
   const monthBuckets = createTrailingMonthBuckets(6);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
-  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets] = await Promise.all([
+  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, fixedExpenses] = await Promise.all([
     getAccountBalances(workspaceId),
     database.transaction.findMany({
       where: { workspaceId, competenceDate: { gte: firstMonth.start, lt: currentMonth.end } },
@@ -41,6 +42,7 @@ export async function getDashboardSummary(workspaceId: string) {
         category: { select: { color: true, id: true, name: true } },
       },
     }),
+    getFixedExpenseOverview(workspaceId),
   ]);
   const periodTransactions = transactions.filter(
     ({ competenceDate }) =>
@@ -53,16 +55,18 @@ export async function getDashboardSummary(workspaceId: string) {
       .filter(({ status, type }) => status === "PENDING" && type === "INCOME")
       .map(({ amount }) => amount),
   );
-  const pendingExpense = sumMoney(
+  const pendingTransactionExpense = sumMoney(
     periodTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
       .map(({ amount }) => amount),
   );
+  const pendingExpense = money(pendingTransactionExpense.plus(fixedExpenses.pending));
 
   return {
     accounts,
     budgetComparison: buildBudgetComparison(budgets, periodTransactions),
     expenseByCategory: buildExpenseDistribution(periodTransactions),
+    fixedExpenses,
     monthlyEvolution: buildMonthlyEvolution(transactions, monthBuckets),
     pendingExpense,
     pendingIncome,

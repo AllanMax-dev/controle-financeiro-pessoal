@@ -29,6 +29,7 @@ Não existem contas, senhas ou formulário de login. Cada uma das duas pessoas r
 - Categorias separadas entre receitas e despesas, com edição e arquivamento.
 - Receitas e despesas com competência, vencimento, realização, conta, categoria e observações.
 - Dívidas individuais ou compartilhadas com parcelas mensais ou quinzenais nos dias 15 e 30.
+- Despesas fixas mensais com responsável, vencimento, pagamento e acompanhamento no dashboard.
 - Filtros por mês, tipo, status, conta e categoria.
 - Cancelamento confirmado de lançamentos sem remoção do histórico.
 - Transferências entre contas com edição e cancelamento.

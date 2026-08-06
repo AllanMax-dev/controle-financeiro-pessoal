@@ -64,6 +64,7 @@ model Workspace {
   transfers    Transfer[]
   budgets      Budget[]
   debts        Debt[]
+  fixedExpenses FixedExpense[]
   auditLogs    AuditLog[]
 }
 
@@ -78,6 +79,7 @@ model Editor {
   grants      AccessGrant[]
   auditLogs   AuditLog[]
   debtShares  DebtInstallmentShare[]
+  fixedExpenses FixedExpense[]
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
@@ -122,6 +124,7 @@ model FinancialAccount {
   updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions   Transaction[]
+  fixedExpenses  FixedExpense[]
   outgoing       Transfer[]  @relation("TransferSource")
   incoming       Transfer[]  @relation("TransferDestination")
 
@@ -146,6 +149,7 @@ model Category {
   transactions Transaction[]
   budgets      Budget[]
   debts        Debt[]
+  fixedExpenses FixedExpense[]
 
   @@unique([workspaceId, kind, name])
   @@index([workspaceId, kind, active])
@@ -166,6 +170,8 @@ model Transaction {
   settledAt      DateTime?         @db.Timestamptz(3)
   notes          String?           @db.VarChar(1000)
   affectsBalance Boolean           @default(true)
+  fixedExpenseId String?            @db.Uuid
+  recurrenceMonth DateTime?         @db.Date
   version        Int               @default(1)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
@@ -173,7 +179,9 @@ model Transaction {
   account        FinancialAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   debtInstallment DebtInstallment?
+  fixedExpense   FixedExpense?     @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
 
+  @@unique([fixedExpenseId, recurrenceMonth])
   @@index([workspaceId, competenceDate])
   @@index([workspaceId, status, dueDate])
   @@index([accountId, competenceDate])
@@ -218,6 +226,33 @@ model Budget {
   @@unique([workspaceId, categoryId, month])
   @@index([workspaceId, month])
   @@index([categoryId])
+}
+
+model FixedExpense {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  accountId   String    @db.Uuid
+  categoryId  String    @db.Uuid
+  editorId    String    @db.Uuid
+  description String    @db.VarChar(160)
+  amount      Decimal   @db.Decimal(19, 2)
+  dueDay      Int
+  startMonth  DateTime  @db.Date
+  notes       String?   @db.VarChar(1000)
+  active      Boolean   @default(true)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account     FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  editor      Editor    @relation(fields: [editorId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+
+  @@index([workspaceId, active, startMonth])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([editorId])
 }
 
 model Debt {

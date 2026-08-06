@@ -16,6 +16,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
+      fixedExpense: { is: null },
     },
   });
 
