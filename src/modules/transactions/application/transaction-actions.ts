@@ -213,6 +213,7 @@ export async function updateTransactionAction(
           status: { not: "CANCELED" },
           debtInstallment: { is: null },
           fixedExpense: { is: null },
+          salary: { is: null },
         },
         data: {
           ...data,
@@ -274,6 +275,7 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
         status: { not: "CANCELED" },
         debtInstallment: { is: null },
         fixedExpense: { is: null },
+        salary: { is: null },
       },
       data: { status: "CANCELED", settledAt: null, version: { increment: 1 } },
     });

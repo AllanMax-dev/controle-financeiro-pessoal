@@ -8,6 +8,7 @@ import {
   createTrailingMonthBuckets,
 } from "@/modules/dashboard/domain/dashboard-analytics";
 import { getFixedExpenseOverview } from "@/modules/fixed-expenses/application/get-fixed-expense-overview";
+import { getSalaryOverview } from "@/modules/salaries/application/get-salary-overview";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
@@ -16,7 +17,7 @@ export async function getDashboardSummary(workspaceId: string) {
   const monthBuckets = createTrailingMonthBuckets(6);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
-  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, fixedExpenses] = await Promise.all([
+  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, fixedExpenses, salaries] = await Promise.all([
     getAccountBalances(workspaceId),
     database.transaction.findMany({
       where: { workspaceId, competenceDate: { gte: firstMonth.start, lt: currentMonth.end } },
@@ -43,6 +44,7 @@ export async function getDashboardSummary(workspaceId: string) {
       },
     }),
     getFixedExpenseOverview(workspaceId),
+    getSalaryOverview(workspaceId),
   ]);
   const periodTransactions = transactions.filter(
     ({ competenceDate }) =>
@@ -50,11 +52,12 @@ export async function getDashboardSummary(workspaceId: string) {
   );
 
   const periodResult = calculatePeriodResult(periodTransactions);
-  const pendingIncome = sumMoney(
+  const pendingTransactionIncome = sumMoney(
     periodTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "INCOME")
       .map(({ amount }) => amount),
   );
+  const pendingIncome = money(pendingTransactionIncome.plus(salaries.pending));
   const pendingTransactionExpense = sumMoney(
     periodTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
@@ -73,6 +76,7 @@ export async function getDashboardSummary(workspaceId: string) {
     periodResult,
     projectedBalance: calculateProjectedBalance(totalBalance, pendingIncome, pendingExpense),
     recentTransactions,
+    salaries,
     totalBalance,
   };
 }

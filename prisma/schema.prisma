@@ -49,6 +49,11 @@ enum DebtInstallmentStatus {
   CANCELED
 }
 
+enum SalaryFrequency {
+  MONTHLY
+  FORTNIGHTLY
+}
+
 model Workspace {
   id           String             @id @default(uuid()) @db.Uuid
   slug         String             @unique @db.VarChar(80)
@@ -65,6 +70,7 @@ model Workspace {
   budgets      Budget[]
   debts        Debt[]
   fixedExpenses FixedExpense[]
+  salaries     Salary[]
   auditLogs    AuditLog[]
 }
 
@@ -80,6 +86,7 @@ model Editor {
   auditLogs   AuditLog[]
   debtShares  DebtInstallmentShare[]
   fixedExpenses FixedExpense[]
+  salaries    Salary[]
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
@@ -125,6 +132,7 @@ model FinancialAccount {
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions   Transaction[]
   fixedExpenses  FixedExpense[]
+  salaries       Salary[]
   outgoing       Transfer[]  @relation("TransferSource")
   incoming       Transfer[]  @relation("TransferDestination")
 
@@ -150,6 +158,7 @@ model Category {
   budgets      Budget[]
   debts        Debt[]
   fixedExpenses FixedExpense[]
+  salaries     Salary[]
 
   @@unique([workspaceId, kind, name])
   @@index([workspaceId, kind, active])
@@ -172,6 +181,9 @@ model Transaction {
   affectsBalance Boolean           @default(true)
   fixedExpenseId String?            @db.Uuid
   recurrenceMonth DateTime?         @db.Date
+  salaryId       String?            @db.Uuid
+  salaryMonth    DateTime?          @db.Date
+  salaryInstallment Int?
   version        Int               @default(1)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
@@ -180,8 +192,10 @@ model Transaction {
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   debtInstallment DebtInstallment?
   fixedExpense   FixedExpense?     @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
+  salary         Salary?           @relation(fields: [salaryId], references: [id], onDelete: SetNull)
 
   @@unique([fixedExpenseId, recurrenceMonth])
+  @@unique([salaryId, salaryMonth, salaryInstallment])
   @@index([workspaceId, competenceDate])
   @@index([workspaceId, status, dueDate])
   @@index([accountId, competenceDate])
@@ -247,6 +261,34 @@ model FixedExpense {
   account     FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   editor      Editor    @relation(fields: [editorId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+
+  @@index([workspaceId, active, startMonth])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([editorId])
+}
+
+model Salary {
+  id          String          @id @default(uuid()) @db.Uuid
+  workspaceId String          @db.Uuid
+  accountId   String          @db.Uuid
+  categoryId  String          @db.Uuid
+  editorId    String          @db.Uuid
+  description String          @db.VarChar(160)
+  amount      Decimal         @db.Decimal(19, 2)
+  frequency   SalaryFrequency
+  paymentDay  Int?
+  startMonth  DateTime        @db.Date
+  notes       String?         @db.VarChar(1000)
+  active      Boolean         @default(true)
+  version     Int             @default(1)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account     FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category    Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  editor      Editor          @relation(fields: [editorId], references: [id], onDelete: Restrict)
   transactions Transaction[]
 
   @@index([workspaceId, active, startMonth])

@@ -82,6 +82,16 @@ export default async function DashboardPage() {
             {formatCurrency(summary.fixedExpenses.paid)} pagas · {formatCurrency(summary.fixedExpenses.pending)} pendentes
           </small>
         </article>
+        <article className="metric-card">
+          <span className="metric-icon metric-icon-income" aria-hidden="true">
+            <Icon name="income" />
+          </span>
+          <span>Salários do mês</span>
+          <strong>{formatCurrency(summary.salaries.expected)}</strong>
+          <small>
+            {formatCurrency(summary.salaries.received)} recebidos · {formatCurrency(summary.salaries.pending)} a receber
+          </small>
+        </article>
         <article className="metric-card metric-card-compact">
           <span>Receitas realizadas</span>
           <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
@@ -183,7 +193,7 @@ export default async function DashboardPage() {
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Casal</p>
-              <h2>Dívidas em aberto</h2>
+              <h2>Dívidas deste mês</h2>
             </div>
             <Link className="text-button" href="/dividas">
               Ver dívidas
@@ -192,12 +202,14 @@ export default async function DashboardPage() {
           <div className="dashboard-debt-grid">
             <div>
               <span>Total do casal</span>
-              <strong>{formatCurrency(debtOverview.coupleOutstanding)}</strong>
+              <strong>{formatCurrency(debtOverview.dueThisMonth)}</strong>
+              <small>{formatCurrency(debtOverview.coupleOutstanding)} em aberto no total</small>
             </div>
             {debtOverview.editors.slice(0, 2).map((editor) => (
               <div key={editor.id}>
                 <span>{editor.displayName}</span>
-                <strong>{formatCurrency(editor.outstanding)}</strong>
+                <strong>{formatCurrency(editor.dueThisMonth)}</strong>
+                <small>{formatCurrency(editor.outstanding)} em aberto no total</small>
               </div>
             ))}
             <div>
@@ -256,6 +268,59 @@ export default async function DashboardPage() {
                     </strong>
                   </li>
                 ))}
+              </ul>
+            </>
+          )}
+        </article>
+
+        <article className="panel-card dashboard-fixed-expense-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Receitas recorrentes</p>
+              <h2>Salários</h2>
+            </div>
+            <Link className="text-button" href="/salarios">
+              Ver salários
+            </Link>
+          </div>
+          {summary.salaries.items.length === 0 ? (
+            <EmptyState
+              action={{ href: "/salarios/novo", label: "Cadastrar salário" }}
+              description="Salários mensais e quinzenais aparecerão aqui."
+              icon="income"
+              title="Nenhum salário cadastrado"
+            />
+          ) : (
+            <>
+              <div className="fixed-expense-dashboard-summary">
+                <div>
+                  <span>Previsto</span>
+                  <strong>{formatCurrency(summary.salaries.expected)}</strong>
+                </div>
+                <div>
+                  <span>Recebido</span>
+                  <strong className="value-income">{formatCurrency(summary.salaries.received)}</strong>
+                </div>
+                <div>
+                  <span>A receber</span>
+                  <strong>{formatCurrency(summary.salaries.pending)}</strong>
+                </div>
+              </div>
+              <ul className="fixed-expense-dashboard-list">
+                {summary.salaries.items
+                  .flatMap((salary) => salary.installments.map((installment) => ({ installment, salary })))
+                  .slice(0, 4)
+                  .map(({ installment, salary }) => (
+                    <li key={`${salary.id}-${installment.installment}`}>
+                      <span>
+                        <strong>{salary.description}</strong>
+                        <small>{salary.editor.displayName} · {formatDate(installment.dueDate)}</small>
+                      </span>
+                      <strong className={installment.received ? "value-income" : ""}>
+                        {installment.received ? "Recebido" : formatCurrency(installment.amount)}
+                      </strong>
+                    </li>
+                  ))}
               </ul>
             </>
           )}

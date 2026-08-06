@@ -34,13 +34,26 @@ export async function getDebtOverview(workspaceId: string) {
   const pendingInstallments = activeDebts.flatMap(({ installments }) =>
     installments.filter(({ status }) => status === "PENDING"),
   );
+  const dueThisMonthInstallments = pendingInstallments.filter(
+    ({ dueDate }) => dueDate >= start && dueDate < end,
+  );
   const outstandingByEditor = new Map(editors.map(({ id }) => [id, money(0)]));
+  const dueThisMonthByEditor = new Map(editors.map(({ id }) => [id, money(0)]));
 
   for (const installment of pendingInstallments) {
     for (const share of installment.shares) {
       outstandingByEditor.set(
         share.editorId,
         money((outstandingByEditor.get(share.editorId) ?? money(0)).plus(share.amount)),
+      );
+    }
+  }
+
+  for (const installment of dueThisMonthInstallments) {
+    for (const share of installment.shares) {
+      dueThisMonthByEditor.set(
+        share.editorId,
+        money((dueThisMonthByEditor.get(share.editorId) ?? money(0)).plus(share.amount)),
       );
     }
   }
@@ -79,13 +92,10 @@ export async function getDebtOverview(workspaceId: string) {
         paidCount: paid.length,
       };
     }),
-    dueThisMonth: sumMoney(
-      pendingInstallments
-        .filter(({ dueDate }) => dueDate >= start && dueDate < end)
-        .map(({ amount }) => amount),
-    ),
+    dueThisMonth: sumMoney(dueThisMonthInstallments.map(({ amount }) => amount)),
     editors: editors.map((editor) => ({
       ...editor,
+      dueThisMonth: dueThisMonthByEditor.get(editor.id) ?? money(0),
       outstanding: outstandingByEditor.get(editor.id) ?? money(0),
     })),
     overdue: sumMoney(
