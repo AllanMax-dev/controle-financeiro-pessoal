@@ -17,6 +17,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
       fixedExpense: { is: null },
+      salary: { is: null },
     },
   });
 

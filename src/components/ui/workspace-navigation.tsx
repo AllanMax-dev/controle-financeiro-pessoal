@@ -9,6 +9,7 @@ import { Icon, type IconName } from "@/components/ui/icons";
 const navigationItems = [
   { href: "/painel", icon: "dashboard", label: "Visão geral" },
   { href: "/lancamentos", icon: "income", label: "Lançamentos" },
+  { href: "/salarios", icon: "income", label: "Salários" },
   { href: "/despesas-fixas", icon: "expense", label: "Despesas fixas" },
   { href: "/dividas", icon: "debt", label: "Dívidas" },
   { href: "/transferencias", icon: "transfer", label: "Transferências" },

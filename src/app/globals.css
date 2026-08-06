@@ -3218,6 +3218,38 @@ h3,
   margin-top: 12px;
 }
 
+.salary-installment-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.salary-installment {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.salary-installment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.salary-installment-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.salary-installment-heading small {
+  color: var(--text-secondary);
+}
+
+.salary-installment .fixed-expense-payment-form {
+  margin-top: 12px;
+}
+
 .fixed-expense-dashboard-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3273,6 +3305,11 @@ h3,
 
   .fixed-expense-payment-form {
     grid-template-columns: 1fr;
+  }
+
+  .salary-installment-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

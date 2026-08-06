@@ -73,6 +73,7 @@ export default async function TransactionsPage({
               OR: [
                 { debtInstallment: { is: { shares: { some: { editorId: personId } } } } },
                 { fixedExpense: { is: { editorId: personId } } },
+                { salary: { is: { editorId: personId } } },
               ],
             },
           ],
@@ -103,6 +104,7 @@ export default async function TransactionsPage({
             },
           },
           fixedExpense: { select: { editor: { select: { displayName: true } } } },
+          salary: { select: { editor: { select: { displayName: true } } } },
         },
         orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
         take: 200,
@@ -235,7 +237,7 @@ export default async function TransactionsPage({
           {transactions.map((transaction) => {
             const personNames = transaction.debtInstallment?.shares
               .map(({ editor }) => editor.displayName)
-              .join(" · ") ?? transaction.fixedExpense?.editor.displayName;
+              .join(" · ") ?? transaction.fixedExpense?.editor.displayName ?? transaction.salary?.editor.displayName;
 
             return (
               <article
@@ -284,6 +286,10 @@ export default async function TransactionsPage({
                 ) : transaction.fixedExpense ? (
                   <Link className="text-button" href="/despesas-fixas">
                     Ver despesa fixa
+                  </Link>
+                ) : transaction.salary ? (
+                  <Link className="text-button" href="/salarios">
+                    Ver salário
                   </Link>
                 ) : transaction.status !== "CANCELED" ? (
                   <>
