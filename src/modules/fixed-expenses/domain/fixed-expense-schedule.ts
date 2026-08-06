@@ -29,6 +29,57 @@ export function fixedExpenseDueDate(month: Date, dueDay: number): Date {
   );
 }
 
+export type FixedExpenseOccurrence = {
+  dueDate: Date;
+  month: Date;
+};
+
+export function calendarDateInTimeZone(referenceDate: Date, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(referenceDate);
+  const values = new Map(parts.map(({ type, value }) => [type, value]));
+
+  return new Date(
+    Date.UTC(
+      Number(values.get("year")),
+      Number(values.get("month")) - 1,
+      Number(values.get("day")),
+    ),
+  );
+}
+
+export function fixedExpenseOccurrencesThrough(
+  startMonth: Date,
+  dueDay: number,
+  referenceDate = new Date(),
+): FixedExpenseOccurrence[] {
+  const firstMonth = monthStart(startMonth);
+  const lastMonth = monthStart(referenceDate);
+
+  if (firstMonth > lastMonth) {
+    return [];
+  }
+
+  const occurrences: FixedExpenseOccurrence[] = [];
+  let cursor = firstMonth;
+
+  while (cursor <= lastMonth) {
+    const dueDate = fixedExpenseDueDate(cursor, dueDay);
+
+    if (dueDate <= referenceDate) {
+      occurrences.push({ dueDate, month: cursor });
+    }
+
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+  }
+
+  return occurrences;
+}
+
 export function calculateFixedExpenseTotals(expenses: FixedExpenseMonthInput[]) {
   const paid = expenses.filter(({ payment }) => payment?.status === "SETTLED");
   const pending = expenses.filter(({ payment }) => payment?.status !== "SETTLED");

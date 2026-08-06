@@ -3131,6 +3131,52 @@ h3,
   gap: 14px;
 }
 
+.fixed-expense-person-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.fixed-expense-person-section {
+  display: grid;
+  gap: 14px;
+}
+
+.fixed-expense-person-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 4px;
+}
+
+.fixed-expense-person-heading h2 {
+  margin: 3px 0 0;
+  font-size: 1.3rem;
+}
+
+.fixed-expense-person-totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fixed-expense-person-totals span {
+  display: grid;
+  gap: 2px;
+  min-width: 118px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.fixed-expense-person-totals strong {
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
 .fixed-expense-card {
   padding: clamp(18px, 3vw, 24px);
   border: 1px solid var(--border);
@@ -3214,7 +3260,9 @@ h3,
 
 .fixed-expense-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 12px;
 }
 
@@ -3294,6 +3342,21 @@ h3,
 }
 
 @media (max-width: 760px) {
+  .fixed-expense-page-actions,
+  .fixed-expense-person-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .fixed-expense-person-totals {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fixed-expense-person-totals span {
+    min-width: 0;
+  }
+
   .fixed-expense-card > header {
     flex-direction: column;
   }
@@ -3314,6 +3377,10 @@ h3,
 }
 
 @media (max-width: 560px) {
+  .fixed-expense-person-totals {
+    grid-template-columns: 1fr;
+  }
+
   .fixed-expense-dashboard-summary {
     grid-template-columns: 1fr;
   }
