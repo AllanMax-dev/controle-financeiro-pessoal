@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addCalendarMonths,
+  addFortnightlyPeriods,
   createDebtInstallmentPlan,
   defaultFirstDueDate,
   inferPaidInstallmentCount,
@@ -26,6 +27,35 @@ describe("debt installment plan", () => {
     );
 
     expect(paid).toBe(4);
+  });
+
+  it("schedules fortnightly installments on days 15 and 30", () => {
+    const firstDueDate = defaultFirstDueDate(
+      new Date("2026-01-20T00:00:00.000Z"),
+      "FORTNIGHTLY",
+    );
+
+    expect(firstDueDate.toISOString()).toBe("2026-01-30T00:00:00.000Z");
+    expect(addFortnightlyPeriods(firstDueDate, 1).toISOString()).toBe(
+      "2026-02-15T00:00:00.000Z",
+    );
+    expect(addFortnightlyPeriods(firstDueDate, 2).toISOString()).toBe(
+      "2026-02-28T00:00:00.000Z",
+    );
+    expect(addFortnightlyPeriods(firstDueDate, 3).toISOString()).toBe(
+      "2026-03-15T00:00:00.000Z",
+    );
+  });
+
+  it("infers paid fortnightly installments", () => {
+    const paid = inferPaidInstallmentCount(
+      new Date("2026-01-15T00:00:00.000Z"),
+      8,
+      new Date("2026-02-15T12:00:00.000Z"),
+      "FORTNIGHTLY",
+    );
+
+    expect(paid).toBe(3);
   });
 
   it("creates an exact individual and consolidated split", () => {
@@ -72,5 +102,18 @@ describe("debt installment plan", () => {
         totalAmount: "100.00",
       }),
     ).toThrow("igual ao valor total");
+  });
+
+  it("rejects an invalid first due date for fortnightly installments", () => {
+    expect(() =>
+      createDebtInstallmentPlan({
+        firstDueDate: new Date("2026-08-20T00:00:00.000Z"),
+        installmentCount: 2,
+        installmentFrequency: "FORTNIGHTLY",
+        paidInstallments: 0,
+        shares: [{ amount: "100.00", editorId: "allan" }],
+        totalAmount: "100.00",
+      }),
+    ).toThrow("dia 15 ou 30");
   });
 });

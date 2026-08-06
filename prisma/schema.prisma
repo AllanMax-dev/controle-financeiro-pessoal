@@ -38,6 +38,11 @@ enum DebtPaymentMethod {
   OTHER
 }
 
+enum DebtInstallmentFrequency {
+  MONTHLY
+  FORTNIGHTLY
+}
+
 enum DebtInstallmentStatus {
   PENDING
   PAID
@@ -225,6 +230,7 @@ model Debt {
   totalAmount      Decimal           @db.Decimal(19, 2)
   purchaseDate     DateTime          @db.Date
   firstDueDate     DateTime          @db.Date
+  installmentFrequency DebtInstallmentFrequency @default(MONTHLY)
   installmentCount Int
   notes            String?           @db.VarChar(1000)
   canceledAt       DateTime?         @db.Timestamptz(3)

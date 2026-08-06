@@ -10,6 +10,7 @@ import {
 } from "@/modules/shared/application/action-state";
 
 type DebtFormAction = (state: ActionState, formData: FormData) => Promise<ActionState>;
+type InstallmentFrequency = "MONTHLY" | "FORTNIGHTLY";
 
 function dateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -35,7 +36,71 @@ function addMonths(value: string, months: number): string {
   );
 }
 
-function inferredPaidCount(firstDueDate: string, installmentCount: number): number {
+function addFortnightlyPeriods(value: string, periods: number): string {
+  if (!value) {
+    return "";
+  }
+
+  let dueDate = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(dueDate.getTime())) {
+    return "";
+  }
+
+  for (let index = 0; index < periods; index += 1) {
+    const lastDay = new Date(
+      Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    dueDate = dueDate.getUTCDate() === 15
+      ? new Date(
+          Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), Math.min(30, lastDay)),
+        )
+      : new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth() + 1, 15));
+  }
+
+  return dateInput(dueDate);
+}
+
+function defaultDueDate(value: string, frequency: InstallmentFrequency): string {
+  if (frequency === "MONTHLY") {
+    return addMonths(value, 1);
+  }
+
+  const purchaseDate = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(purchaseDate.getTime())) {
+    return "";
+  }
+
+  const lastDay = new Date(
+    Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const secondDueDay = Math.min(30, lastDay);
+
+  if (purchaseDate.getUTCDate() < 15) {
+    return dateInput(
+      new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), 15)),
+    );
+  }
+
+  if (purchaseDate.getUTCDate() < secondDueDay) {
+    return dateInput(
+      new Date(
+        Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), secondDueDay),
+      ),
+    );
+  }
+
+  return dateInput(
+    new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth() + 1, 15)),
+  );
+}
+
+function inferredPaidCount(
+  firstDueDate: string,
+  installmentCount: number,
+  installmentFrequency: InstallmentFrequency,
+): number {
   if (!firstDueDate || installmentCount < 1) {
     return 0;
   }
@@ -45,7 +110,11 @@ function inferredPaidCount(firstDueDate: string, installmentCount: number): numb
   let count = 0;
 
   for (let index = 0; index < installmentCount; index += 1) {
-    if (new Date(`${addMonths(firstDueDate, index)}T00:00:00.000Z`) <= today) {
+    const dueDate = installmentFrequency === "FORTNIGHTLY"
+      ? addFortnightlyPeriods(firstDueDate, index)
+      : addMonths(firstDueDate, index);
+
+    if (new Date(`${dueDate}T00:00:00.000Z`) <= today) {
       count += 1;
     }
   }
@@ -71,6 +140,8 @@ export function DebtForm({
   const [purchaseDate, setPurchaseDate] = useState(today);
   const [firstDueDate, setFirstDueDate] = useState(addMonths(today, 1));
   const [installmentCount, setInstallmentCount] = useState(1);
+  const [installmentFrequency, setInstallmentFrequency] =
+    useState<InstallmentFrequency>("MONTHLY");
   const [existingDebt, setExistingDebt] = useState(false);
   const [paidInstallments, setPaidInstallments] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<"CREDIT_CARD" | "OTHER">("CREDIT_CARD");
@@ -80,9 +151,13 @@ export function DebtForm({
   const [secondEditorId, setSecondEditorId] = useState("");
   const [secondShareAmount, setSecondShareAmount] = useState("");
 
-  function updatePaidSuggestion(dueDate: string, count: number) {
+  function updatePaidSuggestion(
+    dueDate: string,
+    count: number,
+    frequency: InstallmentFrequency = installmentFrequency,
+  ) {
     if (existingDebt) {
-      setPaidInstallments(inferredPaidCount(dueDate, count));
+      setPaidInstallments(inferredPaidCount(dueDate, count, frequency));
     }
   }
 
@@ -170,7 +245,7 @@ export function DebtForm({
           value={purchaseDate}
           onChange={(event) => {
             const nextPurchaseDate = event.target.value;
-            const nextDueDate = addMonths(nextPurchaseDate, 1);
+            const nextDueDate = defaultDueDate(nextPurchaseDate, installmentFrequency);
             setPurchaseDate(nextPurchaseDate);
             setFirstDueDate(nextDueDate);
             updatePaidSuggestion(nextDueDate, installmentCount);
@@ -183,6 +258,27 @@ export function DebtForm({
         <h2>Parcelamento</h2>
         <p>Defina datas e quantidade de parcelas geradas para acompanhamento.</p>
       </div>
+
+      <label className="field">
+        <span>Periodicidade</span>
+        <select
+          name="installmentFrequency"
+          value={installmentFrequency}
+          onChange={(event) => {
+            const nextFrequency = event.target.value as InstallmentFrequency;
+            const nextDueDate = defaultDueDate(purchaseDate, nextFrequency);
+            setInstallmentFrequency(nextFrequency);
+            setFirstDueDate(nextDueDate);
+            updatePaidSuggestion(nextDueDate, installmentCount, nextFrequency);
+          }}
+        >
+          <option value="MONTHLY">Mensal</option>
+          <option value="FORTNIGHTLY">Quinzenal — dias 15 e 30</option>
+        </select>
+        {installmentFrequency === "FORTNIGHTLY" ? (
+          <small>Em fevereiro, o segundo vencimento ocorre no último dia do mês.</small>
+        ) : null}
+      </label>
 
       <label className="field">
         <span>Primeiro vencimento</span>
@@ -228,7 +324,9 @@ export function DebtForm({
           onChange={(event) => {
             setExistingDebt(event.target.checked);
             setPaidInstallments(
-              event.target.checked ? inferredPaidCount(firstDueDate, installmentCount) : 0,
+              event.target.checked
+                ? inferredPaidCount(firstDueDate, installmentCount, installmentFrequency)
+                : 0,
             );
           }}
         />

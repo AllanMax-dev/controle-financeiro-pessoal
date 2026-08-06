@@ -2304,6 +2304,11 @@ summary:focus-visible {
 
 .transaction-filter-bar {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.transaction-filter-bar .filter-actions {
+  justify-content: flex-end;
 }
 
 .filter-disclosure summary {
