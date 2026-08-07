@@ -20,6 +20,18 @@ export default async function DashboardPage() {
     getDashboardSummary(access.workspaceId, today),
     getDebtOverview(access.workspaceId, today),
   ]);
+  const pendingFixedExpenses = summary.fixedExpenses.items
+    .filter(({ paid }) => !paid)
+    .slice(0, 3);
+  const pendingSalaryInstallments = summary.salaries.items
+    .flatMap((salary) => salary.installments.map((installment) => ({ installment, salary })))
+    .filter(({ installment }) => !installment.received)
+    .slice(0, 3);
+  const upcomingDebtInstallments = debtOverview.debts
+    .flatMap((debt) => debt.canceledAt || !debt.nextInstallment
+      ? []
+      : [{ debt, installment: debt.nextInstallment }])
+    .slice(0, 3);
 
   return (
     <>
@@ -115,6 +127,91 @@ export default async function DashboardPage() {
               </strong>
             </div>
           </div>
+        </article>
+      </section>
+
+      <section className="dashboard-operational-grid" aria-label="Próximas ações">
+        <article className="panel-card dashboard-action-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">A pagar</p>
+              <h2>Próximos pagamentos</h2>
+            </div>
+            <Link className="text-button" href="/despesas-fixas">
+              Ver pagamentos
+            </Link>
+          </div>
+          {pendingFixedExpenses.length === 0 ? (
+            <div className="compact-empty">Nenhuma despesa fixa pendente no período.</div>
+          ) : (
+            <ul className="fixed-expense-dashboard-list">
+              {pendingFixedExpenses.map((fixedExpense) => (
+                <li key={fixedExpense.id}>
+                  <span>
+                    <strong>{fixedExpense.description}</strong>
+                    <small>{fixedExpense.editor.displayName} · {formatDate(fixedExpense.dueDate)}</small>
+                  </span>
+                  <strong className={fixedExpense.overdue ? "value-expense" : ""}>
+                    {formatCurrency(fixedExpense.amount)}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="panel-card dashboard-action-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">A receber</p>
+              <h2>Próximos recebimentos</h2>
+            </div>
+            <Link className="text-button" href="/salarios">
+              Ver salários
+            </Link>
+          </div>
+          {pendingSalaryInstallments.length === 0 ? (
+            <div className="compact-empty">Nenhum recebimento pendente no período.</div>
+          ) : (
+            <ul className="fixed-expense-dashboard-list">
+              {pendingSalaryInstallments.map(({ installment, salary }) => (
+                <li key={`${salary.id}-${installment.installment}`}>
+                  <span>
+                    <strong>{salary.description}</strong>
+                    <small>{salary.editor.displayName} · {formatDate(installment.dueDate)}</small>
+                  </span>
+                  <strong>{formatCurrency(installment.amount)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="panel-card dashboard-action-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Parcelas</p>
+              <h2>Próximas dívidas</h2>
+            </div>
+            <Link className="text-button" href="/dividas">
+              Ver dívidas
+            </Link>
+          </div>
+          {upcomingDebtInstallments.length === 0 ? (
+            <div className="compact-empty">Nenhuma parcela pendente para acompanhar.</div>
+          ) : (
+            <ul className="fixed-expense-dashboard-list">
+              {upcomingDebtInstallments.map(({ debt, installment }) => (
+                <li key={installment.id}>
+                  <span>
+                    <strong>{debt.description}</strong>
+                    <small>Parcela {installment.number}/{debt.installmentCount} · {formatDate(installment.dueDate)}</small>
+                  </span>
+                  <strong>{formatCurrency(installment.amount)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
         </article>
       </section>
 

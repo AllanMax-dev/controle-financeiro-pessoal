@@ -229,7 +229,7 @@ export async function updateFixedExpenseAction(
       return { error: "Esta despesa fixa foi alterada em outro dispositivo. Recarregue a página." };
     }
 
-    // Se o novo vencimento já passou, a ocorrência atual é baixada imediatamente.
+    // Se o novo vencimento já passou, a ocorrência atual é registrada imediatamente.
     await synchronizeDueFixedExpenses(access.workspaceId);
   } catch {
     return { error: "Não foi possível salvar a despesa fixa. Tente novamente." };

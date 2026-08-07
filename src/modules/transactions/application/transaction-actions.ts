@@ -241,7 +241,7 @@ export async function updateTransactionAction(
   }
 
   if (existing.fixedExpenseId && parsed.data.type !== "EXPENSE") {
-    return { error: "A baixa de uma despesa fixa deve permanecer como despesa." };
+    return { error: "O pagamento de uma despesa fixa deve permanecer como despesa." };
   }
 
   const validRelations = await updatedRelationsAreValid(

@@ -1,6 +1,5 @@
-import Link from "next/link";
-
 import { FixedExpenseForm } from "@/components/fixed-expense-form";
+import { EmptyState } from "@/components/ui/empty-state";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createFixedExpenseAction } from "@/modules/fixed-expenses/application/fixed-expense-actions";
@@ -26,6 +25,8 @@ export default async function NewFixedExpensePage() {
       orderBy: { createdAt: "asc" },
     }),
   ]);
+  const missingAccount = accounts.length === 0;
+  const missingExpenseCategory = categories.length === 0;
 
   return (
     <>
@@ -37,15 +38,28 @@ export default async function NewFixedExpensePage() {
         </div>
       </section>
 
-      {accounts.length === 0 || categories.length === 0 ? (
-        <section className="empty-state">
-          <h2>Conta e categoria necessárias</h2>
-          <p>Cadastre uma conta e uma categoria de despesa antes de continuar.</p>
-          <div className="empty-state-actions">
-            <Link className="primary-button" href="/contas/nova">Criar conta</Link>
-            <Link className="secondary-button" href="/categorias/nova">Criar categoria</Link>
-          </div>
-        </section>
+      {missingAccount && missingExpenseCategory ? (
+        <EmptyState
+          action={{ href: "/contas/nova", label: "Criar conta" }}
+          description="Cadastre uma conta ativa e uma categoria de despesa antes de continuar."
+          icon="calendar"
+          secondaryAction={{ href: "/categorias/nova", label: "Criar categoria" }}
+          title="Conta e categoria necessárias"
+        />
+      ) : missingAccount ? (
+        <EmptyState
+          action={{ href: "/contas/nova", label: "Criar conta" }}
+          description="Cadastre ou reative uma conta antes de criar uma despesa fixa."
+          icon="account"
+          title="Conta ativa necessária"
+        />
+      ) : missingExpenseCategory ? (
+        <EmptyState
+          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          description="Cadastre uma categoria de despesa ativa antes de criar uma despesa fixa."
+          icon="category"
+          title="Categoria de despesa necessária"
+        />
       ) : (
         <FixedExpenseForm
           accounts={accounts}

@@ -51,7 +51,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
           <h1>Editar lançamento</h1>
           <p>
             {transaction.fixedExpenseId
-              ? "A alteração vale somente para esta baixa mensal; a recorrência permanece inalterada."
+              ? "A alteração vale somente para este pagamento mensal; a recorrência permanece inalterada."
               : "O saldo e os indicadores serão recalculados após o salvamento."}
           </p>
         </div>

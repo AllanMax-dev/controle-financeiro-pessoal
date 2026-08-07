@@ -45,7 +45,7 @@ test("registers and pays a monthly fixed expense", async ({ page }, testInfo) =>
   await expect(fixedExpenseCard).toContainText(/R\$\s*700,00/);
   await fixedExpenseCard.getByLabel("Valor pago").fill("745,50");
   await fixedExpenseCard.getByRole("button", { name: "Registrar pagamento" }).click();
-  await expect(fixedExpenseCard).toContainText("Baixada");
+  await expect(fixedExpenseCard).toContainText("Pago");
   await expect(fixedExpenseCard).toContainText(/R\$\s*745,50/);
 
   await fixedExpenseCard.getByRole("link", { name: "Editar recorrência" }).click();
@@ -57,8 +57,8 @@ test("registers and pays a monthly fixed expense", async ({ page }, testInfo) =>
   const editedFixedExpenseCard = page
     .locator("article.fixed-expense-card")
     .filter({ hasText: editedExpenseName });
-  await expect(editedFixedExpenseCard).toContainText("Baixada");
-  await editedFixedExpenseCard.getByRole("link", { name: "Editar baixa" }).click();
+  await expect(editedFixedExpenseCard).toContainText("Pago");
+  await editedFixedExpenseCard.getByRole("link", { name: "Editar pagamento" }).click();
   await page.getByLabel("Valor").fill("700,00");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
 

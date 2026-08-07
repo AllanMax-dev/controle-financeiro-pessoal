@@ -55,7 +55,7 @@ export default async function EditFixedExpensePage({
         <div>
           <p className="eyebrow">Recorrência mensal</p>
           <h1>Editar despesa fixa</h1>
-          <p>As mudanças serão aplicadas aos próximos vencimentos; as baixas anteriores serão preservadas.</p>
+          <p>As mudanças serão aplicadas aos próximos vencimentos; os pagamentos anteriores serão preservados.</p>
         </div>
       </section>
 

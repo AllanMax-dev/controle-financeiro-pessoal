@@ -35,6 +35,10 @@ export type NormalizedTransactionListFilters = {
   type?: TransactionTypeFilter;
 };
 
+export function transactionStatusCriteria(status?: TransactionStatusFilter) {
+  return status ? { status } : { status: { not: "CANCELED" as const } };
+}
+
 function dateInputValue(value: Date): string {
   return value.toISOString().slice(0, 10);
 }

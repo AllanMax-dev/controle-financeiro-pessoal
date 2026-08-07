@@ -32,7 +32,7 @@ export default async function SalariesPage() {
         <div>
           <p className="eyebrow">Receitas recorrentes</p>
           <h1>Salários</h1>
-          <p>Acompanhe os salários mensais e quinzenais de {MONTH_FORMATTER.format(overview.month)}.</p>
+          <p>Gerencie suas rendas recorrentes e acompanhe os recebimentos.</p>
         </div>
         <Link className="primary-button" href="/salarios/novo">
           <Icon name="add" />
@@ -40,34 +40,50 @@ export default async function SalariesPage() {
         </Link>
       </section>
 
-      <section className="metric-grid fixed-expense-metrics" aria-label="Resumo dos salários">
-        <article className="metric-card metric-card-featured">
-          <span>Previsto no mês</span>
-          <strong>{formatCurrency(overview.expected)}</strong>
-          <small>{overview.items.length} salários ativos</small>
-        </article>
-        <article className="metric-card">
-          <span>Recebido</span>
-          <strong className="value-income">{formatCurrency(overview.received)}</strong>
-          <small>{overview.receivedCount} recebimentos registrados</small>
-        </article>
-        <article className="metric-card">
-          <span>A receber</span>
-          <strong>{formatCurrency(overview.pending)}</strong>
-          <small>{overview.overdueCount} recebimentos atrasados</small>
-        </article>
+      <section className="recurrence-section" aria-labelledby="salary-payments-heading">
+        <header className="section-heading">
+          <div>
+            <p className="eyebrow">Ocorrências do mês</p>
+            <h2 id="salary-payments-heading">Recebimentos de {MONTH_FORMATTER.format(overview.month)}</h2>
+          </div>
+        </header>
+        <div className="metric-grid fixed-expense-metrics" aria-label="Resumo dos recebimentos do mês">
+          <article className="metric-card metric-card-featured">
+            <span>Previsto no mês</span>
+            <strong>{formatCurrency(overview.expected)}</strong>
+            <small>{overview.items.length} salários ativos</small>
+          </article>
+          <article className="metric-card">
+            <span>Recebido</span>
+            <strong className="value-income">{formatCurrency(overview.received)}</strong>
+            <small>{overview.receivedCount} recebimentos registrados</small>
+          </article>
+          <article className="metric-card">
+            <span>A receber</span>
+            <strong>{formatCurrency(overview.pending)}</strong>
+            <small>{overview.overdueCount} recebimentos atrasados</small>
+          </article>
+        </div>
       </section>
 
       {overview.items.length === 0 ? (
         <EmptyState
           action={{ href: "/salarios/novo", label: "Cadastrar salário" }}
-          description="Cadastre o salário mensal ou quinzenal de cada pessoa."
+          description="Cadastre uma renda recorrente para acompanhar recebimentos ao longo dos meses."
           icon="income"
-          title="Nenhum salário ativo"
+          title="Nenhum salário cadastrado"
         />
       ) : (
-        <section className="fixed-expense-list" aria-label="Salários ativos">
-          {overview.items.map((salary) => (
+        <section className="recurrence-section" aria-labelledby="salary-configurations-heading">
+          <header className="section-heading">
+            <div>
+              <p className="eyebrow">Configurações recorrentes</p>
+              <h2 id="salary-configurations-heading">Salários cadastrados</h2>
+              <p>Fontes de renda que continuam ativas até serem encerradas.</p>
+            </div>
+          </header>
+          <div className="fixed-expense-list" aria-label="Salários cadastrados">
+            {overview.items.map((salary) => (
             <article className="fixed-expense-card" key={salary.id}>
               <header>
                 <div>
@@ -84,6 +100,12 @@ export default async function SalariesPage() {
                 </div>
               </header>
 
+              <div className="occurrence-heading">
+                <div>
+                  <p className="eyebrow">Ocorrências do mês</p>
+                  <h3>Recebimentos de {MONTH_FORMATTER.format(overview.month)}</h3>
+                </div>
+              </div>
               <div className="salary-installment-list">
                 {salary.installments.map((installment) => (
                   <section className="salary-installment" key={installment.installment}>
@@ -129,7 +151,8 @@ export default async function SalariesPage() {
                 />
               </div>
             </article>
-          ))}
+            ))}
+          </div>
         </section>
       )}
     </>

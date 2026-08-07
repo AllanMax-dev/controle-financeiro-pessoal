@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeTransactionListFilters } from "../../src/modules/transactions/application/transaction-list-filters";
+import { normalizeTransactionListFilters, transactionStatusCriteria } from "../../src/modules/transactions/application/transaction-list-filters";
 
 describe("transaction list filters", () => {
   const referenceDate = new Date("2026-08-15T12:00:00.000Z");
@@ -37,6 +37,11 @@ describe("transaction list filters", () => {
     expect(filters.type).toBe("EXPENSE");
     expect(filters.start.toISOString()).toBe("2026-08-10T00:00:00.000Z");
     expect(filters.end.toISOString()).toBe("2026-08-21T00:00:00.000Z");
+  });
+
+  it("keeps canceled transactions out of the operational view by default", () => {
+    expect(transactionStatusCriteria()).toEqual({ status: { not: "CANCELED" } });
+    expect(transactionStatusCriteria("CANCELED")).toEqual({ status: "CANCELED" });
   });
 
   it("falls back safely when the period or enum values are invalid", () => {

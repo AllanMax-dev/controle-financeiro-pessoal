@@ -45,8 +45,8 @@ export default async function DebtsPage({
       <section className="page-heading">
         <div>
           <p className="eyebrow">Responsabilidades</p>
-          <h1>Dívidas do casal</h1>
-          <p>Acompanhe valores individuais, compras conjuntas, parcelas e pagamentos.</p>
+          <h1>Dívidas</h1>
+          <p>Acompanhe compromissos, próximas parcelas e pagamentos realizados.</p>
         </div>
         <Link className="primary-button" href="/dividas/nova">
           <Icon name="add" />
@@ -142,13 +142,26 @@ export default async function DebtsPage({
                     </p>
                   </div>
                   <div className="debt-total">
-                    <span>Saldo devedor</span>
+                    <span>Falta pagar</span>
                     <strong>{formatCurrency(debt.outstanding)}</strong>
-                    <small>
-                      {debt.paidCount} de {debt.installmentCount} parcelas pagas
-                    </small>
+                    <small>de {formatCurrency(debt.totalAmount)} contratados</small>
                   </div>
                 </header>
+
+                <div className="debt-key-summary" aria-label="Resumo da dívida">
+                  <span>
+                    <strong>{formatCurrency(debt.paidAmount)}</strong>
+                    pago até agora
+                  </span>
+                  <span>
+                    <strong>{debt.paidCount}/{debt.installmentCount}</strong>
+                    parcelas pagas
+                  </span>
+                  <span>
+                    <strong>{formatCurrency(debt.outstanding)}</strong>
+                    restantes
+                  </span>
+                </div>
 
                 <div
                   className="debt-progress"
@@ -178,14 +191,14 @@ export default async function DebtsPage({
 
                 {debt.nextInstallment ? (
                   <p className={debt.nextInstallment.dueDate < today ? "debt-overdue" : "debt-next"}>
-                    Próxima parcela: {debt.nextInstallment.number}/{debt.installmentCount} ·{" "}
+                    Próxima ação: parcela {debt.nextInstallment.number}/{debt.installmentCount} ·{" "}
                     {formatCurrency(debt.nextInstallment.amount)} · vence em{" "}
                     {formatDate(debt.nextInstallment.dueDate)}
                   </p>
                 ) : null}
 
                 <details className="installment-details">
-                  <summary>Ver todas as parcelas</summary>
+                  <summary>Ver parcelas e responsabilidades</summary>
                   <div className="installment-list">
                     {debt.installments.map((installment) => (
                       <article className="installment-row" key={installment.id}>
@@ -231,15 +244,19 @@ export default async function DebtsPage({
                   </div>
                 </details>
 
-                {!canceled && !settled ? (
+                {!canceled && !settled && debt.paidCount === 0 ? (
                   <div className="debt-actions">
                     <ConfirmActionForm
                       action={cancelDebtAction}
                       fields={{ id: debt.id, version: String(debt.version) }}
-                      label="Cancelar e excluir"
-                      message="Cancelar e excluir esta dívida? Todas as parcelas e os lançamentos vinculados serão removidos do histórico."
+                      label="Excluir dívida"
+                      message="Excluir esta dívida ainda sem pagamentos? As parcelas previstas serão removidas. Use apenas quando o cadastro foi criado por engano."
                     />
                   </div>
+                ) : !canceled && debt.paidCount > 0 ? (
+                  <p className="debt-history-note">
+                    Esta dívida já possui pagamentos registrados. O histórico permanece preservado e não pode ser excluído por aqui.
+                  </p>
                 ) : null}
               </article>
             );

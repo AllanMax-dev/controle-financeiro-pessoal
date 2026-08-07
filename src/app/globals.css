@@ -1405,6 +1405,36 @@ button:disabled {
   font-size: 1.55rem;
 }
 
+.debt-key-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.debt-key-summary span,
+.debt-history-note {
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.debt-key-summary strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.debt-history-note {
+  margin: 16px 0 0;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 750;
+}
+
 .debt-responsibility {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1561,6 +1591,7 @@ button:disabled {
 @media (max-width: 520px) {
   .dashboard-debt-grid,
   .debt-split-grid,
+  .debt-key-summary,
   .debt-responsibility,
   .installment-list > article {
     grid-template-columns: 1fr;
@@ -1717,8 +1748,30 @@ summary:focus-visible {
   scrollbar-width: auto;
 }
 
+.workspace-nav-groups,
+.workspace-nav-group,
 .workspace-nav-list {
   display: grid;
+}
+
+.workspace-nav-groups {
+  gap: 14px;
+}
+
+.workspace-nav-group {
+  gap: 6px;
+}
+
+.workspace-nav-group-title {
+  margin: 0 12px 2px;
+  color: var(--sidebar-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-nav-list {
   gap: 6px;
   margin: 0;
   padding: 0;
@@ -2236,12 +2289,21 @@ summary:focus-visible {
   color: var(--expense) !important;
 }
 
+.dashboard-operational-grid,
 .dashboard-analytics-grid,
 .dashboard-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
   gap: 18px;
   margin: 18px 0;
+}
+
+.dashboard-operational-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-action-panel {
+  min-width: 0;
 }
 
 .dashboard-analytics-main {
@@ -2426,14 +2488,58 @@ summary:focus-visible {
   justify-content: flex-end;
 }
 
+.filter-disclosure {
+  display: grid;
+  gap: 12px;
+}
+
 .filter-disclosure summary {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.filter-disclosure summary span,
+.filter-disclosure summary strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-disclosure summary strong {
+  min-width: 26px;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 0.76rem;
 }
 
 .filter-fields {
   display: grid;
   grid-template-columns: minmax(260px, 2fr) repeat(4, minmax(150px, 1fr));
   gap: 12px;
+}
+
+.filter-fields-primary {
+  grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr));
+}
+
+.filter-fields-primary .filter-search {
+  grid-column: auto;
+}
+
+.filter-fields-advanced {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .filter-bar label,
@@ -3256,6 +3362,7 @@ h3,
     grid-row: auto;
   }
 
+  .dashboard-operational-grid,
   .dashboard-analytics-main,
   .dashboard-columns,
   .dashboard-secondary-grid {
@@ -3527,6 +3634,47 @@ h3,
   width: min(100%, 1040px);
 }
 
+.recurrence-section {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 4px;
+}
+
+.section-heading h2 {
+  margin: 3px 0 0;
+  font-size: 1.32rem;
+  letter-spacing: 0;
+}
+
+.section-heading p:not(.eyebrow) {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+}
+
+.occurrence-heading {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.occurrence-heading h3 {
+  margin: 3px 0 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.occurrence-heading-compact {
+  margin-top: 16px;
+}
+
 .fixed-expense-list {
   display: grid;
   gap: 14px;
@@ -3743,6 +3891,7 @@ h3,
 }
 
 @media (max-width: 760px) {
+  .section-heading,
   .fixed-expense-page-actions,
   .fixed-expense-person-heading {
     align-items: stretch;

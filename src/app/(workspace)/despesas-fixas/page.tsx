@@ -47,10 +47,7 @@ export default async function FixedExpensesPage({
         <div>
           <p className="eyebrow">Recorrência mensal</p>
           <h1>Despesas fixas</h1>
-          <p>
-            Compromissos de {MONTH_FORMATTER.format(overview.month)} com baixa automática no dia
-            do vencimento de cada mês.
-          </p>
+          <p>Gerencie despesas recorrentes e acompanhe os pagamentos.</p>
         </div>
         <div className="page-actions fixed-expense-page-actions">
           <form className="month-picker" method="get">
@@ -69,40 +66,56 @@ export default async function FixedExpensesPage({
         </div>
       </section>
 
-      <section className="metric-grid fixed-expense-metrics" aria-label="Resumo das despesas fixas">
-        <article className="metric-card metric-card-featured">
-          <span>Previsto no mês</span>
-          <strong>{formatCurrency(overview.expected)}</strong>
-          <small>{overview.items.length} despesas recorrentes</small>
-        </article>
-        <article className="metric-card">
-          <span>Baixado</span>
-          <strong className="value-income">{formatCurrency(overview.paid)}</strong>
-          <small>{overview.paidCount} baixas registradas</small>
-        </article>
-        <article className="metric-card">
-          <span>Pendente</span>
-          <strong className={overview.pending.isPositive() ? "value-expense" : ""}>
-            {formatCurrency(overview.pending)}
-          </strong>
-          <small>{overview.overdueCount} vencidas</small>
-        </article>
+      <section className="recurrence-section" aria-labelledby="fixed-expense-payments-heading">
+        <header className="section-heading">
+          <div>
+            <p className="eyebrow">Ocorrências do mês</p>
+            <h2 id="fixed-expense-payments-heading">Pagamentos de {MONTH_FORMATTER.format(overview.month)}</h2>
+          </div>
+        </header>
+        <div className="metric-grid fixed-expense-metrics" aria-label="Resumo dos pagamentos do mês">
+          <article className="metric-card metric-card-featured">
+            <span>Previsto no mês</span>
+            <strong>{formatCurrency(overview.expected)}</strong>
+            <small>{overview.items.length} despesas recorrentes</small>
+          </article>
+          <article className="metric-card">
+            <span>Pago</span>
+            <strong className="value-income">{formatCurrency(overview.paid)}</strong>
+            <small>{overview.paidCount} pagamentos registrados</small>
+          </article>
+          <article className="metric-card">
+            <span>A pagar</span>
+            <strong className={overview.pending.isPositive() ? "value-expense" : ""}>
+              {formatCurrency(overview.pending)}
+            </strong>
+            <small>{overview.overdueCount} vencidas</small>
+          </article>
+        </div>
       </section>
 
       {overview.items.length === 0 ? (
         <EmptyState
           action={{ href: "/despesas-fixas/nova", label: "Cadastrar despesa fixa" }}
-          description="Cadastre aluguel, feira, internet ou outro compromisso mensal."
+          description="Cadastre uma despesa recorrente para acompanhar os pagamentos ao longo dos meses."
           icon="calendar"
-          title="Nenhuma despesa fixa neste mês"
+          title="Nenhuma despesa recorrente cadastrada"
         />
       ) : (
-        <section className="fixed-expense-person-groups" aria-label="Despesas fixas por pessoa">
-          {overview.editorGroups.map((group) => (
+        <section className="recurrence-section" aria-labelledby="fixed-expense-configurations-heading">
+          <header className="section-heading">
+            <div>
+              <p className="eyebrow">Configurações recorrentes</p>
+              <h2 id="fixed-expense-configurations-heading">Despesas recorrentes</h2>
+              <p>Compromissos que se repetem até serem encerrados.</p>
+            </div>
+          </header>
+          <section className="fixed-expense-person-groups" aria-label="Despesas fixas por pessoa">
+            {overview.editorGroups.map((group) => (
             <section className="fixed-expense-person-section" key={group.editor.id}>
               <header className="fixed-expense-person-heading">
                 <div>
-                  <p className="eyebrow">Responsável</p>
+                  <p className="eyebrow">Responsável pela recorrência</p>
                   <h2>{group.editor.displayName}</h2>
                 </div>
                 <div className="fixed-expense-person-totals" aria-label={`Resumo de ${group.editor.displayName}`}>
@@ -110,7 +123,7 @@ export default async function FixedExpensesPage({
                     Previsto <strong>{formatCurrency(group.expected)}</strong>
                   </span>
                   <span>
-                    Baixado <strong>{formatCurrency(group.paid)}</strong>
+                    Pago <strong>{formatCurrency(group.paid)}</strong>
                   </span>
                   <span>
                     Pendente <strong>{formatCurrency(group.pending)}</strong>
@@ -132,7 +145,7 @@ export default async function FixedExpensesPage({
                                 : "status-pending"
                           }`}
                         >
-                          {fixedExpense.paid ? "Baixada" : fixedExpense.overdue ? "Vencida" : "Pendente"}
+                          {fixedExpense.paid ? "Pago" : fixedExpense.overdue ? "Vencida" : "Pendente"}
                         </span>
                         <h2>{fixedExpense.description}</h2>
                         <p>
@@ -146,9 +159,16 @@ export default async function FixedExpensesPage({
                       </div>
                     </header>
 
+                    <div className="occurrence-heading occurrence-heading-compact">
+                      <div>
+                        <p className="eyebrow">Pagamento do mês</p>
+                        <h3>{MONTH_FORMATTER.format(overview.month)}</h3>
+                      </div>
+                    </div>
+
                     {fixedExpense.paid && fixedExpense.payment ? (
                       <p className="fixed-expense-paid-note">
-                        Baixa de {formatCurrency(fixedExpense.payment.amount)} em{" "}
+                        Pagamento de {formatCurrency(fixedExpense.payment.amount)} em{" "}
                         {formatDate(fixedExpense.payment.settledAt ?? fixedExpense.payment.competenceDate)}.
                       </p>
                     ) : fixedExpense.active ? (
@@ -169,7 +189,7 @@ export default async function FixedExpensesPage({
                           className="text-button"
                           href={`/lancamentos/${fixedExpense.payment.id}/editar`}
                         >
-                          Editar baixa
+                          Editar pagamento
                         </Link>
                       ) : null}
                       {fixedExpense.active ? (
@@ -184,7 +204,7 @@ export default async function FixedExpensesPage({
                             action={archiveFixedExpenseAction}
                             fields={{ id: fixedExpense.id, version: String(fixedExpense.version) }}
                             label="Encerrar recorrência"
-                            message="Encerrar esta despesa fixa? As baixas já registradas permanecerão no histórico."
+                            message="Encerrar esta despesa fixa? Os pagamentos já registrados permanecerão no histórico."
                           />
                         </>
                       ) : null}
@@ -193,7 +213,8 @@ export default async function FixedExpensesPage({
                 ))}
               </div>
             </section>
-          ))}
+            ))}
+          </section>
         </section>
       )}
     </>

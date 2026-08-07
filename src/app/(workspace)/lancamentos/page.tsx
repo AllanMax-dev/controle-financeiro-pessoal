@@ -9,6 +9,7 @@ import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { cancelTransactionAction } from "@/modules/transactions/application/transaction-actions";
 import {
   normalizeTransactionListFilters,
+  transactionStatusCriteria,
   type TransactionListSearchParams,
 } from "@/modules/transactions/application/transaction-list-filters";
 import { ConfirmActionForm } from "@/components/confirm-action-form";
@@ -32,6 +33,12 @@ export default async function TransactionsPage({
     rawFilters.endDate,
     rawFilters.type,
     rawFilters.status,
+    rawFilters.accountId,
+    rawFilters.categoryId,
+    rawFilters.personId,
+  ].filter(Boolean).length;
+  const advancedFilterCount = [
+    rawFilters.type,
     rawFilters.accountId,
     rawFilters.categoryId,
     rawFilters.personId,
@@ -68,8 +75,8 @@ export default async function TransactionsPage({
   const where: Prisma.TransactionWhereInput = {
     workspaceId: access.workspaceId,
     competenceDate: { gte: filters.start, lt: filters.end },
+    ...transactionStatusCriteria(filters.status),
     ...(filters.type ? { type: filters.type } : {}),
-    ...(filters.status ? { status: filters.status } : {}),
     ...(accountId ? { accountId } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(personId
@@ -142,48 +149,50 @@ export default async function TransactionsPage({
           </span>
         </div>
         <form className="filter-bar transaction-filter-bar" method="get">
-          <details className="filter-disclosure" open>
+          <div className="filter-fields filter-fields-primary">
+            <label className="filter-search">
+              <span>Pesquisa</span>
+              <input
+                maxLength={120}
+                name="q"
+                placeholder="Descrição, nota, conta ou categoria"
+                type="search"
+                defaultValue={filters.search ?? ""}
+              />
+            </label>
+            <label>
+              <span>Início</span>
+              <input name="startDate" type="date" defaultValue={filters.startDate} />
+            </label>
+            <label>
+              <span>Fim</span>
+              <input name="endDate" type="date" defaultValue={filters.endDate} />
+            </label>
+            <label>
+              <span>Status</span>
+              <select name="status" defaultValue={filters.status ?? ""}>
+                <option value="">Operacionais</option>
+                <option value="PENDING">Pendentes</option>
+                <option value="SETTLED">Realizados</option>
+                <option value="CANCELED">Cancelados</option>
+              </select>
+            </label>
+          </div>
+          <details className="filter-disclosure" open={advancedFilterCount > 0}>
             <summary>
               <span>
                 <Icon name="filter" />
-                Filtros
+                Mais filtros
               </span>
-              <strong>{activeFilterCount}</strong>
+              <strong>{advancedFilterCount}</strong>
             </summary>
-            <div className="filter-fields">
-              <label className="filter-search">
-                <span>Pesquisa</span>
-                <input
-                  maxLength={120}
-                  name="q"
-                  placeholder="Descrição, nota, conta ou categoria"
-                  type="search"
-                  defaultValue={filters.search ?? ""}
-                />
-              </label>
-              <label>
-                <span>Início</span>
-                <input name="startDate" type="date" defaultValue={filters.startDate} />
-              </label>
-              <label>
-                <span>Fim</span>
-                <input name="endDate" type="date" defaultValue={filters.endDate} />
-              </label>
+            <div className="filter-fields filter-fields-advanced">
               <label>
                 <span>Tipo de lançamento</span>
                 <select name="type" defaultValue={filters.type ?? ""}>
                   <option value="">Todos</option>
                   <option value="INCOME">Receitas</option>
                   <option value="EXPENSE">Despesas</option>
-                </select>
-              </label>
-              <label>
-                <span>Status</span>
-                <select name="status" defaultValue={filters.status ?? ""}>
-                  <option value="">Todos</option>
-                  <option value="PENDING">Pendentes</option>
-                  <option value="SETTLED">Realizados</option>
-                  <option value="CANCELED">Cancelados</option>
                 </select>
               </label>
               <label>
@@ -295,7 +304,7 @@ export default async function TransactionsPage({
                   <>
                     {transaction.status !== "CANCELED" ? (
                       <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
-                        Editar baixa
+                        Editar pagamento
                       </Link>
                     ) : null}
                     <Link className="text-button" href="/despesas-fixas">
