@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
+import { dateInputInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import {
   archiveFixedExpenseAction,
   payFixedExpenseAction,
@@ -32,9 +32,11 @@ export default async function FixedExpensesPage({
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
+  const now = new Date();
+  const todayInput = dateInputInTimeZone(now, access.workspaceTimezone);
   const monthInput = normalizeMonth(
     filters.month,
-    monthInputInTimeZone(new Date(), access.workspaceTimezone),
+    monthInputInTimeZone(now, access.workspaceTimezone),
   );
   const month = new Date(`${monthInput}-01T00:00:00.000Z`);
   const overview = await getFixedExpenseOverview(access.workspaceId, month);
@@ -153,6 +155,7 @@ export default async function FixedExpensesPage({
                       <PayFixedExpenseForm
                         action={payFixedExpenseAction}
                         amount={fixedExpense.amount.toFixed(2).replace(".", ",")}
+                        currentDate={todayInput}
                         fixedExpenseId={fixedExpense.id}
                         month={monthInput}
                       />

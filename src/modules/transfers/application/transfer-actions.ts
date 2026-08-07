@@ -90,6 +90,39 @@ async function accountsAreValid(
   return count === 2;
 }
 
+type CurrentTransferAccounts = {
+  destinationAccountId: string;
+  sourceAccountId: string;
+};
+
+async function accountsAreValidForUpdate(
+  workspaceId: string,
+  accountIds: [string, string],
+  currentAccounts: CurrentTransferAccounts,
+) {
+  const database = getDatabase();
+  const [sourceAccount, destinationAccount] = await Promise.all([
+    database.financialAccount.findFirst({
+      where: {
+        id: accountIds[0],
+        workspaceId,
+        OR: [{ active: true }, { id: currentAccounts.sourceAccountId }],
+      },
+      select: { id: true },
+    }),
+    database.financialAccount.findFirst({
+      where: {
+        id: accountIds[1],
+        workspaceId,
+        OR: [{ active: true }, { id: currentAccounts.destinationAccountId }],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return Boolean(sourceAccount && destinationAccount);
+}
+
 export async function createTransferAction(
   _state: ActionState,
   formData: FormData,
@@ -160,10 +193,24 @@ export async function updateTransferAction(
   }
 
   const access = await requireCurrentAccess();
-  const validAccounts = await accountsAreValid(
+  const database = getDatabase();
+  const existing = await database.transfer.findFirst({
+    where: {
+      id: parsed.data.id,
+      workspaceId: access.workspaceId,
+      status: { not: "CANCELED" },
+    },
+    select: { destinationAccountId: true, sourceAccountId: true },
+  });
+
+  if (!existing) {
+    return { error: "Esta transferência não está mais disponível para edição." };
+  }
+
+  const validAccounts = await accountsAreValidForUpdate(
     access.workspaceId,
     [parsed.data.sourceAccountId, parsed.data.destinationAccountId],
-    false,
+    existing,
   );
 
   if (!validAccounts) {
@@ -171,7 +218,6 @@ export async function updateTransferAction(
   }
 
   const { id, settledDate, version, ...data } = parsed.data;
-  const database = getDatabase();
 
   try {
     const updated = await database.$transaction(async (transaction) => {

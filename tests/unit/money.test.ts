@@ -19,7 +19,14 @@ describe("money", () => {
 
   it("parses Brazilian and database monetary formats", () => {
     expect(parseMoneyInput("1.234,56").toFixed(2)).toBe("1234.56");
+    expect(parseMoneyInput("3.000,01").toFixed(2)).toBe("3000.01");
     expect(parseMoneyInput("1234.56").toFixed(2)).toBe("1234.56");
+  });
+
+  it("rejects ambiguous or malformed monetary inputs", () => {
+    for (const input of ["1.2.3,45", "1.2,34", "1e3", "1 2 3", "0,005", "1,999"]) {
+      expect(() => parseMoneyInput(input)).toThrow(TypeError);
+    }
   });
 
   it("distributes residual cents while preserving the exact total", () => {

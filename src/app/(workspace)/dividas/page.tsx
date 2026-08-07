@@ -23,6 +23,7 @@ export default async function DebtsPage({
   const database = getDatabase();
   const filters = await searchParams;
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
+  const todayInput = today.toISOString().slice(0, 10);
   const [overview, accounts] = await Promise.all([
     getDebtOverview(access.workspaceId, today),
     database.financialAccount.findMany({
@@ -220,6 +221,7 @@ export default async function DebtsPage({
                           <PayInstallmentForm
                             accounts={accounts}
                             action={payDebtInstallmentAction}
+                            currentDate={todayInput}
                             installmentId={installment.id}
                             version={installment.version}
                           />

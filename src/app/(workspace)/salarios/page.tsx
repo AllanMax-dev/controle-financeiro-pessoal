@@ -21,11 +21,10 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
 
 export default async function SalariesPage() {
   const access = await requireCurrentAccess();
-  const overview = await getSalaryOverview(
-    access.workspaceId,
-    calendarDateInTimeZone(new Date(), access.workspaceTimezone),
-  );
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
+  const overview = await getSalaryOverview(access.workspaceId, today);
   const monthInput = overview.month.toISOString().slice(0, 7);
+  const todayInput = today.toISOString().slice(0, 10);
 
   return (
     <>
@@ -111,6 +110,7 @@ export default async function SalariesPage() {
                       <ReceiveSalaryForm
                         action={receiveSalaryAction}
                         amount={installment.amount.toFixed(2).replace(".", ",")}
+                        currentDate={todayInput}
                         installment={installment.installment}
                         month={monthInput}
                         salaryId={salary.id}

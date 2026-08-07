@@ -13,11 +13,13 @@ type PaymentAction = (state: ActionState, formData: FormData) => Promise<ActionS
 export function PayInstallmentForm({
   accounts,
   action,
+  currentDate,
   installmentId,
   version,
 }: {
   accounts: { id: string; name: string }[];
   action: PaymentAction;
+  currentDate: string;
   installmentId: string;
   version: number;
 }) {
@@ -42,7 +44,7 @@ export function PayInstallmentForm({
       </label>
       <label>
         <span>Data do pagamento</span>
-        <input name="paymentDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
+        <input name="paymentDate" type="date" defaultValue={currentDate} required />
       </label>
       <FormSubmitButton label="Marcar como paga" />
       {state.error ? (

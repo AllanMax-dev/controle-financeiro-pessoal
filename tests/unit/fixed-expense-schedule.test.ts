@@ -7,15 +7,16 @@ import {
   fixedExpenseOccurrencesThrough,
   monthStart,
 } from "../../src/modules/fixed-expenses/domain/fixed-expense-schedule";
+import { dateInputInTimeZone } from "../../src/modules/shared/domain/calendar";
 
 describe("fixed expense schedule", () => {
   it("uses the workspace calendar day near the UTC date boundary", () => {
+    const referenceDate = new Date("2026-08-07T01:30:00.000Z");
+
     expect(
-      calendarDateInTimeZone(
-        new Date("2026-08-07T01:30:00.000Z"),
-        "America/Sao_Paulo",
-      ).toISOString(),
+      calendarDateInTimeZone(referenceDate, "America/Sao_Paulo").toISOString(),
     ).toBe("2026-08-06T00:00:00.000Z");
+    expect(dateInputInTimeZone(referenceDate, "America/Sao_Paulo")).toBe("2026-08-06");
   });
 
   it("uses the last available day in shorter months", () => {

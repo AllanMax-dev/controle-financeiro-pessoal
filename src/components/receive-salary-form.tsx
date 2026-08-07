@@ -13,12 +13,14 @@ type ReceiptAction = (state: ActionState, formData: FormData) => Promise<ActionS
 export function ReceiveSalaryForm({
   action,
   amount,
+  currentDate,
   installment,
   month,
   salaryId,
 }: {
   action: ReceiptAction;
   amount: string;
+  currentDate: string;
   installment: number;
   month: string;
   salaryId: string;
@@ -39,7 +41,7 @@ export function ReceiveSalaryForm({
         <input
           name="receiptDate"
           type="date"
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          defaultValue={currentDate}
           required
         />
       </label>

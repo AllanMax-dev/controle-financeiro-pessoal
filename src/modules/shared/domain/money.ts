@@ -10,15 +10,27 @@ Decimal.set({
 
 export type MoneyInput = Decimal.Value;
 
-export function parseMoneyInput(value: string): Decimal {
-  const compactValue = value.trim().replace(/\s/g, "");
-  const normalizedValue = compactValue.includes(",")
-    ? compactValue.replace(/\./g, "").replace(",", ".")
-    : compactValue;
+const BRAZILIAN_MONEY_INPUT_PATTERN = /^(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?$/;
+const DATABASE_MONEY_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/;
+const MAX_MONEY_INPUT = new Decimal(10).pow(17).minus(MINOR_UNIT);
 
+export function parseMoneyInput(value: string): Decimal {
+  const trimmedValue = value.trim();
+  const usesBrazilianFormat = trimmedValue.includes(",");
+  const matchesExpectedFormat = usesBrazilianFormat
+    ? BRAZILIAN_MONEY_INPUT_PATTERN.test(trimmedValue)
+    : DATABASE_MONEY_INPUT_PATTERN.test(trimmedValue);
+
+  if (!matchesExpectedFormat) {
+    throw new TypeError("Informe um valor monetário válido.");
+  }
+
+  const normalizedValue = usesBrazilianFormat
+    ? trimmedValue.replace(/\./g, "").replace(",", ".")
+    : trimmedValue;
   const parsedValue = money(normalizedValue);
 
-  if (!parsedValue.isFinite()) {
+  if (!parsedValue.isFinite() || parsedValue.greaterThan(MAX_MONEY_INPUT)) {
     throw new TypeError("Informe um valor monetário válido.");
   }
 

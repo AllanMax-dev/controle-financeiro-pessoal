@@ -111,6 +111,47 @@ async function relationsAreValid(
   return Boolean(account && (!categoryId || category));
 }
 
+type CurrentTransactionRelations = {
+  accountId: string;
+  categoryId: string | null;
+};
+
+async function updatedRelationsAreValid(
+  workspaceId: string,
+  accountId: string,
+  categoryId: string | null,
+  type: "INCOME" | "EXPENSE",
+  currentRelations: CurrentTransactionRelations,
+) {
+  const database = getDatabase();
+  const [account, category] = await Promise.all([
+    database.financialAccount.findFirst({
+      where: {
+        id: accountId,
+        workspaceId,
+        OR: [{ active: true }, { id: currentRelations.accountId }],
+      },
+      select: { id: true },
+    }),
+    categoryId
+      ? database.category.findFirst({
+          where: {
+            id: categoryId,
+            workspaceId,
+            kind: type,
+            OR: [
+              { active: true },
+              ...(currentRelations.categoryId ? [{ id: currentRelations.categoryId }] : []),
+            ],
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return Boolean(account && (!categoryId || category));
+}
+
 export async function createTransactionAction(
   _state: ActionState,
   formData: FormData,
@@ -192,7 +233,7 @@ export async function updateTransactionAction(
       debtInstallment: { is: null },
       salary: { is: null },
     },
-    select: { fixedExpenseId: true },
+    select: { accountId: true, categoryId: true, fixedExpenseId: true },
   });
 
   if (!existing) {
@@ -203,12 +244,12 @@ export async function updateTransactionAction(
     return { error: "A baixa de uma despesa fixa deve permanecer como despesa." };
   }
 
-  const validRelations = await relationsAreValid(
+  const validRelations = await updatedRelationsAreValid(
     access.workspaceId,
     parsed.data.accountId,
     parsed.data.categoryId,
     parsed.data.type,
-    false,
+    existing,
   );
 
   if (!validRelations) {

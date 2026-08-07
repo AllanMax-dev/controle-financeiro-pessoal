@@ -1,6 +1,6 @@
-import Link from "next/link";
-
 import { SalaryForm } from "@/components/salary-form";
+import { EmptyState } from "@/components/ui/empty-state";
+import { getSalaryPrerequisiteState } from "@/modules/salaries/domain/salary-prerequisites";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createSalaryAction } from "@/modules/salaries/application/salary-actions";
@@ -26,6 +26,10 @@ export default async function NewSalaryPage() {
       orderBy: { createdAt: "asc" },
     }),
   ]);
+  const prerequisiteState = getSalaryPrerequisiteState({
+    activeAccountCount: accounts.length,
+    activeIncomeCategoryCount: categories.length,
+  });
 
   return (
     <>
@@ -37,15 +41,28 @@ export default async function NewSalaryPage() {
         </div>
       </section>
 
-      {accounts.length === 0 || categories.length === 0 ? (
-        <section className="empty-state">
-          <h2>Conta e categoria necessárias</h2>
-          <p>Cadastre uma conta e uma categoria de receita antes de continuar.</p>
-          <div className="empty-state-actions">
-            <Link className="primary-button" href="/contas/nova">Criar conta</Link>
-            <Link className="secondary-button" href="/categorias/nova">Criar categoria</Link>
-          </div>
-        </section>
+      {prerequisiteState === "missing-account-and-income-category" ? (
+        <EmptyState
+          action={{ href: "/contas/nova", label: "Criar conta" }}
+          description="Cadastre uma conta ativa e uma categoria de receita antes de continuar."
+          icon="income"
+          secondaryAction={{ href: "/categorias/nova", label: "Criar categoria" }}
+          title="Conta e categoria necessárias"
+        />
+      ) : prerequisiteState === "missing-account" ? (
+        <EmptyState
+          action={{ href: "/contas/nova", label: "Criar conta" }}
+          description="Cadastre ou reative uma conta antes de cadastrar um salário."
+          icon="account"
+          title="Conta ativa necessária"
+        />
+      ) : prerequisiteState === "missing-income-category" ? (
+        <EmptyState
+          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          description="Cadastre uma categoria de receita ativa antes de cadastrar um salário."
+          icon="category"
+          title="Categoria de receita necessária"
+        />
       ) : (
         <SalaryForm
           accounts={accounts}
