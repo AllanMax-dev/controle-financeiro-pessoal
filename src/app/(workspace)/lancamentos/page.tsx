@@ -312,9 +312,16 @@ export default async function TransactionsPage({
                     </Link>
                   </>
                 ) : transaction.salary ? (
-                  <Link className="text-button" href="/salarios">
-                    Ver salário
-                  </Link>
+                  <>
+                    {transaction.status !== "CANCELED" ? (
+                      <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
+                        Editar recebimento
+                      </Link>
+                    ) : null}
+                    <Link className="text-button" href="/salarios">
+                      Ver salário
+                    </Link>
+                  </>
                 ) : transaction.status !== "CANCELED" ? (
                   <>
                     <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>

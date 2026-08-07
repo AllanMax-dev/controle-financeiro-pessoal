@@ -83,7 +83,12 @@ export async function createFixedExpenseAction(
   const database = getDatabase();
   const [account, category, editor] = await Promise.all([
     database.financialAccount.findFirst({
-      where: { id: parsed.data.accountId, workspaceId: access.workspaceId, active: true },
+      where: {
+        id: parsed.data.accountId,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true },
     }),
     database.category.findFirst({
@@ -164,7 +169,10 @@ export async function updateFixedExpenseAction(
       where: {
         id: parsed.data.accountId,
         workspaceId: access.workspaceId,
-        OR: [{ active: true }, { id: current.accountId }],
+        OR: [
+          { active: true, type: { not: "INVESTMENT" } },
+          { id: current.accountId },
+        ],
       },
       select: { id: true },
     }),

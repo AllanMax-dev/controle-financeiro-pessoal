@@ -161,7 +161,7 @@ export default async function DashboardPage() {
             </span>
             <div>
               <span>Resultado do mês</span>
-              <small>Somente valores realizados</small>
+              <small>Entradas realizadas menos saídas realizadas</small>
             </div>
           </div>
           <strong
@@ -175,6 +175,9 @@ export default async function DashboardPage() {
             <div>
               <span>Entradas</span>
               <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
+              <small>
+                Salários: {formatCurrency(summary.periodResult.salaryIncome)} · outras: {formatCurrency(summary.periodResult.otherIncome)}
+              </small>
             </div>
             <div>
               <span>Saídas</span>

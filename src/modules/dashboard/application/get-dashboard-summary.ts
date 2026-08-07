@@ -101,10 +101,20 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
   const pendingTransactionIncome = sumMoney(
     operationalPeriodTransactions
-      .filter(({ status, type }) => status === "PENDING" && type === "INCOME")
+      .filter(
+        ({ salaryId, status, type }) =>
+          status === "PENDING" && type === "INCOME" && !salaryId,
+      )
       .map(({ amount }) => amount),
   );
-  const pendingIncome = money(pendingTransactionIncome.plus(salaries.pending));
+  const pendingSalaryIncome = sumMoney(
+    salaries.items
+      .filter(({ account }) => account.type !== "INVESTMENT")
+      .flatMap(({ installments }) =>
+        installments.filter(({ received }) => !received).map(({ amount }) => amount),
+      ),
+  );
+  const pendingIncome = money(pendingTransactionIncome.plus(pendingSalaryIncome));
   const pendingTransactionExpense = sumMoney(
     operationalPeriodTransactions
       .filter(
@@ -113,7 +123,12 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
       )
       .map(({ amount }) => amount),
   );
-  const pendingExpense = money(pendingTransactionExpense.plus(fixedExpenses.pending));
+  const pendingFixedExpense = sumMoney(
+    fixedExpenses.items
+      .filter(({ account, paid }) => account.type !== "INVESTMENT" && !paid)
+      .map(({ amount }) => amount),
+  );
+  const pendingExpense = money(pendingTransactionExpense.plus(pendingFixedExpense));
 
   return {
     accounts,

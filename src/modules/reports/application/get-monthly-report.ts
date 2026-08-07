@@ -38,14 +38,17 @@ export async function getMonthlyReport(
       orderBy: [{ transferDate: "asc" }, { createdAt: "asc" }],
     }),
   ]);
-  const periodResult = calculatePeriodResult(transactions);
+  const operationalTransactions = transactions.filter(
+    ({ account }) => account.type !== "INVESTMENT",
+  );
+  const periodResult = calculatePeriodResult(operationalTransactions);
   const pendingIncome = sumMoney(
-    transactions
+    operationalTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "INCOME")
       .map(({ amount }) => amount),
   );
   const pendingExpense = sumMoney(
-    transactions
+    operationalTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
       .map(({ amount }) => amount),
   );
@@ -54,7 +57,7 @@ export async function getMonthlyReport(
     { color: string; expense: ReturnType<typeof money>; income: ReturnType<typeof money>; name: string }
   >();
 
-  for (const transaction of transactions) {
+  for (const transaction of operationalTransactions) {
     if (transaction.status !== "SETTLED") {
       continue;
     }

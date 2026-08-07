@@ -91,7 +91,12 @@ export async function createSalaryAction(
   const database = getDatabase();
   const [account, category, editor] = await Promise.all([
     database.financialAccount.findFirst({
-      where: { id: parsed.data.accountId, workspaceId: access.workspaceId, active: true },
+      where: {
+        id: parsed.data.accountId,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true },
     }),
     database.category.findFirst({
