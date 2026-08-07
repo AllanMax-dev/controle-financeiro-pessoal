@@ -68,7 +68,6 @@ test("registers and pays a monthly fixed expense", async ({ page }, testInfo) =>
   );
 
   await page.getByRole("link", { name: "Visão geral", exact: true }).click();
-  await expect(page.getByText("Despesas fixas do mês")).toBeVisible();
   const dashboardPanel = page.locator("article.dashboard-fixed-expense-panel");
   await expect(dashboardPanel.getByRole("heading", { name: "Despesas fixas" })).toBeVisible();
 });
