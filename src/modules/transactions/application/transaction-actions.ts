@@ -205,7 +205,11 @@ export async function createTransactionAction(
 
   revalidatePath("/painel");
   revalidatePath("/contas");
+  revalidatePath("/despesas-fixas");
   revalidatePath("/lancamentos");
+  revalidatePath("/planejamento");
+  revalidatePath("/relatorios");
+  revalidatePath("/salarios");
   redirect("/lancamentos");
 }
 
@@ -231,9 +235,8 @@ export async function updateTransactionAction(
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
-      salary: { is: null },
     },
-    select: { accountId: true, categoryId: true, fixedExpenseId: true },
+    select: { accountId: true, categoryId: true, fixedExpenseId: true, salaryId: true },
   });
 
   if (!existing) {
@@ -242,6 +245,10 @@ export async function updateTransactionAction(
 
   if (existing.fixedExpenseId && parsed.data.type !== "EXPENSE") {
     return { error: "O pagamento de uma despesa fixa deve permanecer como despesa." };
+  }
+
+  if (existing.salaryId && parsed.data.type !== "INCOME") {
+    return { error: "O recebimento de salário deve permanecer como receita." };
   }
 
   const validRelations = await updatedRelationsAreValid(
@@ -267,7 +274,6 @@ export async function updateTransactionAction(
           version,
           status: { not: "CANCELED" },
           debtInstallment: { is: null },
-          salary: { is: null },
         },
         data: {
           ...data,
@@ -303,7 +309,11 @@ export async function updateTransactionAction(
 
   revalidatePath("/painel");
   revalidatePath("/contas");
+  revalidatePath("/despesas-fixas");
   revalidatePath("/lancamentos");
+  revalidatePath("/planejamento");
+  revalidatePath("/relatorios");
+  revalidatePath("/salarios");
   redirect("/lancamentos");
 }
 
@@ -350,4 +360,6 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
   revalidatePath("/painel");
   revalidatePath("/contas");
   revalidatePath("/lancamentos");
+  revalidatePath("/planejamento");
+  revalidatePath("/relatorios");
 }

@@ -11,7 +11,7 @@ export default async function NewSalaryPage() {
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true },
+      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

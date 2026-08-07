@@ -11,6 +11,7 @@ export type BalanceTransaction = {
   accountId: string;
   affectsBalance?: boolean;
   amount: MoneyInput;
+  salaryId?: string | null;
   status: "PENDING" | "SETTLED" | "CANCELED";
   type: "INCOME" | "EXPENSE";
 };
@@ -72,16 +73,25 @@ export function calculateConsolidatedBalance(balances: Map<string, Decimal>): De
 
 export function calculatePeriodResult(transactions: BalanceTransaction[]) {
   const settledTransactions = transactions.filter(({ status }) => status === "SETTLED");
+  const settledIncome = settledTransactions.filter(({ type }) => type === "INCOME");
   const income = sumMoney(
-    settledTransactions.filter(({ type }) => type === "INCOME").map(({ amount }) => amount),
+    settledIncome.map(({ amount }) => amount),
   );
   const expense = sumMoney(
     settledTransactions.filter(({ type }) => type === "EXPENSE").map(({ amount }) => amount),
   );
+  const salaryIncome = sumMoney(
+    settledIncome.filter(({ salaryId }) => Boolean(salaryId)).map(({ amount }) => amount),
+  );
+  const otherIncome = sumMoney(
+    settledIncome.filter(({ salaryId }) => !salaryId).map(({ amount }) => amount),
+  );
 
   return {
-    income,
     expense,
+    income,
+    otherIncome,
     result: money(income.minus(expense)),
+    salaryIncome,
   };
 }

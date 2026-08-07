@@ -25,7 +25,10 @@ export default async function EditFixedExpensePage({
     database.financialAccount.findMany({
       where: {
         workspaceId: access.workspaceId,
-        OR: [{ active: true }, { id: fixedExpense.accountId }],
+        OR: [
+          { active: true, type: { not: "INVESTMENT" } },
+          { id: fixedExpense.accountId },
+        ],
       },
       select: { id: true, name: true },
       orderBy: { name: "asc" },

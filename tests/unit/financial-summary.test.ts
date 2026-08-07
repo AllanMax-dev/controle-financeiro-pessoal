@@ -70,7 +70,14 @@ describe("financial summary", () => {
 
   it("excludes pending and canceled entries from the realized result", () => {
     const result = calculatePeriodResult([
-      { accountId: "a", amount: "300.00", status: "SETTLED", type: "INCOME" },
+      {
+        accountId: "a",
+        amount: "250.00",
+        salaryId: "salary",
+        status: "SETTLED",
+        type: "INCOME",
+      },
+      { accountId: "a", amount: "50.00", salaryId: null, status: "SETTLED", type: "INCOME" },
       { accountId: "a", amount: "100.00", status: "SETTLED", type: "EXPENSE" },
       { accountId: "a", amount: "80.00", status: "PENDING", type: "EXPENSE" },
       { accountId: "a", amount: "40.00", status: "CANCELED", type: "INCOME" },
@@ -79,5 +86,8 @@ describe("financial summary", () => {
     expect(result.income.toFixed(2)).toBe("300.00");
     expect(result.expense.toFixed(2)).toBe("100.00");
     expect(result.result.toFixed(2)).toBe("200.00");
+    expect(result.salaryIncome.toFixed(2)).toBe("250.00");
+    expect(result.otherIncome.toFixed(2)).toBe("50.00");
+    expect(result.salaryIncome.plus(result.otherIncome).equals(result.income)).toBe(true);
   });
 });

@@ -191,9 +191,17 @@ export default async function SalariesPage() {
                     </div>
 
                     {installment.received && installment.payment ? (
-                      <p className="fixed-expense-paid-note">
-                        Recebido {formatCurrency(installment.payment.amount)} em {formatDate(installment.payment.settledAt ?? installment.payment.competenceDate)}.
-                      </p>
+                      <>
+                        <p className="fixed-expense-paid-note">
+                          Recebido {formatCurrency(installment.payment.amount)} em {formatDate(installment.payment.settledAt ?? installment.payment.competenceDate)}.
+                        </p>
+                        <Link
+                          className="text-button"
+                          href={`/lancamentos/${installment.payment.id}/editar`}
+                        >
+                          Editar recebimento
+                        </Link>
+                      </>
                     ) : (
                       <ReceiveSalaryForm
                         action={receiveSalaryAction}
