@@ -3,14 +3,12 @@ import Link from "next/link";
 import { TransferForm } from "@/components/transfer-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { createTransferAction } from "@/modules/transfers/application/transfer-actions";
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function NewTransferPage() {
   const access = await requireCurrentAccess();
+  const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const accounts = await getDatabase().financialAccount.findMany({
     where: { workspaceId: access.workspaceId, active: true },
     select: { id: true, name: true },
@@ -43,10 +41,10 @@ export default async function NewTransferPage() {
             description: "",
             destinationAccountId: accounts[1]?.id ?? "",
             notes: "",
-            settledDate: today(),
+            settledDate: today,
             sourceAccountId: accounts[0]?.id ?? "",
             status: "PENDING",
-            transferDate: today(),
+            transferDate: today,
           }}
           submitLabel="Criar transferência"
         />

@@ -1,4 +1,5 @@
 import { sumMoney, type MoneyInput } from "@/modules/shared/domain/money";
+export { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export type FixedExpenseMonthInput = {
   amount: MoneyInput;
@@ -33,24 +34,6 @@ export type FixedExpenseOccurrence = {
   dueDate: Date;
   month: Date;
 };
-
-export function calendarDateInTimeZone(referenceDate: Date, timeZone: string): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(referenceDate);
-  const values = new Map(parts.map(({ type, value }) => [type, value]));
-
-  return new Date(
-    Date.UTC(
-      Number(values.get("year")),
-      Number(values.get("month")) - 1,
-      Number(values.get("day")),
-    ),
-  );
-}
 
 export function fixedExpenseOccurrencesThrough(
   startMonth: Date,

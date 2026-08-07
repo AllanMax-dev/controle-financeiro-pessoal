@@ -4,6 +4,7 @@ import { FixedExpenseForm } from "@/components/fixed-expense-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createFixedExpenseAction } from "@/modules/fixed-expenses/application/fixed-expense-actions";
+import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function NewFixedExpensePage() {
   const access = await requireCurrentAccess();
@@ -50,6 +51,7 @@ export default async function NewFixedExpensePage() {
           accounts={accounts}
           action={createFixedExpenseAction}
           categories={categories}
+          currentMonth={monthInputInTimeZone(new Date(), access.workspaceTimezone)}
           currentEditorId={access.editorId}
           editors={editors}
         />

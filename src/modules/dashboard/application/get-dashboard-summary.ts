@@ -12,13 +12,13 @@ import { getSalaryOverview } from "@/modules/salaries/application/get-salary-ove
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
-export async function getDashboardSummary(workspaceId: string) {
+export async function getDashboardSummary(workspaceId: string, referenceDate = new Date()) {
   const database = getDatabase();
-  const monthBuckets = createTrailingMonthBuckets(6);
+  const monthBuckets = createTrailingMonthBuckets(6, referenceDate);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
   // Sincroniza antes das consultas paralelas para que todos os indicadores usem a mesma base.
-  const fixedExpenses = await getFixedExpenseOverview(workspaceId);
+  const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate);
   const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, salaries] = await Promise.all([
     getAccountBalances(workspaceId, false),
     database.transaction.findMany({
@@ -45,7 +45,7 @@ export async function getDashboardSummary(workspaceId: string) {
         category: { select: { color: true, id: true, name: true } },
       },
     }),
-    getSalaryOverview(workspaceId),
+    getSalaryOverview(workspaceId, referenceDate),
   ]);
   const periodTransactions = transactions.filter(
     ({ competenceDate }) =>

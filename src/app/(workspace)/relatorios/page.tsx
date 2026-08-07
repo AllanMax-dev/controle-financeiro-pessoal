@@ -6,6 +6,7 @@ import {
   getMonthlyReport,
   normalizeReportMonth,
 } from "@/modules/reports/application/get-monthly-report";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function ReportsPage({
   searchParams,
@@ -14,8 +15,9 @@ export default async function ReportsPage({
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
-  const month = normalizeReportMonth(filters.month);
-  const report = await getMonthlyReport(access.workspaceId, month);
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
+  const month = normalizeReportMonth(filters.month, today);
+  const report = await getMonthlyReport(access.workspaceId, month, today);
 
   return (
     <>

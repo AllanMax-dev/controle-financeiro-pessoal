@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import {
   archiveFixedExpenseAction,
   payFixedExpenseAction,
@@ -18,10 +19,10 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
 });
 
-function normalizeMonth(value?: string): string {
+function normalizeMonth(value: string | undefined, fallbackMonth: string): string {
   return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
     ? value
-    : new Date().toISOString().slice(0, 7);
+    : fallbackMonth;
 }
 
 export default async function FixedExpensesPage({
@@ -31,7 +32,10 @@ export default async function FixedExpensesPage({
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
-  const monthInput = normalizeMonth(filters.month);
+  const monthInput = normalizeMonth(
+    filters.month,
+    monthInputInTimeZone(new Date(), access.workspaceTimezone),
+  );
   const month = new Date(`${monthInput}-01T00:00:00.000Z`);
   const overview = await getFixedExpenseOverview(access.workspaceId, month);
 

@@ -12,20 +12,12 @@ import {
 } from "@/modules/debts/domain/installment-plan";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
+  dateInputSchema,
   firstValidationMessage,
   identifierSchema,
   positiveMoneyInputSchema,
   versionSchema,
 } from "@/modules/shared/application/form-schemas";
-
-const dateInputSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.")
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`);
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, "Informe uma data válida.")
-  .transform((value) => new Date(`${value}T00:00:00.000Z`));
 
 const optionalIdentifierSchema = z.preprocess(
   (value) => (value === "" || value === null ? null : value),

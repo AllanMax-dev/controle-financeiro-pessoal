@@ -5,6 +5,7 @@ import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { cancelTransactionAction } from "@/modules/transactions/application/transaction-actions";
 import {
   normalizeTransactionListFilters,
@@ -21,7 +22,10 @@ export default async function TransactionsPage({
 }) {
   const access = await requireCurrentAccess();
   const rawFilters = await searchParams;
-  const filters = normalizeTransactionListFilters(rawFilters);
+  const filters = normalizeTransactionListFilters(
+    rawFilters,
+    calendarDateInTimeZone(new Date(), access.workspaceTimezone),
+  );
   const activeFilterCount = [
     rawFilters.q?.trim(),
     rawFilters.startDate,

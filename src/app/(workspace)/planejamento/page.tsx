@@ -1,20 +1,20 @@
-import Decimal from "decimal.js";
-
 import { BudgetForm } from "@/components/budget-form";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { saveBudgetAction } from "@/modules/planning/application/budget-actions";
+import {
+  budgetUsageLabel,
+  calculateBudgetUsage,
+} from "@/modules/planning/domain/budget-usage";
+import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
-function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function monthInterval(month: string) {
-  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : currentMonth();
+function monthInterval(month: string, fallbackMonth: string) {
+  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : fallbackMonth;
   const start = new Date(`${safeMonth}-01T00:00:00.000Z`);
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
   return { end, month: safeMonth, start };
@@ -27,16 +27,37 @@ export default async function PlanningPage({
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
-  const { end, month, start } = monthInterval(filters.month ?? currentMonth());
+  const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
+  const { end, month, start } = monthInterval(filters.month ?? defaultMonth, defaultMonth);
   const database = getDatabase();
   await synchronizeDueFixedExpenses(access.workspaceId);
   const [categories, budgets, realizedGroups] = await Promise.all([
     database.category.findMany({
-      where: { workspaceId: access.workspaceId, kind: "EXPENSE", active: true },
-      orderBy: { name: "asc" },
+      where: {
+        workspaceId: access.workspaceId,
+        kind: "EXPENSE",
+        OR: [
+          { active: true },
+          { budgets: { some: { month: start } } },
+          {
+            transactions: {
+              some: {
+                type: "EXPENSE",
+                status: "SETTLED",
+                competenceDate: { gte: start, lt: end },
+              },
+            },
+          },
+        ],
+      },
+      orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     database.budget.findMany({
-      where: { workspaceId: access.workspaceId, month: start },
+      where: {
+        workspaceId: access.workspaceId,
+        month: start,
+        category: { kind: "EXPENSE" },
+      },
     }),
     database.transaction.groupBy({
       by: ["categoryId"],
@@ -45,7 +66,7 @@ export default async function PlanningPage({
         type: "EXPENSE",
         status: "SETTLED",
         competenceDate: { gte: start, lt: end },
-        categoryId: { not: null },
+        category: { kind: "EXPENSE" },
       },
       _sum: { amount: true },
     }),
@@ -56,13 +77,21 @@ export default async function PlanningPage({
   );
   const totalPlanned = sumMoney(budgets.map(({ amount }) => amount));
   const totalRealized = sumMoney(realizedGroups.map(({ _sum }) => _sum.amount ?? money(0)));
-  const totalRemaining = money(totalPlanned.minus(totalRealized));
-  const totalProgress = totalPlanned.greaterThan(0)
-    ? Decimal.min(totalRealized.dividedBy(totalPlanned).times(100), 100).toNumber()
-    : 0;
-  const totalProgressLabel = totalPlanned.greaterThan(0)
-    ? totalRealized.dividedBy(totalPlanned).times(100).toFixed(0)
-    : "0";
+  const totalUsage = calculateBudgetUsage(totalPlanned, totalRealized);
+  const configuredBudgetCount = budgets.filter(({ amount }) => money(amount).greaterThan(0)).length;
+  const totalProgressLabel = totalUsage.percentage
+    ? `${totalUsage.percentage.toFixed(0)}% utilizado`
+    : totalRealized.greaterThan(0)
+      ? "Gastos sem limite definido"
+      : "Aguardando limites e despesas";
+  const totalStatusTitle = {
+    empty: "Comece definindo seus limites",
+    "on-track": "Orçamento sob controle",
+    over: "Orçamento do mês excedido",
+    unplanned: "Há gastos sem planejamento",
+    warning: "Orçamento próximo do limite",
+  }[totalUsage.status];
+  const totalNeedsAttention = totalUsage.status === "over" || totalUsage.status === "unplanned";
 
   return (
     <>
@@ -83,36 +112,60 @@ export default async function PlanningPage({
         </form>
       </section>
 
-      <section className="metric-grid planning-metrics" aria-label="Resumo do planejamento">
-        <article className="metric-card">
-          <span>Planejado</span>
-          <strong>{formatCurrency(totalPlanned)}</strong>
-          <small>Soma dos orçamentos por categoria</small>
-        </article>
-        <article className="metric-card">
-          <span>Realizado</span>
-          <strong>{formatCurrency(totalRealized)}</strong>
-          <small>Despesas realizadas no mês</small>
-        </article>
-        <article className="metric-card">
-          <span>Restante</span>
-          <strong className={totalRemaining.isNegative() ? "value-expense" : "value-income"}>
-            {formatCurrency(totalRemaining)}
-          </strong>
-          <small>Planejado menos realizado</small>
-        </article>
-      </section>
-
-      <section className="panel-card planning-overview" aria-label="Progresso geral do planejamento">
-        <div className="panel-heading">
+      <section
+        className={`panel-card planning-summary planning-summary-${totalUsage.status}`}
+        aria-label="Resumo do planejamento"
+      >
+        <div className="planning-summary-heading">
+          <span className="metric-icon metric-icon-primary">
+            <Icon name="planning" />
+          </span>
           <div>
-            <p className="eyebrow">Uso do orçamento</p>
-            <h2>Progresso geral</h2>
+            <p className="eyebrow">Visão do mês</p>
+            <h2>{totalStatusTitle}</h2>
+            <p>
+              {configuredBudgetCount} de {categories.length} categorias com limite definido
+            </p>
           </div>
-          <strong>{totalProgressLabel}% utilizado</strong>
+          <span className={`planning-status planning-status-${totalUsage.status}`}>
+            {budgetUsageLabel(totalUsage.status)}
+          </span>
         </div>
-        <div className="progress-track progress-track-large" aria-label={`${totalProgressLabel}% utilizado`}>
-          <span style={{ width: `${totalProgress}%` }} />
+
+        <div className="planning-summary-values">
+          <div className="planning-summary-primary">
+            <span>
+              {totalUsage.status === "over"
+                ? "Acima do limite"
+                : totalUsage.status === "unplanned"
+                  ? "Utilizado sem limite"
+                  : "Disponível"}
+            </span>
+            <strong className={totalNeedsAttention ? "value-expense" : "value-income"}>
+              {formatCurrency(totalUsage.remaining.abs())}
+            </strong>
+          </div>
+          <div>
+            <span>Planejado</span>
+            <strong>{formatCurrency(totalPlanned)}</strong>
+          </div>
+          <div>
+            <span>Utilizado</span>
+            <strong>{formatCurrency(totalRealized)}</strong>
+          </div>
+        </div>
+
+        <div className="planning-summary-progress">
+          <div>
+            <span>Uso do orçamento</span>
+            <strong>{totalProgressLabel}</strong>
+          </div>
+          <div
+            className="progress-track progress-track-large"
+            aria-label={totalProgressLabel}
+          >
+            <span style={{ width: `${totalUsage.progress}%` }} />
+          </div>
         </div>
       </section>
 
@@ -124,61 +177,112 @@ export default async function PlanningPage({
           title="Nenhuma categoria de despesa ativa"
         />
       ) : (
-        <section className="planning-list" aria-label="Orçamentos por categoria">
-          {categories.map((category) => {
-            const budget = budgetsByCategory.get(category.id);
-            const planned = budget?.amount ?? money(0);
-            const realized = realizedByCategory.get(category.id) ?? money(0);
-            const remaining = money(planned.minus(realized));
-            const actualProgress = planned.greaterThan(0)
-              ? realized.dividedBy(planned).times(100).toNumber()
-              : 0;
-            const progress = planned.greaterThan(0)
-              ? Decimal.min(actualProgress, 100).toNumber()
-              : 0;
+        <>
+          <div className="planning-list-heading">
+            <div>
+              <p className="eyebrow">Categorias</p>
+              <h2>Limites do mês</h2>
+              <p>Abra uma categoria somente quando precisar definir ou ajustar o limite.</p>
+            </div>
+            <span>{categories.length} categorias</span>
+          </div>
 
-            return (
-              <article
-                className={`planning-row${
-                  remaining.isNegative()
-                    ? " planning-row-over"
-                    : actualProgress >= 80
-                      ? " planning-row-warning"
-                      : ""
-                }`}
-                key={category.id}
-              >
-                <div className="planning-category">
-                  <span className="entity-color" style={{ backgroundColor: category.color ?? "#256b4b" }} />
-                  <div>
-                    <strong>{category.name}</strong>
-                    <span>
-                      {formatCurrency(realized)} de {formatCurrency(planned)}
-                    </span>
+          <section className="planning-list" aria-label="Orçamentos por categoria">
+            {categories.map((category) => {
+              const budget = budgetsByCategory.get(category.id);
+              const planned = budget?.amount ?? money(0);
+              const realized = realizedByCategory.get(category.id) ?? money(0);
+              const usage = calculateBudgetUsage(planned, realized);
+              const usageDescription = usage.percentage
+                ? `${usage.percentage.toFixed(0)}% utilizado`
+                : realized.greaterThan(0)
+                  ? "Sem limite definido"
+                  : "Nenhum gasto no mês";
+
+              return (
+                <article
+                  className={`planning-budget-card planning-budget-${usage.status}`}
+                  key={category.id}
+                >
+                  <header className="planning-budget-heading">
+                    <div className="planning-category">
+                      <span
+                        className="entity-color"
+                        style={{ backgroundColor: category.color ?? "#256b4b" }}
+                      />
+                      <div>
+                        <strong>{category.name}</strong>
+                        <span className={`planning-status planning-status-${usage.status}`}>
+                          {budgetUsageLabel(usage.status)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="planning-balance">
+                      <span>
+                        {usage.status === "over"
+                          ? "Excedido"
+                          : usage.hasLimit
+                            ? "Disponível"
+                            : "Utilizado"}
+                      </span>
+                      <strong
+                        className={
+                          usage.status === "over" || usage.status === "unplanned"
+                            ? "value-expense"
+                            : ""
+                        }
+                      >
+                        {formatCurrency(
+                          usage.hasLimit ? usage.remaining.abs() : usage.realized,
+                        )}
+                      </strong>
+                    </div>
+                  </header>
+
+                  <div
+                    className="progress-track"
+                    aria-label={`${category.name}: ${usageDescription}`}
+                  >
+                    <span style={{ width: `${usage.progress}%` }} />
                   </div>
-                </div>
-                <div className="progress-track" aria-label={`${actualProgress.toFixed(0)}% utilizado`}>
-                  <span style={{ width: `${progress}%` }} />
-                </div>
-                <div className="planning-balance">
-                  <strong className={remaining.isNegative() ? "value-expense" : ""}>
-                    {formatCurrency(remaining)}
-                  </strong>
-                  <span>{actualProgress.toFixed(0)}% utilizado</span>
-                </div>
-                <BudgetForm
-                  action={saveBudgetAction}
-                  amount={planned.toFixed(2).replace(".", ",")}
-                  budgetId={budget?.id}
-                  categoryId={category.id}
-                  categoryName={category.name}
-                  month={month}
-                  version={budget?.version}
-                />
-              </article>
-            );
-          })}
-        </section>
+
+                  <div className="planning-budget-meta">
+                    <span>
+                      Utilizado <strong>{formatCurrency(realized)}</strong>
+                    </span>
+                    <span>
+                      Limite <strong>{usage.hasLimit ? formatCurrency(planned) : "Não definido"}</strong>
+                    </span>
+                    <span>{usageDescription}</span>
+                  </div>
+
+                  {category.active ? (
+                    <details className="budget-editor">
+                      <summary>
+                        <Icon name="edit" />
+                        {usage.hasLimit ? "Ajustar limite" : "Definir limite"}
+                      </summary>
+                      <BudgetForm
+                        action={saveBudgetAction}
+                        amount={planned.toFixed(2).replace(".", ",")}
+                        budgetId={budget?.id}
+                        categoryId={category.id}
+                        categoryName={category.name}
+                        key={`${category.id}-${month}`}
+                        month={month}
+                        version={budget?.version}
+                      />
+                    </details>
+                  ) : (
+                    <p className="planning-archived-note">
+                      Categoria arquivada; os valores históricos continuam no resumo.
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        </>
       )}
     </>
   );

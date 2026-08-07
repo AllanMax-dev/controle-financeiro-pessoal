@@ -40,5 +40,6 @@ export const getCurrentAccess = cache(async function getCurrentAccess() {
     editorName: session.grant.editor.displayName,
     workspaceId: session.grant.editor.workspace.id,
     workspaceName: session.grant.editor.workspace.name,
+    workspaceTimezone: session.grant.editor.workspace.timezone,
   };
 });

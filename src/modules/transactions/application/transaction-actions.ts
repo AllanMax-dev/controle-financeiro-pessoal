@@ -8,17 +8,12 @@ import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
+  dateInputSchema,
   firstValidationMessage,
   identifierSchema,
   positiveMoneyInputSchema,
   versionSchema,
 } from "@/modules/shared/application/form-schemas";
-
-const dateInputSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.")
-  .transform((value) => new Date(`${value}T00:00:00.000Z`))
-  .refine((value) => !Number.isNaN(value.getTime()), "Informe uma data válida.");
 
 const optionalDateInputSchema = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),

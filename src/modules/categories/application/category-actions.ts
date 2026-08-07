@@ -97,6 +97,34 @@ export async function updateCategoryAction(
   const access = await requireCurrentAccess();
   const { id, version, ...data } = parsed.data;
   const database = getDatabase();
+  const current = await database.category.findFirst({
+    where: { id, workspaceId: access.workspaceId, version },
+    select: {
+      kind: true,
+      _count: {
+        select: {
+          budgets: true,
+          debts: true,
+          fixedExpenses: true,
+          salaries: true,
+          transactions: true,
+        },
+      },
+    },
+  });
+
+  if (!current) {
+    return { error: "Esta categoria foi alterada em outro dispositivo. Recarregue a página." };
+  }
+
+  const usageCount = Object.values(current._count).reduce((total, count) => total + count, 0);
+
+  if (current.kind !== data.kind && usageCount > 0) {
+    return {
+      error:
+        "Uma categoria já utilizada não pode mudar entre receita e despesa. Crie outra categoria para a nova finalidade.",
+    };
+  }
 
   try {
     const updated = await database.$transaction(async (transaction) => {
@@ -132,6 +160,8 @@ export async function updateCategoryAction(
 
   revalidatePath("/categorias");
   revalidatePath("/lancamentos");
+  revalidatePath("/planejamento");
+  revalidatePath("/painel");
   redirect("/categorias");
 }
 

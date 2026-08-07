@@ -6,6 +6,20 @@ export const identifierSchema = z.uuid();
 
 export const versionSchema = z.coerce.number().int().positive();
 
+export const dateInputSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.")
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "Informe uma data válida.")
+  .transform((value) => new Date(`${value}T00:00:00.000Z`));
+
+export const monthInputSchema = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Informe um mês válido.")
+  .transform((value) => new Date(`${value}-01T00:00:00.000Z`));
+
 export const colorSchema = z
   .string()
   .trim()

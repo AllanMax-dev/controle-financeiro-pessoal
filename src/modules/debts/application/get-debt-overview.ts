@@ -1,17 +1,26 @@
 import { getDatabase } from "@/lib/db";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
-function currentMonthInterval() {
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+function currentMonthInterval(referenceDate: Date) {
+  const today = new Date(
+    Date.UTC(
+      referenceDate.getUTCFullYear(),
+      referenceDate.getUTCMonth(),
+      referenceDate.getUTCDate(),
+    ),
+  );
+  const start = new Date(
+    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1),
+  );
+  const end = new Date(
+    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 1),
+  );
   return { end, start, today };
 }
 
-export async function getDebtOverview(workspaceId: string) {
+export async function getDebtOverview(workspaceId: string, referenceDate = new Date()) {
   const database = getDatabase();
-  const { end, start, today } = currentMonthInterval();
+  const { end, start, today } = currentMonthInterval(referenceDate);
   const [editors, debts] = await Promise.all([
     database.editor.findMany({
       where: { workspaceId, active: true },

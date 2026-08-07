@@ -10,22 +10,13 @@ import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/applicatio
 import { fixedExpenseDueDate } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
+  dateInputSchema,
   firstValidationMessage,
   identifierSchema,
+  monthInputSchema,
   positiveMoneyInputSchema,
   versionSchema,
 } from "@/modules/shared/application/form-schemas";
-
-const dateInputSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.")
-  .transform((value) => new Date(`${value}T00:00:00.000Z`))
-  .refine((value) => !Number.isNaN(value.getTime()), "Informe uma data válida.");
-
-const monthInputSchema = z
-  .string()
-  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Informe o mês inicial.")
-  .transform((value) => new Date(`${value}-01T00:00:00.000Z`));
 
 const optionalNotesSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? null : value),

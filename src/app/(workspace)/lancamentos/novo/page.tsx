@@ -3,14 +3,12 @@ import Link from "next/link";
 import { TransactionForm } from "@/components/transaction-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { createTransactionAction } from "@/modules/transactions/application/transaction-actions";
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function NewTransactionPage() {
   const access = await requireCurrentAccess();
+  const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const database = getDatabase();
   const [accounts, categories] = await Promise.all([
     database.financialAccount.findMany({
@@ -51,11 +49,11 @@ export default async function NewTransactionPage() {
             accountId: accounts[0]?.id ?? "",
             amount: "",
             categoryId: "",
-            competenceDate: today(),
+            competenceDate: today,
             description: "",
-            dueDate: today(),
+            dueDate: today,
             notes: "",
-            settledDate: today(),
+            settledDate: today,
             status: "PENDING",
             type: "EXPENSE",
           }}
