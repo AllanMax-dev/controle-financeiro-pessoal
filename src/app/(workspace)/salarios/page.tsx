@@ -109,9 +109,49 @@ export default async function SalariesPage() {
             </div>
           </header>
           <div className="fixed-expense-list" aria-label="Salários cadastrados">
-            {overview.items.map((salary) => (
-            <article className="fixed-expense-card" key={salary.id}>
-              <header>
+            {overview.items.map((salary) => {
+              const receivedCount = salary.installments.filter(({ received }) => received).length;
+              const allReceived = salary.installments.length > 0
+                && receivedCount === salary.installments.length;
+              const hasOverdue = salary.installments.some(({ overdue }) => overdue);
+              const summaryStatus = allReceived
+                ? "Recebido"
+                : hasOverdue
+                  ? "Atrasado"
+                  : receivedCount > 0
+                    ? "Parcial"
+                    : "A receber";
+              const summaryStatusClass = allReceived
+                ? "status-paid"
+                : hasOverdue
+                  ? "status-overdue"
+                  : "status-pending";
+
+              return (
+            <article className="fixed-expense-card debt-card-collapsible" key={salary.id}>
+              <details className="debt-disclosure">
+                <summary className="debt-compact-summary">
+                  <span className="debt-compact-copy">
+                    <span className="debt-compact-month">
+                      Mês de {MONTH_FORMATTER.format(overview.month)}
+                    </span>
+                    <strong>
+                      {salary.description} ({salary.frequency === "MONTHLY" ? "Mensal" : "Quinzenal"})
+                    </strong>
+                    <small>
+                      {salary.category.name} · {salary.account.name} · {salary.editor.displayName} · Ver detalhes
+                    </small>
+                  </span>
+                  <span className="debt-compact-value">
+                    <small>Valor no mês</small>
+                    <strong>{formatCurrency(salary.amount)}</strong>
+                    <span className={`status-pill ${summaryStatusClass}`}>{summaryStatus}</span>
+                  </span>
+                  <span className="debt-expand-indicator" aria-hidden="true" />
+                </summary>
+
+                <div className="debt-expanded-content">
+                  <header>
                 <div>
                   <span className="status-pill status-pending">
                     {salary.frequency === "MONTHLY" ? "Mensal" : "Quinzenal"}
@@ -124,7 +164,7 @@ export default async function SalariesPage() {
                   <strong>{formatCurrency(salary.amount)}</strong>
                   <small>{salary.frequency === "MONTHLY" ? `Dia ${salary.paymentDay}` : "Dias 15 e 30"}</small>
                 </div>
-              </header>
+                  </header>
 
               <div className="occurrence-heading">
                 <div>
@@ -168,16 +208,19 @@ export default async function SalariesPage() {
                 ))}
               </div>
 
-              <div className="fixed-expense-actions">
+                  <div className="fixed-expense-actions">
                 <ConfirmActionForm
                   action={archiveSalaryAction}
                   fields={{ id: salary.id, version: String(salary.version) }}
                   label="Encerrar recorrência"
                   message="Encerrar este salário? Os recebimentos já registrados permanecerão no histórico."
                 />
-              </div>
+                  </div>
+                </div>
+              </details>
             </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

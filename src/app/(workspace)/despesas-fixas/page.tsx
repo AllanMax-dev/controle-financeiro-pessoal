@@ -111,8 +111,38 @@ export default async function FixedExpensesPage() {
 
               <div className="fixed-expense-list">
                 {group.items.map((fixedExpense) => (
-                  <article className="fixed-expense-card" key={fixedExpense.id}>
-                    <header>
+                  <article className="fixed-expense-card debt-card-collapsible" key={fixedExpense.id}>
+                    <details className="debt-disclosure">
+                      <summary className="debt-compact-summary">
+                        <span className="debt-compact-copy">
+                          <span className="debt-compact-month">
+                            Mês de {MONTH_FORMATTER.format(overview.month)}
+                          </span>
+                          <strong>{fixedExpense.description}</strong>
+                          <small>
+                            {fixedExpense.category.name} · {fixedExpense.editor.displayName} · Vence dia {fixedExpense.dueDay} · Ver detalhes
+                          </small>
+                        </span>
+                        <span className="debt-compact-value">
+                          <small>Valor no mês</small>
+                          <strong>{formatCurrency(fixedExpense.amount)}</strong>
+                          <span
+                            className={`status-pill ${
+                              fixedExpense.paid
+                                ? "status-paid"
+                                : fixedExpense.overdue
+                                  ? "status-overdue"
+                                  : "status-pending"
+                            }`}
+                          >
+                            {fixedExpense.paid ? "Pago" : fixedExpense.overdue ? "Vencida" : "Pendente"}
+                          </span>
+                        </span>
+                        <span className="debt-expand-indicator" aria-hidden="true" />
+                      </summary>
+
+                      <div className="debt-expanded-content">
+                        <header>
                       <div>
                         <span
                           className={`status-pill ${
@@ -135,7 +165,7 @@ export default async function FixedExpensesPage() {
                         <strong>{formatCurrency(fixedExpense.amount)}</strong>
                         <small>Vence em {formatDate(fixedExpense.dueDate)}</small>
                       </div>
-                    </header>
+                        </header>
 
                     <div className="occurrence-heading occurrence-heading-compact">
                       <div>
@@ -161,7 +191,7 @@ export default async function FixedExpensesPage() {
                       <p className="fixed-expense-paid-note">Esta recorrência foi encerrada.</p>
                     )}
 
-                    <div className="fixed-expense-actions">
+                        <div className="fixed-expense-actions">
                       {fixedExpense.paid && fixedExpense.payment ? (
                         <Link
                           className="text-button"
@@ -186,7 +216,9 @@ export default async function FixedExpensesPage() {
                           />
                         </>
                       ) : null}
-                    </div>
+                        </div>
+                      </div>
+                    </details>
                   </article>
                 ))}
               </div>
