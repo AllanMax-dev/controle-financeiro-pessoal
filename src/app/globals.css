@@ -1371,7 +1371,93 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
-.debt-card > header {
+.debt-card-collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.debt-compact-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 22px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.debt-compact-summary::-webkit-details-marker {
+  display: none;
+}
+
+.debt-compact-summary:hover {
+  background: var(--surface-soft);
+}
+
+.debt-compact-summary:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: -3px;
+}
+
+.debt-compact-copy,
+.debt-compact-value {
+  display: grid;
+  gap: 5px;
+}
+
+.debt-compact-copy {
+  min-width: 0;
+}
+
+.debt-compact-copy > strong {
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debt-compact-copy small,
+.debt-compact-value small {
+  color: var(--muted);
+}
+
+.debt-compact-month {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.debt-compact-value {
+  justify-items: end;
+  min-width: 140px;
+}
+
+.debt-compact-value > strong {
+  font-size: 1.15rem;
+}
+
+.debt-expand-indicator {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.debt-disclosure[open] .debt-expand-indicator {
+  transform: rotate(225deg);
+}
+
+.debt-expanded-content {
+  padding: clamp(18px, 3vw, 28px);
+  border-top: 1px solid var(--border);
+}
+
+.debt-card > header,
+.debt-expanded-content > header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1575,7 +1661,8 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .debt-card > header {
+  .debt-card > header,
+  .debt-expanded-content > header {
     flex-direction: column;
   }
 
@@ -1589,6 +1676,32 @@ button:disabled {
 }
 
 @media (max-width: 520px) {
+  .debt-compact-summary {
+    grid-template-columns: minmax(0, 1fr) 18px;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .debt-compact-copy > strong {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .debt-compact-value {
+    grid-column: 1;
+    min-width: 0;
+    justify-items: start;
+  }
+
+  .debt-compact-value .status-pill {
+    margin-left: 0;
+  }
+
+  .debt-expand-indicator {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
   .dashboard-debt-grid,
   .debt-split-grid,
   .debt-key-summary,
@@ -3158,7 +3271,8 @@ summary:focus-visible {
   box-shadow: var(--shadow-soft);
 }
 
-.debt-card > header {
+.debt-card > header,
+.debt-expanded-content > header {
   align-items: flex-start;
 }
 

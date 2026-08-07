@@ -13,6 +13,7 @@ import {
 } from "@/modules/debts/application/debt-actions";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
 import { calendarDateInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
+import { sumMoney } from "@/modules/shared/domain/money";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   month: "long",
@@ -177,10 +178,64 @@ export default async function DebtsPage({
                   !debt.overdueInstallments.some((overdue) => overdue.id === installment.id),
               ),
             ];
+            const summaryInstallments = debt.monthInstallments.length > 0
+              ? debt.monthInstallments
+              : debt.overdueInstallments;
+            const summaryAmount = sumMoney(
+              selectedEditor
+                ? summaryInstallments.flatMap((installment) =>
+                    installment.shares
+                      .filter(({ editorId }) => editorId === selectedEditor.id)
+                      .map(({ amount }) => amount),
+                  )
+                : summaryInstallments.map(({ amount }) => amount),
+            );
+            const summaryInstallmentsLabel = summaryInstallments
+              .map(({ number }) => `${number}/${debt.installmentCount}`)
+              .join(" e ");
+            const summaryPaid = summaryInstallments.length > 0
+              && summaryInstallments.every(({ status }) => status === "PAID");
+            const summaryOverdue = debt.overdueInstallments.length > 0;
+            const summaryStatus = canceled
+              ? "Cancelada"
+              : summaryOverdue
+                ? "Atrasada"
+                : summaryPaid
+                  ? "Paga"
+                  : "Pendente";
+            const summaryStatusClass = canceled
+              ? "status-canceled"
+              : summaryOverdue
+                ? "status-overdue"
+                : summaryPaid
+                  ? "status-paid"
+                  : "status-pending";
 
             return (
-              <article className={`debt-card${canceled ? " entity-row-muted" : ""}`} key={debt.id}>
-                <header>
+              <article className={`debt-card debt-card-collapsible${canceled ? " entity-row-muted" : ""}`} key={debt.id}>
+                <details className="debt-disclosure">
+                  <summary className="debt-compact-summary">
+                    <span className="debt-compact-copy">
+                      <span className="debt-compact-month">
+                        Mês de {MONTH_FORMATTER.format(overview.month)}
+                      </span>
+                      <strong>
+                        {debt.description} ({summaryInstallmentsLabel})
+                      </strong>
+                      <small>
+                        {debt.category.name} · {responsiblePeople.map(({ name }) => name).join(" e ")} · Ver detalhes
+                      </small>
+                    </span>
+                    <span className="debt-compact-value">
+                      <small>{selectedEditor ? `Valor de ${selectedEditor.displayName}` : "Valor no mês"}</small>
+                      <strong>{formatCurrency(summaryAmount)}</strong>
+                      <span className={`status-pill ${summaryStatusClass}`}>{summaryStatus}</span>
+                    </span>
+                    <span className="debt-expand-indicator" aria-hidden="true" />
+                  </summary>
+
+                  <div className="debt-expanded-content">
+                    <header>
                   <div>
                     <span
                       className={`status-pill ${
@@ -200,7 +255,7 @@ export default async function DebtsPage({
                     <strong>{formatCurrency(debt.outstanding)}</strong>
                     <small>de {formatCurrency(debt.totalAmount)} contratados</small>
                   </div>
-                </header>
+                    </header>
 
                 <div className="debt-key-summary" aria-label="Resumo da dívida">
                   <span>
@@ -298,7 +353,7 @@ export default async function DebtsPage({
                   </div>
                 </details>
 
-                {!canceled && !settled && debt.paidCount === 0 ? (
+                    {!canceled && !settled && debt.paidCount === 0 ? (
                   <div className="debt-actions">
                     <ConfirmActionForm
                       action={cancelDebtAction}
@@ -311,7 +366,9 @@ export default async function DebtsPage({
                   <p className="debt-history-note">
                     Esta dívida já possui pagamentos registrados. O histórico permanece preservado e não pode ser excluído por aqui.
                   </p>
-                ) : null}
+                    ) : null}
+                  </div>
+                </details>
               </article>
             );
           })}
