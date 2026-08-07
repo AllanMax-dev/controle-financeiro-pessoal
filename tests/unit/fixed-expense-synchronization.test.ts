@@ -45,7 +45,7 @@ describe("fixed expense synchronization", () => {
     databaseMocks.createMany.mockResolvedValue({ count: 1 });
   });
 
-  it("creates only missing due months as settled expenses", async () => {
+  it("creates only missing due months as pending expenses", async () => {
     const synchronizedThrough = await synchronizeDueFixedExpenses(
       "workspace-id",
       new Date("2026-08-10T15:00:00.000Z"),
@@ -64,9 +64,10 @@ describe("fixed expense synchronization", () => {
     expect(call.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          affectsBalance: false,
           amount: "150.00",
-          settledAt: new Date("2026-08-10T00:00:00.000Z"),
-          status: "SETTLED",
+          settledAt: null,
+          status: "PENDING",
           type: "EXPENSE",
         }),
       ]),

@@ -33,14 +33,11 @@ function shiftMonthInput(value: string, offset: number): string {
   ).toISOString().slice(0, 7);
 }
 
-function debtsHref(month: string, person?: string): string {
-  const params = new URLSearchParams({ month });
-
-  if (person) {
-    params.set("person", person);
-  }
-
-  return `/dividas?${params.toString()}`;
+function debtsHref(month: string, person?: string) {
+  return {
+    pathname: "/dividas",
+    query: person ? { month, person } : { month },
+  } as const;
 }
 
 export default async function DebtsPage({
