@@ -2113,6 +2113,121 @@ summary:focus-visible {
   color: var(--warning);
 }
 
+.dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.dashboard-overview-card {
+  min-height: 0;
+  gap: 18px;
+  padding: 20px;
+}
+
+.dashboard-overview-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-overview-heading .metric-icon {
+  flex: 0 0 auto;
+}
+
+.dashboard-overview-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-overview-heading small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.dashboard-overview-card > .dashboard-primary-value {
+  font-size: clamp(1.65rem, 2.7vw, 2.35rem);
+}
+
+.dashboard-projected-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: auto;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 9%);
+}
+
+.dashboard-projected-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-balance-card .dashboard-overview-heading small,
+.dashboard-balance-card .dashboard-projected-row span,
+.dashboard-balance-card .dashboard-projected-row small {
+  color: rgb(255 255 255 / 72%);
+}
+
+.dashboard-balance-card .dashboard-projected-row strong {
+  color: white;
+  font-size: 1.12rem;
+  text-align: right;
+}
+
+.dashboard-split-values,
+.dashboard-pending-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+}
+
+.dashboard-split-values > div,
+.dashboard-pending-values > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: var(--surface-muted);
+}
+
+.dashboard-split-values strong,
+.dashboard-pending-values strong {
+  font-size: 1.05rem;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-balance-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-balance-card {
+    grid-column: auto;
+  }
+
+  .dashboard-overview-card {
+    gap: 14px;
+    padding: 18px;
+  }
+}
+
 .value-income {
   color: var(--income) !important;
 }

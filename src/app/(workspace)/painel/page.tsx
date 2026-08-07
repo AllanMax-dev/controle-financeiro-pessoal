@@ -39,70 +39,80 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <section className="metric-grid dashboard-metrics" aria-label="Indicadores financeiros">
-        <article className="metric-card metric-card-featured">
-          <span className="metric-icon metric-icon-info" aria-hidden="true">
-            <Icon name="account" />
-          </span>
-          <span>Saldo consolidado</span>
-          <strong>{formatCurrency(summary.totalBalance)}</strong>
-          <small>{summary.accounts.filter(({ active }) => active).length} contas ativas</small>
+      <section className="dashboard-overview-grid" aria-label="Resumo financeiro">
+        <article className="metric-card metric-card-featured dashboard-overview-card dashboard-balance-card">
+          <div className="dashboard-overview-heading">
+            <span className="metric-icon" aria-hidden="true">
+              <Icon name="account" />
+            </span>
+            <div>
+              <span>Saldo consolidado</span>
+              <small>{summary.accounts.filter(({ active }) => active).length} contas ativas</small>
+            </div>
+          </div>
+          <strong className="dashboard-primary-value">{formatCurrency(summary.totalBalance)}</strong>
+          <div className="dashboard-projected-row">
+            <div>
+              <span>Saldo projetado</span>
+              <small>Após receber e pagar pendências</small>
+            </div>
+            <strong>{formatCurrency(summary.projectedBalance)}</strong>
+          </div>
         </article>
-        <article className="metric-card metric-card-projected">
-          <span className="metric-icon metric-icon-primary" aria-hidden="true">
-            <Icon name="planning" />
-          </span>
-          <span>Saldo projetado</span>
-          <strong>{formatCurrency(summary.projectedBalance)}</strong>
-          <small>Considera pendências a receber e a pagar</small>
+
+        <article className="metric-card dashboard-overview-card">
+          <div className="dashboard-overview-heading">
+            <span className="metric-icon metric-icon-income" aria-hidden="true">
+              <Icon name="dashboard" />
+            </span>
+            <div>
+              <span>Resultado do mês</span>
+              <small>Somente valores realizados</small>
+            </div>
+          </div>
+          <strong
+            className={`dashboard-primary-value ${
+              summary.periodResult.result.isNegative() ? "value-expense" : "value-income"
+            }`}
+          >
+            {formatCurrency(summary.periodResult.result)}
+          </strong>
+          <div className="dashboard-split-values">
+            <div>
+              <span>Entradas</span>
+              <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
+            </div>
+            <div>
+              <span>Saídas</span>
+              <strong className="value-expense">{formatCurrency(summary.periodResult.expense)}</strong>
+            </div>
+          </div>
         </article>
-        <article className="metric-card metric-card-result">
-          <span className="metric-icon metric-icon-income" aria-hidden="true">
-            <Icon name="dashboard" />
-          </span>
-          <span>Resultado do mês</span>
-          <strong>{formatCurrency(summary.periodResult.result)}</strong>
-          <small>Receitas menos despesas realizadas</small>
-        </article>
-        <article className="metric-card metric-card-warning">
-          <span className="metric-icon metric-icon-warning" aria-hidden="true">
-            <Icon name="calendar" />
-          </span>
-          <span>Valores pendentes</span>
-          <strong>{formatCurrency(summary.pendingExpense)}</strong>
-          <small>{formatCurrency(summary.pendingIncome)} a receber</small>
-        </article>
-        <article className="metric-card">
-          <span className="metric-icon metric-icon-warning" aria-hidden="true">
-            <Icon name="calendar" />
-          </span>
-          <span>Despesas fixas do mês</span>
-          <strong>{formatCurrency(summary.fixedExpenses.expected)}</strong>
-          <small>
-            {formatCurrency(summary.fixedExpenses.paid)} pagas · {formatCurrency(summary.fixedExpenses.pending)} pendentes
-          </small>
-        </article>
-        <article className="metric-card">
-          <span className="metric-icon metric-icon-income" aria-hidden="true">
-            <Icon name="income" />
-          </span>
-          <span>Salários do mês</span>
-          <strong>{formatCurrency(summary.salaries.expected)}</strong>
-          <small>
-            {formatCurrency(summary.salaries.received)} recebidos · {formatCurrency(summary.salaries.pending)} a receber
-          </small>
-        </article>
-        <article className="metric-card metric-card-compact">
-          <span>Receitas realizadas</span>
-          <strong className="value-income">{formatCurrency(summary.periodResult.income)}</strong>
-          <small>{formatCurrency(summary.pendingIncome)} pendentes</small>
-        </article>
-        <article className="metric-card metric-card-compact">
-          <span>Despesas realizadas</span>
-          <strong className="value-expense">{formatCurrency(summary.periodResult.expense)}</strong>
-          <small>
-            {formatCurrency(summary.pendingExpense)} pendentes
-          </small>
+
+        <article className="metric-card dashboard-overview-card">
+          <div className="dashboard-overview-heading">
+            <span className="metric-icon metric-icon-warning" aria-hidden="true">
+              <Icon name="calendar" />
+            </span>
+            <div>
+              <span>Valores pendentes</span>
+              <small>O que ainda entra e sai</small>
+            </div>
+          </div>
+          <div className="dashboard-pending-values">
+            <div>
+              <span>A pagar</span>
+              <strong className={summary.pendingExpense.isPositive() ? "value-expense" : ""}>
+                {formatCurrency(summary.pendingExpense)}
+              </strong>
+            </div>
+            <div>
+              <span>A receber</span>
+              <strong className={summary.pendingIncome.isPositive() ? "value-income" : ""}>
+                {formatCurrency(summary.pendingIncome)}
+              </strong>
+            </div>
+          </div>
         </article>
       </section>
 
