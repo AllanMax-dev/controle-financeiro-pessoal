@@ -38,6 +38,7 @@ test("registers and receives a fortnightly salary", async ({ page }, testInfo) =
   await expect(salaryCard).toContainText("2ª quinzena");
   await expect(salaryCard).toContainText(/R\$\s*1\.500,01/);
   await expect(salaryCard).toContainText(/R\$\s*1\.500,00/);
+  await salaryCard.locator("summary").click();
 
   const firstInstallment = salaryCard.locator("section.salary-installment").first();
   await firstInstallment.getByRole("button", { name: "Registrar recebimento" }).click();
