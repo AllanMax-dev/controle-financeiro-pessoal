@@ -7,14 +7,11 @@ import { ConfirmActionForm } from "@/components/confirm-action-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { cancelTransferAction } from "@/modules/transfers/application/transfer-actions";
 
-function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function monthInterval(month: string) {
-  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : currentMonth();
+function monthInterval(month: string, fallbackMonth: string) {
+  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : fallbackMonth;
   const start = new Date(`${safeMonth}-01T00:00:00.000Z`);
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
   return { end, month: safeMonth, start };
@@ -27,7 +24,8 @@ export default async function TransfersPage({
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
-  const { end, month, start } = monthInterval(filters.month ?? currentMonth());
+  const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
+  const { end, month, start } = monthInterval(filters.month ?? defaultMonth, defaultMonth);
   const status =
     filters.status === "PENDING" ||
     filters.status === "SETTLED" ||

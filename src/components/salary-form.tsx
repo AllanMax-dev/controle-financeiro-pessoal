@@ -15,19 +15,19 @@ export function SalaryForm({
   accounts,
   action,
   categories,
+  currentMonth,
   currentEditorId,
   editors,
 }: {
   accounts: { id: string; name: string }[];
   action: SalaryFormAction;
   categories: { id: string; name: string }[];
+  currentMonth: string;
   currentEditorId: string;
   editors: { id: string; displayName: string }[];
 }) {
   const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
   const [frequency, setFrequency] = useState<"MONTHLY" | "FORTNIGHTLY">("MONTHLY");
-  const currentMonth = new Date().toISOString().slice(0, 7);
-
   return (
     <form action={formAction} className="entity-form fixed-expense-form">
       <div className="form-section-title field-wide">

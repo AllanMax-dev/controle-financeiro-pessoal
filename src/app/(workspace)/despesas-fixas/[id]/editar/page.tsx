@@ -63,6 +63,7 @@ export default async function EditFixedExpensePage({
         accounts={accounts}
         action={updateFixedExpenseAction}
         categories={categories}
+        currentMonth={fixedExpense.startMonth.toISOString().slice(0, 7)}
         currentEditorId={access.editorId}
         defaults={{
           accountId: fixedExpense.accountId,

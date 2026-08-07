@@ -9,33 +9,39 @@ import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   firstValidationMessage,
   identifierSchema,
+  monthInputSchema,
   moneyInputSchema,
   versionSchema,
 } from "@/modules/shared/application/form-schemas";
-
-const monthSchema = z
-  .string()
-  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Informe um mês válido.")
-  .transform((value) => new Date(`${value}-01T00:00:00.000Z`));
 
 const nonnegativeMoneySchema = moneyInputSchema.refine(
   (value) => Number(value) >= 0,
   "O orçamento não pode ser negativo.",
 );
 
-const budgetSchema = z.object({
-  amount: nonnegativeMoneySchema,
-  categoryId: identifierSchema,
-  id: z.preprocess(
-    (value) => (value === "" || value === null ? null : value),
-    identifierSchema.nullable(),
-  ),
-  month: monthSchema,
-  version: z.preprocess(
-    (value) => (value === "" || value === null ? null : value),
-    versionSchema.nullable(),
-  ),
-});
+const budgetSchema = z
+  .object({
+    amount: nonnegativeMoneySchema,
+    categoryId: identifierSchema,
+    id: z.preprocess(
+      (value) => (value === "" || value === null ? null : value),
+      identifierSchema.nullable(),
+    ),
+    month: monthInputSchema,
+    version: z.preprocess(
+      (value) => (value === "" || value === null ? null : value),
+      versionSchema.nullable(),
+    ),
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.id) !== Boolean(value.version)) {
+      context.addIssue({
+        code: "custom",
+        message: "Recarregue a página antes de salvar este orçamento.",
+        path: ["version"],
+      });
+    }
+  });
 
 export async function saveBudgetAction(
   _state: ActionState,
@@ -76,7 +82,9 @@ export async function saveBudgetAction(
       if (parsed.data.id && parsed.data.version) {
         const result = await transaction.budget.updateMany({
           where: {
+            categoryId: parsed.data.categoryId,
             id: parsed.data.id,
+            month: parsed.data.month,
             workspaceId: access.workspaceId,
             version: parsed.data.version,
           },
@@ -122,5 +130,6 @@ export async function saveBudgetAction(
   }
 
   revalidatePath("/planejamento");
+  revalidatePath("/painel");
   return { error: null, success: "Orçamento salvo." };
 }

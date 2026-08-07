@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentAccess } from "@/modules/access/application/get-current-access";
 import { getMonthlyReport } from "@/modules/reports/application/get-monthly-report";
 import { createMonthlyReportCsv } from "@/modules/reports/domain/csv";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,11 @@ export async function GET(request: NextRequest) {
   }
 
   const month = request.nextUrl.searchParams.get("month") ?? undefined;
-  const report = await getMonthlyReport(access.workspaceId, month);
+  const report = await getMonthlyReport(
+    access.workspaceId,
+    month,
+    calendarDateInTimeZone(new Date(), access.workspaceTimezone),
+  );
   const csv = createMonthlyReportCsv(report);
 
   return new Response(csv, {

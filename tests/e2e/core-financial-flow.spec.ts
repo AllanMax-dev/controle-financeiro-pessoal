@@ -77,6 +77,8 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   );
 
   await page.getByRole("link", { name: "Planejamento", exact: true }).click();
+  const budgetCard = page.locator("article.planning-budget-card").filter({ hasText: categoryName });
+  await budgetCard.getByText("Definir limite", { exact: true }).click();
   const budgetInput = page.getByLabel(`Orçamento de ${categoryName}`);
   const budgetForm = page.locator("form").filter({ has: budgetInput });
   await budgetInput.fill("500,00");

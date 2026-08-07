@@ -11,12 +11,14 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getDashboardSummary } from "@/modules/dashboard/application/get-dashboard-summary";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function DashboardPage() {
   const access = await requireCurrentAccess();
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const [summary, debtOverview] = await Promise.all([
-    getDashboardSummary(access.workspaceId),
-    getDebtOverview(access.workspaceId),
+    getDashboardSummary(access.workspaceId, today),
+    getDebtOverview(access.workspaceId, today),
   ]);
 
   return (

@@ -12,6 +12,7 @@ import {
   payDebtInstallmentAction,
 } from "@/modules/debts/application/debt-actions";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function DebtsPage({
   searchParams,
@@ -21,8 +22,9 @@ export default async function DebtsPage({
   const access = await requireCurrentAccess();
   const database = getDatabase();
   const filters = await searchParams;
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const [overview, accounts] = await Promise.all([
-    getDebtOverview(access.workspaceId),
+    getDebtOverview(access.workspaceId, today),
     database.financialAccount.findMany({
       where: { workspaceId: access.workspaceId, active: true },
       select: { id: true, name: true },
@@ -37,9 +39,6 @@ export default async function DebtsPage({
         ),
       )
     : overview.debts;
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
   return (
     <>
       <section className="page-heading">

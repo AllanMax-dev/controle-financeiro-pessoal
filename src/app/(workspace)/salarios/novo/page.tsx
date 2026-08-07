@@ -4,6 +4,7 @@ import { SalaryForm } from "@/components/salary-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createSalaryAction } from "@/modules/salaries/application/salary-actions";
+import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function NewSalaryPage() {
   const access = await requireCurrentAccess();
@@ -50,6 +51,7 @@ export default async function NewSalaryPage() {
           accounts={accounts}
           action={createSalaryAction}
           categories={categories}
+          currentMonth={monthInputInTimeZone(new Date(), access.workspaceTimezone)}
           currentEditorId={access.editorId}
           editors={editors}
         />

@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getSalaryOverview } from "@/modules/salaries/application/get-salary-overview";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import {
   archiveSalaryAction,
   receiveSalaryAction,
@@ -20,7 +21,10 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
 
 export default async function SalariesPage() {
   const access = await requireCurrentAccess();
-  const overview = await getSalaryOverview(access.workspaceId);
+  const overview = await getSalaryOverview(
+    access.workspaceId,
+    calendarDateInTimeZone(new Date(), access.workspaceTimezone),
+  );
   const monthInput = overview.month.toISOString().slice(0, 7);
 
   return (

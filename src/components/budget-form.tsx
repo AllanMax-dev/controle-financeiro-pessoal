@@ -35,9 +35,17 @@ export function BudgetForm({
       <input name="version" type="hidden" value={version ?? ""} />
       <input name="categoryId" type="hidden" value={categoryId} />
       <input name="month" type="hidden" value={month} />
-      <label>
-        <span className="sr-only">Orçamento de {categoryName}</span>
-        <input name="amount" type="text" inputMode="decimal" defaultValue={amount} required />
+      <label className="budget-field">
+        <span>Limite mensal</span>
+        <input
+          aria-label={`Orçamento de ${categoryName}`}
+          name="amount"
+          type="text"
+          inputMode="decimal"
+          defaultValue={amount}
+          placeholder="0,00"
+          required
+        />
       </label>
       <FormSubmitButton label="Salvar" />
       {state.error ? (

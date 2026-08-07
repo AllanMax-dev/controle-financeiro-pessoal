@@ -4,21 +4,25 @@ import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/applicatio
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
-export function normalizeReportMonth(value?: string): string {
+export function normalizeReportMonth(value?: string, referenceDate = new Date()): string {
   return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
     ? value
-    : new Date().toISOString().slice(0, 7);
+    : referenceDate.toISOString().slice(0, 7);
 }
 
-export function reportMonthInterval(monthValue?: string) {
-  const month = normalizeReportMonth(monthValue);
+export function reportMonthInterval(monthValue?: string, referenceDate = new Date()) {
+  const month = normalizeReportMonth(monthValue, referenceDate);
   const start = new Date(`${month}-01T00:00:00.000Z`);
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
   return { end, month, start };
 }
 
-export async function getMonthlyReport(workspaceId: string, monthValue?: string) {
-  const { end, month, start } = reportMonthInterval(monthValue);
+export async function getMonthlyReport(
+  workspaceId: string,
+  monthValue?: string,
+  referenceDate = new Date(),
+) {
+  const { end, month, start } = reportMonthInterval(monthValue, referenceDate);
   const database = getDatabase();
   await synchronizeDueFixedExpenses(workspaceId);
   const [{ accounts, totalBalance }, transactions, transfers] = await Promise.all([

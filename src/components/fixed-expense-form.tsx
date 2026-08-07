@@ -31,6 +31,7 @@ export function FixedExpenseForm({
   accounts,
   action,
   categories,
+  currentMonth,
   currentEditorId,
   defaults,
   editors,
@@ -39,13 +40,13 @@ export function FixedExpenseForm({
   accounts: { id: string; name: string }[];
   action: FixedExpenseFormAction;
   categories: { id: string; name: string }[];
+  currentMonth: string;
   currentEditorId: string;
   defaults?: FixedExpenseFormDefaults;
   editors: { id: string; displayName: string }[];
   submitLabel?: string;
 }) {
   const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
-  const currentMonth = new Date().toISOString().slice(0, 7);
   const values = defaults ?? {
     accountId: "",
     amount: "",
