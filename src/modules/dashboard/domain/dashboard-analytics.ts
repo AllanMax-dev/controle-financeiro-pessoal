@@ -8,12 +8,17 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
 });
 
 export type DashboardTransactionInput = {
+  account?: { type: string } | null;
   amount: MoneyInput;
   category: { color: string | null; id: string; name: string } | null;
   competenceDate: Date;
   status: "PENDING" | "SETTLED" | "CANCELED";
   type: "INCOME" | "EXPENSE";
 };
+
+function isOperationalTransaction(transaction: DashboardTransactionInput): boolean {
+  return transaction.account?.type !== "INVESTMENT";
+}
 
 export type DashboardBudgetInput = {
   amount: MoneyInput;
@@ -71,7 +76,7 @@ export function buildMonthlyEvolution(
   );
 
   for (const transaction of transactions) {
-    if (transaction.status !== "SETTLED") {
+    if (transaction.status !== "SETTLED" || !isOperationalTransaction(transaction)) {
       continue;
     }
 
@@ -114,7 +119,11 @@ export function buildExpenseDistribution(transactions: DashboardTransactionInput
   >();
 
   for (const transaction of transactions) {
-    if (transaction.status !== "SETTLED" || transaction.type !== "EXPENSE") {
+    if (
+      transaction.status !== "SETTLED" ||
+      transaction.type !== "EXPENSE" ||
+      !isOperationalTransaction(transaction)
+    ) {
       continue;
     }
 
@@ -157,7 +166,11 @@ export function buildBudgetComparison(
   }
 
   for (const transaction of transactions) {
-    if (transaction.status !== "SETTLED" || transaction.type !== "EXPENSE") {
+    if (
+      transaction.status !== "SETTLED" ||
+      transaction.type !== "EXPENSE" ||
+      !isOperationalTransaction(transaction)
+    ) {
       continue;
     }
 
@@ -185,7 +198,12 @@ export function buildBudgetComparison(
   const totalPlanned = sumMoney(budgets.map(({ amount }) => amount));
   const totalRealized = sumMoney(
     transactions
-      .filter(({ status, type }) => status === "SETTLED" && type === "EXPENSE")
+      .filter(
+        (transaction) =>
+          transaction.status === "SETTLED" &&
+          transaction.type === "EXPENSE" &&
+          isOperationalTransaction(transaction),
+      )
       .map(({ amount }) => amount),
   );
 

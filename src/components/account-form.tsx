@@ -16,7 +16,8 @@ type AccountFormDefaults = {
   id?: string;
   initialBalance: string;
   name: string;
-  type: "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "OTHER";
+  ownerEditorId: string | null;
+  type: "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "INVESTMENT" | "OTHER";
   version?: number;
 };
 
@@ -25,16 +26,19 @@ const accountTypes = [
   { value: "DIGITAL", label: "Conta digital" },
   { value: "SAVINGS", label: "Poupança" },
   { value: "CASH", label: "Dinheiro" },
+  { value: "INVESTMENT", label: "Investimento" },
   { value: "OTHER", label: "Outra" },
 ] as const;
 
 export function AccountForm({
   action,
   defaults,
+  editors,
   submitLabel,
 }: {
   action: AccountFormAction;
   defaults: AccountFormDefaults;
+  editors: { id: string; displayName: string }[];
   submitLabel: string;
 }) {
   const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
@@ -69,6 +73,18 @@ export function AccountForm({
           {accountTypes.map((type) => (
             <option key={type.value} value={type.value}>
               {type.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>Responsável</span>
+        <select name="ownerEditorId" defaultValue={defaults.ownerEditorId ?? ""}>
+          <option value="">Compartilhada / casal</option>
+          {editors.map((editor) => (
+            <option key={editor.id} value={editor.id}>
+              {editor.displayName}
             </option>
           ))}
         </select>

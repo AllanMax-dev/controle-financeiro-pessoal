@@ -8,13 +8,25 @@ import { updateAccountAction } from "@/modules/accounts/application/account-acti
 export default async function EditAccountPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
   const { id } = await params;
-  const account = await getDatabase().financialAccount.findFirst({
+  const database = getDatabase();
+  const account = await database.financialAccount.findFirst({
     where: { id, workspaceId: access.workspaceId },
   });
 
   if (!account) {
     notFound();
   }
+
+  const editors = await database.editor.findMany({
+    where: {
+      workspaceId: access.workspaceId,
+      OR: account.ownerEditorId
+        ? [{ active: true }, { id: account.ownerEditorId }]
+        : [{ active: true }],
+    },
+    select: { displayName: true, id: true },
+    orderBy: { displayName: "asc" },
+  });
 
   return (
     <>
@@ -32,9 +44,11 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
           id: account.id,
           initialBalance: account.initialBalance.toFixed(2).replace(".", ","),
           name: account.name,
+          ownerEditorId: account.ownerEditorId,
           type: account.type,
           version: account.version,
         }}
+        editors={editors}
         submitLabel="Salvar alterações"
       />
     </>

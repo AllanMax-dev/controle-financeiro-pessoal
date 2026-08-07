@@ -105,6 +105,38 @@ describe("dashboard analytics", () => {
     ]);
   });
 
+  it("ignores investment account transactions in operational analytics", () => {
+    const buckets = createTrailingMonthBuckets(1, new Date("2026-08-15T12:00:00.000Z"));
+    const investmentCategory = { color: "#7c3aed", id: "investment", name: "Aporte" };
+    const operationalCategory = { color: "#256b4b", id: "food", name: "Mercado" };
+    const transactions = [
+      {
+        account: { type: "INVESTMENT" },
+        amount: "900.00",
+        category: investmentCategory,
+        competenceDate: new Date("2026-08-02T00:00:00.000Z"),
+        status: "SETTLED" as const,
+        type: "EXPENSE" as const,
+      },
+      {
+        account: { type: "CHECKING" },
+        amount: "120.00",
+        category: operationalCategory,
+        competenceDate: new Date("2026-08-03T00:00:00.000Z"),
+        status: "SETTLED" as const,
+        type: "EXPENSE" as const,
+      },
+    ];
+
+    expect(buildMonthlyEvolution(transactions, buckets)[0]).toMatchObject({
+      expense: 120,
+      income: 0,
+      result: -120,
+    });
+    expect(buildBudgetComparison([], transactions).totalRealized.toFixed(2)).toBe("120.00");
+    expect(buildBudgetComparison([], transactions).categories.map(({ id }) => id)).toEqual(["food"]);
+  });
+
   it("projects balance from pending income and expense without floating point drift", () => {
     expect(calculateProjectedBalance("1000.00", "100.55", "30.10").toFixed(2)).toBe("1070.45");
   });

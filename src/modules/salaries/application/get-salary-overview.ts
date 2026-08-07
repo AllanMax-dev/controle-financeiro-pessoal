@@ -4,6 +4,7 @@ import {
   calculateSalaryTotals,
   createSalarySchedule,
 } from "@/modules/salaries/domain/salary-schedule";
+import { money } from "@/modules/shared/domain/money";
 
 export async function getSalaryOverview(workspaceId: string, referenceDate = new Date()) {
   const database = getDatabase();
@@ -48,9 +49,43 @@ export async function getSalaryOverview(workspaceId: string, referenceDate = new
   });
   const installments = items.flatMap((salary) => salary.installments);
   const totals = calculateSalaryTotals(installments);
+  const groupsByEditor = new Map<
+    string,
+    {
+      editor: (typeof items)[number]["editor"];
+      expected: ReturnType<typeof money>;
+      items: typeof items;
+      pending: ReturnType<typeof money>;
+      received: ReturnType<typeof money>;
+    }
+  >();
+
+  for (const item of items) {
+    const current = groupsByEditor.get(item.editorId) ?? {
+      editor: item.editor,
+      expected: money(0),
+      items: [],
+      pending: money(0),
+      received: money(0),
+    };
+    current.items.push(item);
+
+    for (const installment of item.installments) {
+      current.expected = money(current.expected.plus(installment.amount));
+
+      if (installment.received && installment.payment) {
+        current.received = money(current.received.plus(installment.payment.amount));
+      } else {
+        current.pending = money(current.pending.plus(installment.amount));
+      }
+    }
+
+    groupsByEditor.set(item.editorId, current);
+  }
 
   return {
     ...totals,
+    editorGroups: [...groupsByEditor.values()],
     items,
     month,
     overdueCount: installments.filter(({ overdue }) => overdue).length,

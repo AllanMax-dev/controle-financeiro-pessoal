@@ -12,41 +12,83 @@ import {
   payDebtInstallmentAction,
 } from "@/modules/debts/application/debt-actions";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
-import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
+import { calendarDateInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
+
+const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric",
+});
+
+function normalizeMonth(value: string | undefined, fallbackMonth: string): string {
+  return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
+    ? value
+    : fallbackMonth;
+}
+
+function shiftMonthInput(value: string, offset: number): string {
+  const month = new Date(`${value}-01T00:00:00.000Z`);
+  return new Date(
+    Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + offset, 1),
+  ).toISOString().slice(0, 7);
+}
+
+function debtsHref(month: string, person?: string): string {
+  const params = new URLSearchParams({ month });
+
+  if (person) {
+    params.set("person", person);
+  }
+
+  return `/dividas?${params.toString()}`;
+}
 
 export default async function DebtsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ person?: string }>;
+  searchParams: Promise<{ month?: string; person?: string }>;
 }) {
   const access = await requireCurrentAccess();
   const database = getDatabase();
   const filters = await searchParams;
-  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
+  const now = new Date();
+  const today = calendarDateInTimeZone(now, access.workspaceTimezone);
   const todayInput = today.toISOString().slice(0, 10);
+  const currentMonthInput = monthInputInTimeZone(now, access.workspaceTimezone);
+  const selectedMonthInput = normalizeMonth(filters.month, currentMonthInput);
+  const selectedMonth = new Date(`${selectedMonthInput}-01T00:00:00.000Z`);
+  const overviewDate = selectedMonthInput === currentMonthInput ? today : selectedMonth;
+  const previousMonthInput = shiftMonthInput(selectedMonthInput, -1);
+  const nextMonthInput = shiftMonthInput(selectedMonthInput, 1);
   const [overview, accounts] = await Promise.all([
-    getDebtOverview(access.workspaceId, today),
+    getDebtOverview(access.workspaceId, overviewDate),
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true },
+      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
   ]);
   const selectedEditor = overview.editors.find(({ id }) => id === filters.person);
-  const debts = selectedEditor
-    ? overview.debts.filter((debt) =>
-        debt.installments.some((installment) =>
+  const currentMonth = new Date(`${currentMonthInput}-01T00:00:00.000Z`);
+  const isFutureMonth = selectedMonth > currentMonth;
+  const debts = overview.debts.filter((debt) => {
+    const hasSelectedPerson = selectedEditor
+      ? debt.installments.some((installment) =>
           installment.shares.some(({ editorId }) => editorId === selectedEditor.id),
-        ),
-      )
-    : overview.debts;
+        )
+      : true;
+    const visibleInMonth = debt.monthInstallments.length > 0 || debt.overdueInstallments.length > 0;
+    const settledInFuture = isFutureMonth && debt.outstanding.isZero();
+
+    return hasSelectedPerson && visibleInMonth && !settledInFuture;
+  });
   return (
     <>
       <section className="page-heading">
         <div>
           <p className="eyebrow">Responsabilidades</p>
           <h1>Dívidas</h1>
-          <p>Acompanhe compromissos, próximas parcelas e pagamentos realizados.</p>
+          <p>Acompanhe o mês selecionado, atrasos e pagamentos realizados sem perder histórico.</p>
         </div>
         <Link className="primary-button" href="/dividas/nova">
           <Icon name="add" />
@@ -58,7 +100,7 @@ export default async function DebtsPage({
         <article className="metric-card metric-card-featured">
           <span>Dívida do casal</span>
           <strong>{formatCurrency(overview.coupleOutstanding)}</strong>
-          <small>Somente parcelas ainda não pagas</small>
+          <small>Restante total em aberto</small>
         </article>
         {overview.editors.slice(0, 2).map((editor) => (
           <article className="metric-card" key={editor.id}>
@@ -68,29 +110,37 @@ export default async function DebtsPage({
           </article>
         ))}
         <article className="metric-card">
-          <span>Parcelas deste mês</span>
+          <span>Parcelas de {MONTH_FORMATTER.format(overview.month)}</span>
           <strong>{formatCurrency(overview.dueThisMonth)}</strong>
-          <small className={overview.overdue.isPositive() ? "value-expense" : ""}>
-            {formatCurrency(overview.overdue)} em atraso
+          <small>
+            {formatCurrency(overview.paidThisMonth)} pagos · {formatCurrency(overview.pendingThisMonth)} pendentes
           </small>
         </article>
         {overview.editors.slice(0, 2).map((editor) => (
           <article className="metric-card" key={`monthly-${editor.id}`}>
-            <span>Parcela de {editor.displayName} neste mês</span>
+            <span>{editor.displayName} em {MONTH_FORMATTER.format(overview.month)}</span>
             <strong>{formatCurrency(editor.dueThisMonth)}</strong>
-            <small>Responsabilidade individual neste mês</small>
+            <small>Responsabilidade individual do mês</small>
           </article>
         ))}
       </section>
 
+      <nav className="person-filter" aria-label="Navegar mês das dívidas">
+        <Link href={debtsHref(previousMonthInput, selectedEditor?.id)}>Mês anterior</Link>
+        <Link className="active" href={debtsHref(selectedMonthInput, selectedEditor?.id)}>
+          {MONTH_FORMATTER.format(overview.month)}
+        </Link>
+        <Link href={debtsHref(nextMonthInput, selectedEditor?.id)}>Próximo mês</Link>
+      </nav>
+
       <nav className="person-filter" aria-label="Filtrar dívidas por pessoa">
-        <Link className={!selectedEditor ? "active" : ""} href="/dividas">
+        <Link className={!selectedEditor ? "active" : ""} href={debtsHref(selectedMonthInput)}>
           Casal
         </Link>
         {overview.editors.map((editor) => (
           <Link
             className={selectedEditor?.id === editor.id ? "active" : ""}
-            href={`/dividas?person=${editor.id}`}
+            href={debtsHref(selectedMonthInput, editor.id)}
             key={editor.id}
           >
             {editor.displayName}
@@ -123,6 +173,13 @@ export default async function DebtsPage({
                     .find((share) => share.editorId === editorId)?.editor.displayName ?? "Pessoa",
               }),
             );
+            const visibleInstallments = [
+              ...debt.overdueInstallments,
+              ...debt.monthInstallments.filter(
+                (installment) =>
+                  !debt.overdueInstallments.some((overdue) => overdue.id === installment.id),
+              ),
+            ];
 
             return (
               <article className={`debt-card${canceled ? " entity-row-muted" : ""}`} key={debt.id}>
@@ -198,9 +255,9 @@ export default async function DebtsPage({
                 ) : null}
 
                 <details className="installment-details">
-                  <summary>Ver parcelas e responsabilidades</summary>
+                  <summary>Ver parcelas do mês e atrasadas</summary>
                   <div className="installment-list">
-                    {debt.installments.map((installment) => (
+                    {visibleInstallments.map((installment) => (
                       <article className="installment-row" key={installment.id}>
                         <div>
                           <strong>

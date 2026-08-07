@@ -61,6 +61,21 @@ function addFortnightlyPeriods(value: string, periods: number): string {
   return dateInput(dueDate);
 }
 
+function formatCents(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+function parseMoneyCents(value: string): number | null {
+  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  const amount = Number(normalized);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  return Math.round(amount * 100);
+}
+
 function defaultDueDate(value: string, frequency: InstallmentFrequency): string {
   if (frequency === "MONTHLY") {
     return addMonths(value, 1);
@@ -150,6 +165,18 @@ export function DebtForm({
   const [firstShareAmount, setFirstShareAmount] = useState("");
   const [secondEditorId, setSecondEditorId] = useState("");
   const [secondShareAmount, setSecondShareAmount] = useState("");
+
+  function splitSharesEvenly() {
+    const totalCents = parseMoneyCents(totalAmount);
+
+    if (!totalCents || !secondEditorId) {
+      return;
+    }
+
+    const firstCents = Math.ceil(totalCents / 2);
+    setFirstShareAmount(formatCents(firstCents));
+    setSecondShareAmount(formatCents(totalCents - firstCents));
+  }
 
   function updatePaidSuggestion(
     dueDate: string,
@@ -438,7 +465,21 @@ export function DebtForm({
               required={Boolean(secondEditorId)}
             />
           </label>
+          <div className="field">
+            <span>Divisão rápida</span>
+            <button
+              className="secondary-button"
+              disabled={!secondEditorId || !totalAmount}
+              onClick={splitSharesEvenly}
+              type="button"
+            >
+              50/50
+            </button>
+          </div>
         </div>
+        <p className="fixed-expense-paid-note">
+          Prévia: {installmentCount} parcela{installmentCount === 1 ? "" : "s"} · primeiro vencimento em {firstDueDate}.
+        </p>
       </fieldset>
 
       <div className="form-section-title field-wide">

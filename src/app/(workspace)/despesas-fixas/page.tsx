@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { dateInputInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
+import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import {
   archiveFixedExpenseAction,
   payFixedExpenseAction,
@@ -19,27 +19,14 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
 });
 
-function normalizeMonth(value: string | undefined, fallbackMonth: string): string {
-  return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
-    ? value
-    : fallbackMonth;
-}
 
-export default async function FixedExpensesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string }>;
-}) {
+export default async function FixedExpensesPage() {
   const access = await requireCurrentAccess();
-  const filters = await searchParams;
   const now = new Date();
   const todayInput = dateInputInTimeZone(now, access.workspaceTimezone);
-  const monthInput = normalizeMonth(
-    filters.month,
-    monthInputInTimeZone(now, access.workspaceTimezone),
-  );
+  const monthInput = todayInput.slice(0, 7);
   const month = new Date(`${monthInput}-01T00:00:00.000Z`);
-  const overview = await getFixedExpenseOverview(access.workspaceId, month);
+  const overview = await getFixedExpenseOverview(access.workspaceId, month, now);
 
   return (
     <>
@@ -47,18 +34,9 @@ export default async function FixedExpensesPage({
         <div>
           <p className="eyebrow">Recorrência mensal</p>
           <h1>Despesas fixas</h1>
-          <p>Gerencie despesas recorrentes e acompanhe os pagamentos.</p>
+          <p>Gerencie despesas recorrentes e acompanhe os pagamentos do mês atual.</p>
         </div>
         <div className="page-actions fixed-expense-page-actions">
-          <form className="month-picker" method="get">
-            <label>
-              <span>Mês</span>
-              <input name="month" type="month" defaultValue={monthInput} />
-            </label>
-            <button className="secondary-button" type="submit">
-              Exibir
-            </button>
-          </form>
           <Link className="primary-button" href="/despesas-fixas/nova">
             <Icon name="add" />
             Nova despesa fixa

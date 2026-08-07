@@ -14,6 +14,7 @@ enum AccountType {
   SAVINGS
   CASH
   DIGITAL
+  INVESTMENT
   OTHER
 }
 
@@ -87,6 +88,7 @@ model Editor {
   debtShares  DebtInstallmentShare[]
   fixedExpenses FixedExpense[]
   salaries    Salary[]
+  ownedAccounts FinancialAccount[] @relation("AccountOwner")
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
@@ -121,6 +123,7 @@ model AccessSession {
 model FinancialAccount {
   id             String      @id @default(uuid()) @db.Uuid
   workspaceId    String      @db.Uuid
+  ownerEditorId  String?     @db.Uuid
   name           String      @db.VarChar(100)
   type           AccountType
   initialBalance Decimal     @default(0) @db.Decimal(19, 2)
@@ -130,6 +133,7 @@ model FinancialAccount {
   createdAt      DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerEditor    Editor?     @relation("AccountOwner", fields: [ownerEditorId], references: [id], onDelete: SetNull)
   transactions   Transaction[]
   fixedExpenses  FixedExpense[]
   salaries       Salary[]
@@ -138,6 +142,8 @@ model FinancialAccount {
 
   @@unique([workspaceId, name])
   @@index([workspaceId, active])
+  @@index([workspaceId, ownerEditorId])
+  @@index([workspaceId, type])
 }
 
 model Category {

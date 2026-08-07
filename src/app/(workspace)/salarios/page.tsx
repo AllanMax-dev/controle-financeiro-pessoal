@@ -66,6 +66,32 @@ export default async function SalariesPage() {
         </div>
       </section>
 
+      {overview.editorGroups.length > 0 ? (
+        <section className="fixed-expense-person-groups" aria-label="Salários por pessoa">
+          {overview.editorGroups.map((group) => (
+            <section className="fixed-expense-person-section" key={group.editor.id}>
+              <header className="fixed-expense-person-heading">
+                <div>
+                  <p className="eyebrow">Responsável pela renda</p>
+                  <h2>{group.editor.displayName}</h2>
+                </div>
+                <div className="fixed-expense-person-totals" aria-label={`Resumo de ${group.editor.displayName}`}>
+                  <span>
+                    Previsto <strong>{formatCurrency(group.expected)}</strong>
+                  </span>
+                  <span>
+                    Recebido <strong>{formatCurrency(group.received)}</strong>
+                  </span>
+                  <span>
+                    A receber <strong>{formatCurrency(group.pending)}</strong>
+                  </span>
+                </div>
+              </header>
+            </section>
+          ))}
+        </section>
+      ) : null}
+
       {overview.items.length === 0 ? (
         <EmptyState
           action={{ href: "/salarios/novo", label: "Cadastrar salário" }}

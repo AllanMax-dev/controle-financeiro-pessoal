@@ -420,39 +420,22 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
         canceledAt: null,
         version: parsed.data.version,
       },
-      select: { description: true },
+      select: {
+        description: true,
+        installments: { select: { status: true, transactionId: true } },
+      },
     });
 
     if (!debt) {
       return;
     }
 
-    const result = await transaction.debt.updateMany({
-      where: {
-        id: parsed.data.id,
-        workspaceId: access.workspaceId,
-        canceledAt: null,
-        version: parsed.data.version,
-      },
-      data: { canceledAt: new Date(), version: { increment: 1 } },
-    });
-
-    if (result.count !== 1) {
-      return;
-    }
-
-    const linkedTransactions = await transaction.debtInstallment.findMany({
-      where: { debtId: parsed.data.id, transactionId: { not: null } },
-      select: { transactionId: true },
-    });
-    const transactionIds = linkedTransactions.flatMap(({ transactionId }) =>
-      transactionId ? [transactionId] : [],
+    const hasFinancialHistory = debt.installments.some(
+      ({ status, transactionId }) => status !== "PENDING" || Boolean(transactionId),
     );
 
-    if (transactionIds.length > 0) {
-      await transaction.transaction.deleteMany({
-        where: { id: { in: transactionIds }, workspaceId: access.workspaceId },
-      });
+    if (hasFinancialHistory) {
+      return;
     }
 
     await transaction.debt.delete({ where: { id: parsed.data.id } });
@@ -463,7 +446,7 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
         action: "debt.deleted",
         entityType: "Debt",
         entityId: parsed.data.id,
-        metadata: { description: debt.description, removedTransactions: transactionIds.length },
+        metadata: { description: debt.description, removedInstallments: debt.installments.length },
       },
     });
   });

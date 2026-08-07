@@ -19,15 +19,32 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
   // Sincroniza antes das consultas paralelas para que todos os indicadores usem a mesma base.
   const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate);
-  const [{ accounts, totalBalance }, transactions, recentTransactions, budgets, salaries] = await Promise.all([
+  const [
+    {
+      accounts,
+      availableBalance,
+      investmentBalance,
+      ownerGroups,
+      totalBalance,
+    },
+    transactions,
+    recentTransactions,
+    budgets,
+    salaries,
+    manualPendingExpenses,
+    manualPendingIncome,
+  ] = await Promise.all([
     getAccountBalances(workspaceId, false),
     database.transaction.findMany({
       where: { workspaceId, competenceDate: { gte: firstMonth.start, lt: currentMonth.end } },
       select: {
+        account: { select: { type: true } },
         accountId: true,
         amount: true,
         category: { select: { color: true, id: true, name: true } },
         competenceDate: true,
+        fixedExpenseId: true,
+        salaryId: true,
         status: true,
         type: true,
       },
@@ -46,36 +63,74 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
       },
     }),
     getSalaryOverview(workspaceId, referenceDate),
+    database.transaction.findMany({
+      where: {
+        competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
+        account: { type: { not: "INVESTMENT" } },
+        fixedExpenseId: null,
+        status: "PENDING",
+        type: "EXPENSE",
+        workspaceId,
+      },
+      include: { account: true, category: true },
+      orderBy: [{ dueDate: "asc" }, { competenceDate: "asc" }, { createdAt: "asc" }],
+      take: 6,
+    }),
+    database.transaction.findMany({
+      where: {
+        competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
+        account: { type: { not: "INVESTMENT" } },
+        salaryId: null,
+        status: "PENDING",
+        type: "INCOME",
+        workspaceId,
+      },
+      include: { account: true, category: true },
+      orderBy: [{ dueDate: "asc" }, { competenceDate: "asc" }, { createdAt: "asc" }],
+      take: 6,
+    }),
   ]);
   const periodTransactions = transactions.filter(
     ({ competenceDate }) =>
       competenceDate >= currentMonth.start && competenceDate < currentMonth.end,
   );
+  const operationalPeriodTransactions = periodTransactions.filter(
+    ({ account }) => account.type !== "INVESTMENT",
+  );
 
-  const periodResult = calculatePeriodResult(periodTransactions);
+  const periodResult = calculatePeriodResult(operationalPeriodTransactions);
   const pendingTransactionIncome = sumMoney(
-    periodTransactions
+    operationalPeriodTransactions
       .filter(({ status, type }) => status === "PENDING" && type === "INCOME")
       .map(({ amount }) => amount),
   );
   const pendingIncome = money(pendingTransactionIncome.plus(salaries.pending));
   const pendingTransactionExpense = sumMoney(
-    periodTransactions
-      .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
+    operationalPeriodTransactions
+      .filter(
+        ({ fixedExpenseId, status, type }) =>
+          status === "PENDING" && type === "EXPENSE" && !fixedExpenseId,
+      )
       .map(({ amount }) => amount),
   );
   const pendingExpense = money(pendingTransactionExpense.plus(fixedExpenses.pending));
 
   return {
     accounts,
+    accountOwnerGroups: ownerGroups,
+    availableBalance,
     budgetComparison: buildBudgetComparison(budgets, periodTransactions),
     expenseByCategory: buildExpenseDistribution(periodTransactions),
+    financialNetWorth: totalBalance,
     fixedExpenses,
+    investmentBalance,
+    manualPendingExpenses,
+    manualPendingIncome,
     monthlyEvolution: buildMonthlyEvolution(transactions, monthBuckets),
     pendingExpense,
     pendingIncome,
     periodResult,
-    projectedBalance: calculateProjectedBalance(totalBalance, pendingIncome, pendingExpense),
+    projectedBalance: calculateProjectedBalance(availableBalance, pendingIncome, pendingExpense),
     recentTransactions,
     salaries,
     totalBalance,

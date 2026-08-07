@@ -20,18 +20,78 @@ export default async function DashboardPage() {
     getDashboardSummary(access.workspaceId, today),
     getDebtOverview(access.workspaceId, today),
   ]);
-  const pendingFixedExpenses = summary.fixedExpenses.items
-    .filter(({ paid }) => !paid)
-    .slice(0, 3);
-  const pendingSalaryInstallments = summary.salaries.items
-    .flatMap((salary) => salary.installments.map((installment) => ({ installment, salary })))
-    .filter(({ installment }) => !installment.received)
-    .slice(0, 3);
-  const upcomingDebtInstallments = debtOverview.debts
-    .flatMap((debt) => debt.canceledAt || !debt.nextInstallment
-      ? []
-      : [{ debt, installment: debt.nextInstallment }])
-    .slice(0, 3);
+  const remainingCommitments = summary.pendingExpense.plus(debtOverview.pendingThisMonth);
+  const projectedAvailable = summary.projectedBalance.minus(debtOverview.pendingThisMonth);
+  const upcomingPayments = [
+    ...summary.fixedExpenses.items
+      .filter(({ paid }) => !paid)
+      .map((fixedExpense) => ({
+        amount: fixedExpense.amount,
+        detail: `${fixedExpense.editor.displayName} · ${formatDate(fixedExpense.dueDate)}`,
+        dueDate: fixedExpense.dueDate,
+        href: "/despesas-fixas",
+        key: `fixed-${fixedExpense.id}`,
+        overdue: fixedExpense.overdue,
+        title: fixedExpense.description,
+      })),
+    ...debtOverview.debts.flatMap((debt) =>
+      debt.monthInstallments
+        .filter(({ status }) => status === "PENDING")
+        .map((installment) => ({
+          amount: installment.amount,
+          detail: `Parcela ${installment.number}/${debt.installmentCount} · ${formatDate(installment.dueDate)}`,
+          dueDate: installment.dueDate,
+          href: "/dividas",
+          key: `debt-${installment.id}`,
+          overdue: installment.dueDate < today,
+          title: debt.description,
+        })),
+    ),
+    ...summary.manualPendingExpenses.map((transaction) => {
+      const dueDate = transaction.dueDate ?? transaction.competenceDate;
+
+      return {
+        amount: transaction.amount,
+        detail: `${transaction.account.name} · ${formatDate(dueDate)}`,
+        dueDate,
+        href: `/lancamentos/${transaction.id}/editar`,
+        key: `manual-expense-${transaction.id}`,
+        overdue: dueDate < today,
+        title: transaction.description,
+      };
+    }),
+  ].sort((first, second) => first.dueDate.getTime() - second.dueDate.getTime()).slice(0, 5);
+  const budgetSpentPercent = summary.budgetComparison.totalPlanned.isPositive()
+    ? summary.budgetComparison.totalRealized.div(summary.budgetComparison.totalPlanned).mul(100)
+    : null;
+  const upcomingReceipts = [
+    ...summary.salaries.items.flatMap((salary) =>
+      salary.installments
+        .filter(({ received }) => !received)
+        .map((installment) => ({
+          amount: installment.amount,
+          detail: `${salary.editor.displayName} · ${formatDate(installment.dueDate)}`,
+          dueDate: installment.dueDate,
+          href: "/salarios",
+          key: `salary-${salary.id}-${installment.installment}`,
+          overdue: installment.overdue,
+          title: salary.description,
+        })),
+    ),
+    ...summary.manualPendingIncome.map((transaction) => {
+      const dueDate = transaction.dueDate ?? transaction.competenceDate;
+
+      return {
+        amount: transaction.amount,
+        detail: `${transaction.account.name} · ${formatDate(dueDate)}`,
+        dueDate,
+        href: `/lancamentos/${transaction.id}/editar`,
+        key: `manual-income-${transaction.id}`,
+        overdue: dueDate < today,
+        title: transaction.description,
+      };
+    }),
+  ].sort((first, second) => first.dueDate.getTime() - second.dueDate.getTime()).slice(0, 5);
 
   return (
     <>
@@ -60,17 +120,37 @@ export default async function DashboardPage() {
               <Icon name="account" />
             </span>
             <div>
-              <span>Saldo consolidado</span>
-              <small>{summary.accounts.filter(({ active }) => active).length} contas ativas</small>
+              <span>Dinheiro disponível</span>
+              <small>{summary.accounts.filter(({ active, type }) => active && type !== "INVESTMENT").length} contas operacionais</small>
             </div>
           </div>
-          <strong className="dashboard-primary-value">{formatCurrency(summary.totalBalance)}</strong>
+          <strong className="dashboard-primary-value">{formatCurrency(summary.availableBalance)}</strong>
           <div className="dashboard-projected-row">
             <div>
-              <span>Saldo projetado</span>
+              <span>Disponível projetado</span>
               <small>Após receber e pagar pendências</small>
             </div>
-            <strong>{formatCurrency(summary.projectedBalance)}</strong>
+            <strong>{formatCurrency(projectedAvailable)}</strong>
+          </div>
+        </article>
+
+        <article className="metric-card dashboard-overview-card">
+          <div className="dashboard-overview-heading">
+            <span className="metric-icon metric-icon-income" aria-hidden="true">
+              <Icon name="account" />
+            </span>
+            <div>
+              <span>Investimentos</span>
+              <small>Separados do dinheiro disponível</small>
+            </div>
+          </div>
+          <strong className="dashboard-primary-value">{formatCurrency(summary.investmentBalance)}</strong>
+          <div className="dashboard-projected-row">
+            <div>
+              <span>Patrimônio financeiro</span>
+              <small>Disponível + investimentos</small>
+            </div>
+            <strong>{formatCurrency(summary.financialNetWorth)}</strong>
           </div>
         </article>
 
@@ -109,15 +189,15 @@ export default async function DashboardPage() {
               <Icon name="calendar" />
             </span>
             <div>
-              <span>Valores pendentes</span>
-              <small>O que ainda entra e sai</small>
+              <span>Compromissos restantes</span>
+              <small>Pagamentos do mês e entradas previstas</small>
             </div>
           </div>
           <div className="dashboard-pending-values">
             <div>
               <span>A pagar</span>
-              <strong className={summary.pendingExpense.isPositive() ? "value-expense" : ""}>
-                {formatCurrency(summary.pendingExpense)}
+              <strong className={remainingCommitments.isPositive() ? "value-expense" : ""}>
+                {formatCurrency(remainingCommitments)}
               </strong>
             </div>
             <div>
@@ -137,22 +217,22 @@ export default async function DashboardPage() {
               <p className="eyebrow">A pagar</p>
               <h2>Próximos pagamentos</h2>
             </div>
-            <Link className="text-button" href="/despesas-fixas">
-              Ver pagamentos
+            <Link className="text-button" href="/lancamentos">
+              Ver lançamentos
             </Link>
           </div>
-          {pendingFixedExpenses.length === 0 ? (
-            <div className="compact-empty">Nenhuma despesa fixa pendente no período.</div>
+          {upcomingPayments.length === 0 ? (
+            <div className="compact-empty">Nenhum pagamento pendente no período.</div>
           ) : (
             <ul className="fixed-expense-dashboard-list">
-              {pendingFixedExpenses.map((fixedExpense) => (
-                <li key={fixedExpense.id}>
+              {upcomingPayments.map((payment) => (
+                <li key={payment.key}>
                   <span>
-                    <strong>{fixedExpense.description}</strong>
-                    <small>{fixedExpense.editor.displayName} · {formatDate(fixedExpense.dueDate)}</small>
+                    <strong>{payment.title}</strong>
+                    <small>{payment.detail}</small>
                   </span>
-                  <strong className={fixedExpense.overdue ? "value-expense" : ""}>
-                    {formatCurrency(fixedExpense.amount)}
+                  <strong className={payment.overdue ? "value-expense" : ""}>
+                    {formatCurrency(payment.amount)}
                   </strong>
                 </li>
               ))}
@@ -170,44 +250,19 @@ export default async function DashboardPage() {
               Ver salários
             </Link>
           </div>
-          {pendingSalaryInstallments.length === 0 ? (
+          {upcomingReceipts.length === 0 ? (
             <div className="compact-empty">Nenhum recebimento pendente no período.</div>
           ) : (
             <ul className="fixed-expense-dashboard-list">
-              {pendingSalaryInstallments.map(({ installment, salary }) => (
-                <li key={`${salary.id}-${installment.installment}`}>
+              {upcomingReceipts.map((receipt) => (
+                <li key={receipt.key}>
                   <span>
-                    <strong>{salary.description}</strong>
-                    <small>{salary.editor.displayName} · {formatDate(installment.dueDate)}</small>
+                    <strong>{receipt.title}</strong>
+                    <small>{receipt.detail}</small>
                   </span>
-                  <strong>{formatCurrency(installment.amount)}</strong>
-                </li>
-              ))}
-            </ul>
-          )}
-        </article>
-
-        <article className="panel-card dashboard-action-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Parcelas</p>
-              <h2>Próximas dívidas</h2>
-            </div>
-            <Link className="text-button" href="/dividas">
-              Ver dívidas
-            </Link>
-          </div>
-          {upcomingDebtInstallments.length === 0 ? (
-            <div className="compact-empty">Nenhuma parcela pendente para acompanhar.</div>
-          ) : (
-            <ul className="fixed-expense-dashboard-list">
-              {upcomingDebtInstallments.map(({ debt, installment }) => (
-                <li key={installment.id}>
-                  <span>
-                    <strong>{debt.description}</strong>
-                    <small>Parcela {installment.number}/{debt.installmentCount} · {formatDate(installment.dueDate)}</small>
-                  </span>
-                  <strong>{formatCurrency(installment.amount)}</strong>
+                  <strong className={receipt.overdue ? "value-expense" : "value-income"}>
+                    {formatCurrency(receipt.amount)}
+                  </strong>
                 </li>
               ))}
             </ul>
@@ -253,6 +308,11 @@ export default async function DashboardPage() {
               </strong>
             </div>
           </div>
+          {budgetSpentPercent ? (
+            <p className="fixed-expense-paid-note">
+              {budgetSpentPercent.toDecimalPlaces(1).toFixed(1)}% do orçamento planejado já foi gasto.
+            </p>
+          ) : null}
           <BudgetComparisonChart data={summary.budgetComparison.categories} />
         </article>
       </section>
@@ -287,7 +347,7 @@ export default async function DashboardPage() {
             />
           ) : (
             <ul className="account-summary-list">
-              {summary.accounts.slice(0, 6).map((account) => (
+              {summary.accounts.filter(({ active }) => active).slice(0, 6).map((account) => (
                 <li key={account.id}>
                   <span className="legend-dot" style={{ backgroundColor: account.color ?? "#256b4b" }} />
                   <span>{account.name}</span>

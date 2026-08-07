@@ -6,7 +6,7 @@ import {
 } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
 
 /**
- * Materializa as ocorrências já vencidas das despesas fixas.
+ * Materializa os compromissos pendentes já vencidos das despesas fixas.
  *
  * A restrição única (fixedExpenseId, recurrenceMonth) torna a operação
  * idempotente e segura quando duas páginas tentam sincronizar ao mesmo tempo.
@@ -70,7 +70,7 @@ export async function synchronizeDueFixedExpenses(
       )
       .map(({ dueDate, month }) => ({
         accountId: fixedExpense.accountId,
-        affectsBalance: true,
+        affectsBalance: false,
         amount: fixedExpense.amount,
         categoryId: fixedExpense.categoryId,
         competenceDate: dueDate,
@@ -79,8 +79,8 @@ export async function synchronizeDueFixedExpenses(
         fixedExpenseId: fixedExpense.id,
         notes: fixedExpense.notes,
         recurrenceMonth: month,
-        settledAt: dueDate,
-        status: "SETTLED" as const,
+        settledAt: null,
+        status: "PENDING" as const,
         type: "EXPENSE" as const,
         workspaceId,
       })),
