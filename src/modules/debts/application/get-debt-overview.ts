@@ -18,7 +18,11 @@ function currentMonthInterval(referenceDate: Date) {
   return { end, start, today };
 }
 
-export async function getDebtOverview(workspaceId: string, referenceDate = new Date()) {
+export async function getDebtOverview(
+  workspaceId: string,
+  referenceDate = new Date(),
+  contextId?: string,
+) {
   const database = getDatabase();
   const { end, start, today } = currentMonthInterval(referenceDate);
   const [editors, debts] = await Promise.all([
@@ -28,7 +32,7 @@ export async function getDebtOverview(workspaceId: string, referenceDate = new D
       orderBy: { createdAt: "asc" },
     }),
     database.debt.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(contextId ? { contextId } : {}) },
       include: {
         category: true,
         installments: {

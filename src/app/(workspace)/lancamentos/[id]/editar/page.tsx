@@ -4,15 +4,18 @@ import { TransactionForm } from "@/components/transaction-form";
 import { getDatabase } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 import { updateTransactionAction } from "@/modules/transactions/application/transaction-actions";
 
 export default async function EditTransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id } = await params;
   const database = getDatabase();
   const transaction = await database.transaction.findFirst({
     where: {
       id,
+      contextId: { in: accessibleContextIds },
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
@@ -27,6 +30,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
     database.financialAccount.findMany({
       where: {
         workspaceId: access.workspaceId,
+        contextId: transaction.contextId,
         OR: [{ active: true, type: { not: "INVESTMENT" } }, { id: transaction.accountId }],
       },
       select: { id: true, name: true },
@@ -35,6 +39,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
     database.category.findMany({
       where: {
         workspaceId: access.workspaceId,
+        contextId: transaction.contextId,
         OR: [{ active: true }, ...(transaction.categoryId ? [{ id: transaction.categoryId }] : [])],
       },
       select: { id: true, kind: true, name: true },
@@ -66,6 +71,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
           amount: transaction.amount.toFixed(2).replace(".", ","),
           categoryId: transaction.categoryId ?? "",
           competenceDate: toDateInputValue(transaction.competenceDate),
+          contextId: transaction.contextId,
           description: transaction.description,
           dueDate: transaction.dueDate ? toDateInputValue(transaction.dueDate) : "",
           id: transaction.id,

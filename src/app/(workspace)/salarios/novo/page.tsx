@@ -3,20 +3,44 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getSalaryPrerequisiteState } from "@/modules/salaries/domain/salary-prerequisites";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { createSalaryAction } from "@/modules/salaries/application/salary-actions";
 import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 
-export default async function NewSalaryPage() {
+export default async function NewSalaryPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
+      where: {
+        contextId: contextState.current.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { workspaceId: access.workspaceId, active: true, kind: "INCOME" },
+      where: {
+        contextId: contextState.current.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        kind: "INCOME",
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -43,22 +67,22 @@ export default async function NewSalaryPage() {
 
       {prerequisiteState === "missing-account-and-income-category" ? (
         <EmptyState
-          action={{ href: "/contas/nova", label: "Criar conta" }}
+          action={{ href: contextHref("/contas/nova", contextState.current.id), label: "Criar conta" }}
           description="Cadastre uma conta ativa e uma categoria de receita antes de continuar."
           icon="income"
-          secondaryAction={{ href: "/categorias/nova", label: "Criar categoria" }}
+          secondaryAction={{ href: contextHref("/categorias/nova", contextState.current.id), label: "Criar categoria" }}
           title="Conta e categoria necessárias"
         />
       ) : prerequisiteState === "missing-account" ? (
         <EmptyState
-          action={{ href: "/contas/nova", label: "Criar conta" }}
+          action={{ href: contextHref("/contas/nova", contextState.current.id), label: "Criar conta" }}
           description="Cadastre ou reative uma conta antes de cadastrar um salário."
           icon="account"
           title="Conta ativa necessária"
         />
       ) : prerequisiteState === "missing-income-category" ? (
         <EmptyState
-          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          action={{ href: contextHref("/categorias/nova", contextState.current.id), label: "Criar categoria" }}
           description="Cadastre uma categoria de receita ativa antes de cadastrar um salário."
           icon="category"
           title="Categoria de receita necessária"
@@ -68,6 +92,7 @@ export default async function NewSalaryPage() {
           accounts={accounts}
           action={createSalaryAction}
           categories={categories}
+          contextId={contextState.current.id}
           currentMonth={monthInputInTimeZone(new Date(), access.workspaceTimezone)}
           currentEditorId={access.editorId}
           editors={editors}

@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  assertFinancialContextAccess,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { fixedExpenseDueDate } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -27,6 +31,7 @@ const fixedExpenseSchema = z.object({
   accountId: identifierSchema,
   amount: positiveMoneyInputSchema,
   categoryId: identifierSchema,
+  contextId: identifierSchema,
   description: z.string().trim().min(2, "Informe uma descrição.").max(160),
   dueDay: z.coerce.number().int().min(1, "Informe um dia entre 1 e 31.").max(31),
   editorId: identifierSchema,
@@ -53,6 +58,7 @@ function fixedExpenseInput(formData: FormData) {
     accountId: formData.get("accountId"),
     amount: formData.get("amount"),
     categoryId: formData.get("categoryId"),
+    contextId: formData.get("contextId"),
     description: formData.get("description"),
     dueDay: formData.get("dueDay"),
     editorId: formData.get("editorId"),
@@ -63,6 +69,7 @@ function fixedExpenseInput(formData: FormData) {
 
 function revalidateFixedExpensePaths() {
   revalidatePath("/despesas-fixas");
+  revalidatePath("/gastos-fixos");
   revalidatePath("/painel");
   revalidatePath("/contas");
   revalidatePath("/lancamentos");
@@ -80,11 +87,18 @@ export async function createFixedExpenseAction(
   }
 
   const access = await requireCurrentAccess();
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+
+  if (financialContext.type === "PERSONAL" && parsed.data.editorId !== financialContext.ownerEditorId) {
+    return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
+  }
+
   const database = getDatabase();
   const [account, category, editor] = await Promise.all([
     database.financialAccount.findFirst({
       where: {
         id: parsed.data.accountId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -94,6 +108,7 @@ export async function createFixedExpenseAction(
     database.category.findFirst({
       where: {
         id: parsed.data.categoryId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
         active: true,
@@ -149,15 +164,22 @@ export async function updateFixedExpenseAction(
   }
 
   const access = await requireCurrentAccess();
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+
+  if (financialContext.type === "PERSONAL" && parsed.data.editorId !== financialContext.ownerEditorId) {
+    return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
+  }
+
   const database = getDatabase();
   const current = await database.fixedExpense.findFirst({
     where: {
       active: true,
+      contextId: parsed.data.contextId,
       id: parsed.data.id,
       version: parsed.data.version,
       workspaceId: access.workspaceId,
     },
-    select: { accountId: true, categoryId: true, editorId: true },
+    select: { accountId: true, categoryId: true, contextId: true, editorId: true },
   });
 
   if (!current) {
@@ -168,6 +190,7 @@ export async function updateFixedExpenseAction(
     database.financialAccount.findFirst({
       where: {
         id: parsed.data.accountId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         OR: [
           { active: true, type: { not: "INVESTMENT" } },
@@ -179,6 +202,7 @@ export async function updateFixedExpenseAction(
     database.category.findFirst({
       where: {
         id: parsed.data.categoryId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
         OR: [{ active: true }, { id: current.categoryId }],
@@ -203,11 +227,12 @@ export async function updateFixedExpenseAction(
 
   try {
     // Preserva os meses já vencidos com os dados históricos anteriores à edição.
-    await synchronizeDueFixedExpenses(access.workspaceId);
+    await synchronizeDueFixedExpenses(access.workspaceId, new Date(), parsed.data.contextId);
     const updated = await database.$transaction(async (transaction) => {
       const result = await transaction.fixedExpense.updateMany({
         where: {
           active: true,
+          contextId: parsed.data.contextId,
           id,
           version,
           workspaceId: access.workspaceId,
@@ -222,6 +247,7 @@ export async function updateFixedExpenseAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: data.contextId,
           actorEditorId: access.editorId,
           action: "fixed_expense.updated",
           entityType: "FixedExpense",
@@ -238,7 +264,7 @@ export async function updateFixedExpenseAction(
     }
 
     // Se o novo vencimento já passou, a ocorrência atual é registrada imediatamente.
-    await synchronizeDueFixedExpenses(access.workspaceId);
+    await synchronizeDueFixedExpenses(access.workspaceId, new Date(), parsed.data.contextId);
   } catch {
     return { error: "Não foi possível salvar a despesa fixa. Tente novamente." };
   }
@@ -263,12 +289,14 @@ export async function payFixedExpenseAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   try {
     const paid = await database.$transaction(async (transaction) => {
       const fixedExpense = await transaction.fixedExpense.findFirst({
         where: {
+          contextId: { in: accessibleContextIds },
           id: parsed.data.id,
           workspaceId: access.workspaceId,
           active: true,
@@ -296,6 +324,7 @@ export async function payFixedExpenseAction(
         amount: parsed.data.amount,
         categoryId: fixedExpense.categoryId,
         competenceDate: dueDate,
+        contextId: fixedExpense.contextId,
         description: fixedExpense.description,
         dueDate,
         fixedExpenseId: fixedExpense.id,
@@ -324,6 +353,7 @@ export async function payFixedExpenseAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: fixedExpense.contextId,
           actorEditorId: access.editorId,
           action: "fixed_expense.paid",
           entityType: "FixedExpense",
@@ -356,12 +386,14 @@ export async function archiveFixedExpenseAction(formData: FormData): Promise<voi
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   await synchronizeDueFixedExpenses(access.workspaceId);
   await database.$transaction(async (transaction) => {
     const result = await transaction.fixedExpense.updateMany({
       where: {
+        contextId: { in: accessibleContextIds },
         id: parsed.data.id,
         workspaceId: access.workspaceId,
         active: true,

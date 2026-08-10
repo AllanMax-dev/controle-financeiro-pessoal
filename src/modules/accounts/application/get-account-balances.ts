@@ -3,14 +3,18 @@ import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/applicatio
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculateAccountBalances } from "@/modules/transactions/domain/financial-summary";
 
-export async function getAccountBalances(workspaceId: string, synchronize = true) {
+export async function getAccountBalances(
+  workspaceId: string,
+  synchronize = true,
+  contextId?: string,
+) {
   const database = getDatabase();
   if (synchronize) {
-    await synchronizeDueFixedExpenses(workspaceId);
+    await synchronizeDueFixedExpenses(workspaceId, new Date(), contextId);
   }
   const [accounts, transactions, transfers, adjustments] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(contextId ? { contextId } : {}) },
       include: {
         _count: {
           select: {
@@ -22,16 +26,28 @@ export async function getAccountBalances(workspaceId: string, synchronize = true
             transactions: true,
           },
         },
+        financialContext: { select: { id: true, name: true, type: true } },
         ownerEditor: { select: { displayName: true, id: true } },
       },
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     database.transaction.findMany({
-      where: { workspaceId, status: "SETTLED", affectsBalance: true },
+      where: {
+        workspaceId,
+        ...(contextId ? { contextId } : {}),
+        status: "SETTLED",
+        affectsBalance: true,
+      },
       select: { accountId: true, affectsBalance: true, amount: true, status: true, type: true },
     }),
     database.transfer.findMany({
-      where: { workspaceId, status: "SETTLED" },
+      where: {
+        workspaceId,
+        status: "SETTLED",
+        ...(contextId
+          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
+          : {}),
+      },
       select: {
         amount: true,
         destinationAccountId: true,
@@ -40,7 +56,7 @@ export async function getAccountBalances(workspaceId: string, synchronize = true
       },
     }),
     database.accountBalanceAdjustment.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(contextId ? { contextId } : {}) },
       select: { accountId: true, difference: true },
       orderBy: { effectiveAt: "asc" },
     }),
@@ -71,13 +87,13 @@ export async function getAccountBalances(workspaceId: string, synchronize = true
   >();
 
   for (const account of activeAccounts) {
-    const key = account.ownerEditorId ?? "shared";
+    const key = account.contextId;
     const current = ownerGroups.get(key) ?? {
       accounts: [],
       availableBalance: money(0),
       investmentBalance: money(0),
       key,
-      label: account.ownerEditor?.displayName ?? "Casal / compartilhadas",
+      label: account.financialContext.name,
       totalBalance: money(0),
     };
 

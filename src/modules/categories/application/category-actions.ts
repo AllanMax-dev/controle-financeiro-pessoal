@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  assertFinancialContextAccess,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   colorSchema,
@@ -15,6 +19,7 @@ import {
 } from "@/modules/shared/application/form-schemas";
 
 const categorySchema = z.object({
+  contextId: identifierSchema,
   name: z.string().trim().min(2, "Informe um nome com pelo menos 2 caracteres.").max(100),
   kind: z.enum(["INCOME", "EXPENSE"]),
   color: colorSchema,
@@ -33,6 +38,7 @@ const toggleCategorySchema = z.object({
 
 function categoryInput(formData: FormData) {
   return {
+    contextId: formData.get("contextId"),
     name: formData.get("name"),
     kind: formData.get("kind"),
     color: formData.get("color"),
@@ -50,6 +56,7 @@ export async function createCategoryAction(
   }
 
   const access = await requireCurrentAccess();
+  await assertFinancialContextAccess(access, parsed.data.contextId);
   const database = getDatabase();
 
   try {
@@ -64,6 +71,7 @@ export async function createCategoryAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: parsed.data.contextId,
           actorEditorId: access.editorId,
           action: "category.created",
           entityType: "Category",
@@ -95,12 +103,14 @@ export async function updateCategoryAction(
   }
 
   const access = await requireCurrentAccess();
-  const { id, version, ...data } = parsed.data;
+  await assertFinancialContextAccess(access, parsed.data.contextId);
+  const { contextId, id, version, ...data } = parsed.data;
   const database = getDatabase();
   const current = await database.category.findFirst({
-    where: { id, workspaceId: access.workspaceId, version },
+    where: { contextId, id, workspaceId: access.workspaceId, version },
     select: {
       kind: true,
+      contextId: true,
       _count: {
         select: {
           budgets: true,
@@ -129,7 +139,7 @@ export async function updateCategoryAction(
   try {
     const updated = await database.$transaction(async (transaction) => {
       const result = await transaction.category.updateMany({
-        where: { id, workspaceId: access.workspaceId, version },
+        where: { contextId, id, workspaceId: access.workspaceId, version },
         data: { ...data, version: { increment: 1 } },
       });
 
@@ -140,6 +150,7 @@ export async function updateCategoryAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId,
           actorEditorId: access.editorId,
           action: "category.updated",
           entityType: "Category",
@@ -177,12 +188,13 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id, version, active } = parsed.data;
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
     const result = await transaction.category.updateMany({
-      where: { id, workspaceId: access.workspaceId, version },
+      where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId, version },
       data: { active, version: { increment: 1 } },
     });
 

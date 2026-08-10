@@ -16,6 +16,7 @@ export function BudgetForm({
   budgetId,
   categoryId,
   categoryName,
+  contextId,
   month,
   version,
 }: {
@@ -24,6 +25,7 @@ export function BudgetForm({
   budgetId?: string;
   categoryId: string;
   categoryName: string;
+  contextId: string;
   month: string;
   version?: number;
 }) {
@@ -34,6 +36,7 @@ export function BudgetForm({
       <input name="id" type="hidden" value={budgetId ?? ""} />
       <input name="version" type="hidden" value={version ?? ""} />
       <input name="categoryId" type="hidden" value={categoryId} />
+      <input name="contextId" type="hidden" value={contextId} />
       <input name="month" type="hidden" value={month} />
       <label className="budget-field">
         <span>Limite mensal</span>

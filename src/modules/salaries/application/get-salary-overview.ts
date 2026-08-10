@@ -6,7 +6,11 @@ import {
 } from "@/modules/salaries/domain/salary-schedule";
 import { money } from "@/modules/shared/domain/money";
 
-export async function getSalaryOverview(workspaceId: string, referenceDate = new Date()) {
+export async function getSalaryOverview(
+  workspaceId: string,
+  referenceDate = new Date(),
+  contextId?: string,
+) {
   const database = getDatabase();
   const month = monthStart(referenceDate);
   const today = new Date(
@@ -15,6 +19,7 @@ export async function getSalaryOverview(workspaceId: string, referenceDate = new
   const salaries = await database.salary.findMany({
     where: {
       workspaceId,
+      ...(contextId ? { contextId } : {}),
       OR: [
         { active: true, startMonth: { lte: month } },
         { transactions: { some: { salaryMonth: month } } },

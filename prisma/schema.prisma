@@ -55,6 +55,35 @@ enum SalaryFrequency {
   FORTNIGHTLY
 }
 
+enum FinancialContextType {
+  PERSONAL
+  COUPLE
+}
+
+enum CreditCardInvoiceStatus {
+  OPEN
+  CLOSED
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum CreditCardPurchaseInstallmentStatus {
+  OPEN
+  CANCELED
+}
+
+enum SavingsGoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum SavingsGoalMovementType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
 model Workspace {
   id           String             @id @default(uuid()) @db.Uuid
   slug         String             @unique @db.VarChar(80)
@@ -64,6 +93,7 @@ model Workspace {
   createdAt    DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime           @updatedAt @db.Timestamptz(3)
   editors      Editor[]
+  financialContexts FinancialContext[]
   accounts     FinancialAccount[]
   categories   Category[]
   transactions Transaction[]
@@ -74,6 +104,12 @@ model Workspace {
   salaries     Salary[]
   balanceAdjustments AccountBalanceAdjustment[]
   auditLogs    AuditLog[]
+  creditCards  CreditCard[]
+  creditCardInvoices CreditCardInvoice[]
+  creditCardPurchases CreditCardPurchase[]
+  creditCardPurchaseInstallments CreditCardPurchaseInstallment[]
+  savingsGoals SavingsGoal[]
+  savingsGoalMovements SavingsGoalMovement[]
 }
 
 model Editor {
@@ -91,9 +127,45 @@ model Editor {
   salaries    Salary[]
   ownedAccounts FinancialAccount[] @relation("AccountOwner")
   balanceAdjustments AccountBalanceAdjustment[]
+  financialContexts FinancialContext[] @relation("PersonalFinancialContextOwner")
+  savingsGoalMovements SavingsGoalMovement[]
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
+}
+
+model FinancialContext {
+  id          String               @id @default(uuid()) @db.Uuid
+  workspaceId String               @db.Uuid
+  ownerEditorId String?            @db.Uuid
+  type        FinancialContextType
+  name        String               @db.VarChar(80)
+  active      Boolean              @default(true)
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @db.Timestamptz(3)
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerEditor Editor?              @relation("PersonalFinancialContextOwner", fields: [ownerEditorId], references: [id], onDelete: Cascade)
+  accounts    FinancialAccount[]
+  categories  Category[]
+  transactions Transaction[]
+  sourceTransfers Transfer[]       @relation("TransferSourceContext")
+  destinationTransfers Transfer[]  @relation("TransferDestinationContext")
+  balanceAdjustments AccountBalanceAdjustment[]
+  budgets     Budget[]
+  fixedExpenses FixedExpense[]
+  salaries    Salary[]
+  debts       Debt[]
+  auditLogs   AuditLog[]
+  creditCards CreditCard[]
+  creditCardInvoices CreditCardInvoice[]
+  creditCardPurchases CreditCardPurchase[]
+  creditCardPurchaseInstallments CreditCardPurchaseInstallment[]
+  savingsGoals SavingsGoal[]
+  savingsGoalMovements SavingsGoalMovement[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, active, type])
+  @@index([workspaceId, ownerEditorId])
 }
 
 model AccessGrant {
@@ -125,6 +197,7 @@ model AccessSession {
 model FinancialAccount {
   id             String      @id @default(uuid()) @db.Uuid
   workspaceId    String      @db.Uuid
+  contextId      String      @db.Uuid
   ownerEditorId  String?     @db.Uuid
   name           String      @db.VarChar(100)
   type           AccountType
@@ -135,6 +208,7 @@ model FinancialAccount {
   createdAt      DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   ownerEditor    Editor?     @relation("AccountOwner", fields: [ownerEditorId], references: [id], onDelete: SetNull)
   transactions   Transaction[]
   fixedExpenses  FixedExpense[]
@@ -142,9 +216,13 @@ model FinancialAccount {
   outgoing       Transfer[]  @relation("TransferSource")
   incoming       Transfer[]  @relation("TransferDestination")
   balanceAdjustments AccountBalanceAdjustment[]
+  creditCardPayments CreditCard[] @relation("CreditCardPaymentAccount")
+  savingsGoals SavingsGoal[] @relation("SavingsGoalAccount")
+  savingsGoalMovements SavingsGoalMovement[] @relation("SavingsGoalMovementAccount")
 
-  @@unique([workspaceId, name])
+  @@unique([contextId, name])
   @@index([workspaceId, active])
+  @@index([workspaceId, contextId, active])
   @@index([workspaceId, ownerEditorId])
   @@index([workspaceId, type])
 }
@@ -152,6 +230,7 @@ model FinancialAccount {
 model Category {
   id           String       @id @default(uuid()) @db.Uuid
   workspaceId  String       @db.Uuid
+  contextId    String       @db.Uuid
   parentId     String?      @db.Uuid
   name         String       @db.VarChar(100)
   kind         CategoryKind
@@ -161,6 +240,7 @@ model Category {
   createdAt    DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   parent       Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children     Category[]   @relation("CategoryHierarchy")
   transactions Transaction[]
@@ -168,15 +248,18 @@ model Category {
   debts        Debt[]
   fixedExpenses FixedExpense[]
   salaries     Salary[]
+  creditCardPurchases CreditCardPurchase[]
 
-  @@unique([workspaceId, kind, name])
+  @@unique([contextId, kind, name])
   @@index([workspaceId, kind, active])
+  @@index([workspaceId, contextId, kind, active])
   @@index([parentId])
 }
 
 model Transaction {
   id             String            @id @default(uuid()) @db.Uuid
   workspaceId    String            @db.Uuid
+  contextId      String            @db.Uuid
   accountId      String            @db.Uuid
   categoryId     String?           @db.Uuid
   type           TransactionType
@@ -197,6 +280,7 @@ model Transaction {
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
   workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   account        FinancialAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category       Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   debtInstallment DebtInstallment?
@@ -205,6 +289,7 @@ model Transaction {
 
   @@unique([fixedExpenseId, recurrenceMonth])
   @@unique([salaryId, salaryMonth, salaryInstallment])
+  @@index([workspaceId, contextId, competenceDate])
   @@index([workspaceId, competenceDate])
   @@index([workspaceId, status, dueDate])
   @@index([accountId, competenceDate])
@@ -214,6 +299,8 @@ model Transaction {
 model Transfer {
   id                   String            @id @default(uuid()) @db.Uuid
   workspaceId          String            @db.Uuid
+  sourceContextId      String            @db.Uuid
+  destinationContextId String            @db.Uuid
   sourceAccountId      String            @db.Uuid
   destinationAccountId String            @db.Uuid
   status               TransactionStatus @default(SETTLED)
@@ -226,10 +313,14 @@ model Transfer {
   createdAt            DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
   workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceContext        FinancialContext  @relation("TransferSourceContext", fields: [sourceContextId], references: [id], onDelete: Restrict)
+  destinationContext   FinancialContext  @relation("TransferDestinationContext", fields: [destinationContextId], references: [id], onDelete: Restrict)
   sourceAccount        FinancialAccount  @relation("TransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
   destinationAccount   FinancialAccount  @relation("TransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, transferDate])
+  @@index([workspaceId, sourceContextId, transferDate])
+  @@index([workspaceId, destinationContextId, transferDate])
   @@index([sourceAccountId, transferDate])
   @@index([destinationAccountId, transferDate])
 }
@@ -237,6 +328,7 @@ model Transfer {
 model AccountBalanceAdjustment {
   id              String           @id @default(uuid()) @db.Uuid
   workspaceId     String           @db.Uuid
+  contextId       String           @db.Uuid
   accountId       String           @db.Uuid
   editorId        String           @db.Uuid
   previousBalance Decimal          @db.Decimal(19, 2)
@@ -246,10 +338,12 @@ model AccountBalanceAdjustment {
   notes           String?          @db.VarChar(1000)
   createdAt       DateTime         @default(now()) @db.Timestamptz(3)
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   account         FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   editor          Editor           @relation(fields: [editorId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, effectiveAt])
+  @@index([workspaceId, contextId, effectiveAt])
   @@index([accountId, effectiveAt])
   @@index([editorId])
 }
@@ -257,6 +351,7 @@ model AccountBalanceAdjustment {
 model Budget {
   id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @db.Uuid
+  contextId   String    @db.Uuid
   categoryId  String    @db.Uuid
   month       DateTime  @db.Date
   amount      Decimal   @db.Decimal(19, 2)
@@ -264,16 +359,19 @@ model Budget {
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  @@unique([workspaceId, categoryId, month])
+  @@unique([contextId, categoryId, month])
   @@index([workspaceId, month])
+  @@index([workspaceId, contextId, month])
   @@index([categoryId])
 }
 
 model FixedExpense {
   id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @db.Uuid
+  contextId   String    @db.Uuid
   accountId   String    @db.Uuid
   categoryId  String    @db.Uuid
   editorId    String    @db.Uuid
@@ -287,12 +385,14 @@ model FixedExpense {
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   account     FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   editor      Editor    @relation(fields: [editorId], references: [id], onDelete: Restrict)
   transactions Transaction[]
 
   @@index([workspaceId, active, startMonth])
+  @@index([workspaceId, contextId, active, startMonth])
   @@index([accountId])
   @@index([categoryId])
   @@index([editorId])
@@ -301,6 +401,7 @@ model FixedExpense {
 model Salary {
   id          String          @id @default(uuid()) @db.Uuid
   workspaceId String          @db.Uuid
+  contextId   String          @db.Uuid
   accountId   String          @db.Uuid
   categoryId  String          @db.Uuid
   editorId    String          @db.Uuid
@@ -315,12 +416,14 @@ model Salary {
   createdAt   DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
   account     FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category    Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   editor      Editor          @relation(fields: [editorId], references: [id], onDelete: Restrict)
   transactions Transaction[]
 
   @@index([workspaceId, active, startMonth])
+  @@index([workspaceId, contextId, active, startMonth])
   @@index([accountId])
   @@index([categoryId])
   @@index([editorId])
@@ -329,6 +432,7 @@ model Salary {
 model Debt {
   id               String            @id @default(uuid()) @db.Uuid
   workspaceId      String            @db.Uuid
+  contextId        String            @db.Uuid
   categoryId       String            @db.Uuid
   description      String            @db.VarChar(160)
   paymentMethod    DebtPaymentMethod
@@ -344,10 +448,12 @@ model Debt {
   createdAt        DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
   workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext  @relation(fields: [contextId], references: [id], onDelete: Restrict)
   category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   installments     DebtInstallment[]
 
   @@index([workspaceId, purchaseDate])
+  @@index([workspaceId, contextId, purchaseDate])
   @@index([workspaceId, canceledAt])
   @@index([categoryId])
 }
@@ -388,6 +494,7 @@ model DebtInstallmentShare {
 model AuditLog {
   id            String    @id @default(uuid()) @db.Uuid
   workspaceId   String    @db.Uuid
+  contextId     String?   @db.Uuid
   actorEditorId String?   @db.Uuid
   action        String    @db.VarChar(80)
   entityType    String    @db.VarChar(80)
@@ -395,8 +502,155 @@ model AuditLog {
   metadata      Json?
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext? @relation(fields: [contextId], references: [id], onDelete: SetNull)
   actor         Editor?   @relation(fields: [actorEditorId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, createdAt])
+  @@index([workspaceId, contextId, createdAt])
   @@index([entityType, entityId])
+}
+
+model CreditCard {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @db.Uuid
+  contextId        String    @db.Uuid
+  paymentAccountId String?   @db.Uuid
+  name             String    @db.VarChar(100)
+  institution      String?   @db.VarChar(100)
+  limit            Decimal   @db.Decimal(19, 2)
+  closingDay       Int
+  dueDay           Int
+  color            String?   @db.VarChar(7)
+  active           Boolean   @default(true)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  paymentAccount   FinancialAccount? @relation("CreditCardPaymentAccount", fields: [paymentAccountId], references: [id], onDelete: SetNull)
+  invoices         CreditCardInvoice[]
+  purchases        CreditCardPurchase[]
+
+  @@unique([contextId, name])
+  @@index([workspaceId, contextId, active])
+  @@index([paymentAccountId])
+}
+
+model CreditCardInvoice {
+  id               String                  @id @default(uuid()) @db.Uuid
+  workspaceId      String                  @db.Uuid
+  contextId        String                  @db.Uuid
+  creditCardId     String                  @db.Uuid
+  month            DateTime                @db.Date
+  status           CreditCardInvoiceStatus @default(OPEN)
+  closesAt         DateTime                @db.Date
+  dueDate          DateTime                @db.Date
+  amount           Decimal                 @default(0) @db.Decimal(19, 2)
+  paidAmount       Decimal                 @default(0) @db.Decimal(19, 2)
+  paidAt           DateTime?               @db.Timestamptz(3)
+  version          Int                     @default(1)
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                @updatedAt @db.Timestamptz(3)
+  workspace        Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext        @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  creditCard       CreditCard              @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  installments     CreditCardPurchaseInstallment[]
+
+  @@unique([creditCardId, month])
+  @@index([workspaceId, contextId, month])
+  @@index([creditCardId, status])
+}
+
+model CreditCardPurchase {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  contextId         String    @db.Uuid
+  creditCardId      String    @db.Uuid
+  categoryId        String?   @db.Uuid
+  description       String    @db.VarChar(160)
+  totalAmount       Decimal   @db.Decimal(19, 2)
+  installmentCount  Int       @default(1)
+  purchaseDate      DateTime  @db.Date
+  firstInvoiceMonth DateTime  @db.Date
+  notes             String?   @db.VarChar(1000)
+  canceledAt        DateTime? @db.Timestamptz(3)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext  FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  creditCard        CreditCard @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  category          Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  installments      CreditCardPurchaseInstallment[]
+
+  @@index([workspaceId, contextId, purchaseDate])
+  @@index([creditCardId, purchaseDate])
+  @@index([categoryId])
+}
+
+model CreditCardPurchaseInstallment {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @db.Uuid
+  contextId        String    @db.Uuid
+  purchaseId       String    @db.Uuid
+  invoiceId        String    @db.Uuid
+  number           Int
+  amount           Decimal   @db.Decimal(19, 2)
+  dueMonth         DateTime  @db.Date
+  status           CreditCardPurchaseInstallmentStatus @default(OPEN)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  purchase         CreditCardPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  invoice          CreditCardInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([purchaseId, number])
+  @@index([workspaceId, contextId, dueMonth])
+  @@index([invoiceId])
+}
+
+model SavingsGoal {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @db.Uuid
+  contextId        String    @db.Uuid
+  accountId        String?   @db.Uuid
+  name             String    @db.VarChar(100)
+  targetAmount     Decimal   @db.Decimal(19, 2)
+  deadline         DateTime? @db.Date
+  description      String?   @db.VarChar(1000)
+  status           SavingsGoalStatus @default(ACTIVE)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  account          FinancialAccount? @relation("SavingsGoalAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  movements        SavingsGoalMovement[]
+
+  @@unique([contextId, name])
+  @@index([workspaceId, contextId, status])
+  @@index([accountId])
+}
+
+model SavingsGoalMovement {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @db.Uuid
+  contextId        String    @db.Uuid
+  savingsGoalId    String    @db.Uuid
+  accountId        String?   @db.Uuid
+  editorId         String    @db.Uuid
+  type             SavingsGoalMovementType
+  amount           Decimal   @db.Decimal(19, 2)
+  movementDate     DateTime  @db.Date
+  notes            String?   @db.VarChar(1000)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext FinancialContext @relation(fields: [contextId], references: [id], onDelete: Restrict)
+  savingsGoal      SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete: Cascade)
+  account          FinancialAccount? @relation("SavingsGoalMovementAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  editor           Editor @relation(fields: [editorId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, contextId, movementDate])
+  @@index([savingsGoalId, movementDate])
+  @@index([accountId])
 }

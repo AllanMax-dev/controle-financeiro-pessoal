@@ -16,6 +16,7 @@ type TransactionFormDefaults = {
   amount: string;
   categoryId: string;
   competenceDate: string;
+  contextId: string;
   description: string;
   dueDate: string;
   id?: string;
@@ -50,6 +51,7 @@ export function TransactionForm({
     <form action={formAction} className="entity-form transaction-form">
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
+      <input name="contextId" type="hidden" value={defaults.contextId} />
       {lockedType ? <input name="type" type="hidden" value={type} /> : null}
 
       <div className="form-section-title field-wide">

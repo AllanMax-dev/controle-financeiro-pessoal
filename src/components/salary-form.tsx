@@ -15,6 +15,7 @@ export function SalaryForm({
   accounts,
   action,
   categories,
+  contextId,
   currentMonth,
   currentEditorId,
   editors,
@@ -22,6 +23,7 @@ export function SalaryForm({
   accounts: { id: string; name: string }[];
   action: SalaryFormAction;
   categories: { id: string; name: string }[];
+  contextId: string;
   currentMonth: string;
   currentEditorId: string;
   editors: { id: string; displayName: string }[];
@@ -30,6 +32,7 @@ export function SalaryForm({
   const [frequency, setFrequency] = useState<"MONTHLY" | "FORTNIGHTLY">("MONTHLY");
   return (
     <form action={formAction} className="entity-form fixed-expense-form">
+      <input name="contextId" type="hidden" value={contextId} />
       <div className="form-section-title field-wide">
         <h2>Dados do salário</h2>
         <p>Cadastre a renda recorrente de cada pessoa e a conta que receberá o valor.</p>

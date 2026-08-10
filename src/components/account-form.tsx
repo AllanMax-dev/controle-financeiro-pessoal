@@ -13,6 +13,7 @@ type AccountFormAction = (state: ActionState, formData: FormData) => Promise<Act
 
 type AccountFormDefaults = {
   color: string;
+  contextId: string;
   id?: string;
   initialBalance: string;
   name: string;
@@ -51,6 +52,7 @@ export function AccountForm({
     <form action={formAction} className="entity-form">
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
+      <input name="contextId" type="hidden" value={defaults.contextId} />
 
       <div className="form-section-title field-wide">
         <h2>Identificação da conta</h2>

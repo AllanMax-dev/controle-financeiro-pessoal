@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   dateInputSchema,
@@ -76,18 +77,28 @@ function transferInput(formData: FormData) {
 
 async function accountsAreValid(
   workspaceId: string,
+  accessibleContextIds: string[],
   accountIds: [string, string],
   requireActive: boolean,
 ) {
-  const count = await getDatabase().financialAccount.count({
+  const accounts = await getDatabase().financialAccount.findMany({
     where: {
+      contextId: { in: accessibleContextIds },
       workspaceId,
       id: { in: accountIds },
       ...(requireActive ? { active: true } : {}),
     },
+    select: { contextId: true, id: true },
   });
 
-  return count === 2;
+  if (accounts.length !== 2) {
+    return null;
+  }
+
+  const source = accounts.find(({ id }) => id === accountIds[0]);
+  const destination = accounts.find(({ id }) => id === accountIds[1]);
+
+  return source && destination ? { destination, source } : null;
 }
 
 type CurrentTransferAccounts = {
@@ -97,6 +108,7 @@ type CurrentTransferAccounts = {
 
 async function accountsAreValidForUpdate(
   workspaceId: string,
+  accessibleContextIds: string[],
   accountIds: [string, string],
   currentAccounts: CurrentTransferAccounts,
 ) {
@@ -105,22 +117,26 @@ async function accountsAreValidForUpdate(
     database.financialAccount.findFirst({
       where: {
         id: accountIds[0],
+        contextId: { in: accessibleContextIds },
         workspaceId,
         OR: [{ active: true }, { id: currentAccounts.sourceAccountId }],
       },
-      select: { id: true },
+      select: { contextId: true, id: true },
     }),
     database.financialAccount.findFirst({
       where: {
         id: accountIds[1],
+        contextId: { in: accessibleContextIds },
         workspaceId,
         OR: [{ active: true }, { id: currentAccounts.destinationAccountId }],
       },
-      select: { id: true },
+      select: { contextId: true, id: true },
     }),
   ]);
 
-  return Boolean(sourceAccount && destinationAccount);
+  return sourceAccount && destinationAccount
+    ? { destination: destinationAccount, source: sourceAccount }
+    : null;
 }
 
 export async function createTransferAction(
@@ -134,8 +150,10 @@ export async function createTransferAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const validAccounts = await accountsAreValid(
     access.workspaceId,
+    accessibleContextIds,
     [parsed.data.sourceAccountId, parsed.data.destinationAccountId],
     true,
   );
@@ -152,6 +170,8 @@ export async function createTransferAction(
       const transfer = await transaction.transfer.create({
         data: {
           workspaceId: access.workspaceId,
+          sourceContextId: validAccounts.source.contextId,
+          destinationContextId: validAccounts.destination.contextId,
           ...data,
           settledAt: data.status === "SETTLED" ? settledDate : null,
         },
@@ -160,6 +180,9 @@ export async function createTransferAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: validAccounts.source.contextId === validAccounts.destination.contextId
+            ? validAccounts.source.contextId
+            : null,
           actorEditorId: access.editorId,
           action: "transfer.created",
           entityType: "Transfer",
@@ -173,6 +196,8 @@ export async function createTransferAction(
   }
 
   revalidatePath("/painel");
+  revalidatePath("/bancos");
+  revalidatePath("/investimentos");
   revalidatePath("/contas");
   revalidatePath("/transferencias");
   redirect("/transferencias");
@@ -193,10 +218,15 @@ export async function updateTransferAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
   const existing = await database.transfer.findFirst({
     where: {
       id: parsed.data.id,
+      OR: [
+        { sourceContextId: { in: accessibleContextIds } },
+        { destinationContextId: { in: accessibleContextIds } },
+      ],
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
     },
@@ -209,6 +239,7 @@ export async function updateTransferAction(
 
   const validAccounts = await accountsAreValidForUpdate(
     access.workspaceId,
+    accessibleContextIds,
     [parsed.data.sourceAccountId, parsed.data.destinationAccountId],
     existing,
   );
@@ -222,9 +253,20 @@ export async function updateTransferAction(
   try {
     const updated = await database.$transaction(async (transaction) => {
       const result = await transaction.transfer.updateMany({
-        where: { id, workspaceId: access.workspaceId, version, status: { not: "CANCELED" } },
+        where: {
+          id,
+          OR: [
+            { sourceContextId: { in: accessibleContextIds } },
+            { destinationContextId: { in: accessibleContextIds } },
+          ],
+          workspaceId: access.workspaceId,
+          version,
+          status: { not: "CANCELED" },
+        },
         data: {
           ...data,
+          sourceContextId: validAccounts.source.contextId,
+          destinationContextId: validAccounts.destination.contextId,
           settledAt: data.status === "SETTLED" ? settledDate : null,
           version: { increment: 1 },
         },
@@ -237,6 +279,9 @@ export async function updateTransferAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: validAccounts.source.contextId === validAccounts.destination.contextId
+            ? validAccounts.source.contextId
+            : null,
           actorEditorId: access.editorId,
           action: "transfer.updated",
           entityType: "Transfer",
@@ -256,6 +301,8 @@ export async function updateTransferAction(
   }
 
   revalidatePath("/painel");
+  revalidatePath("/bancos");
+  revalidatePath("/investimentos");
   revalidatePath("/contas");
   revalidatePath("/transferencias");
   redirect("/transferencias");
@@ -272,12 +319,17 @@ export async function cancelTransferAction(formData: FormData): Promise<void> {
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
     const result = await transaction.transfer.updateMany({
       where: {
         id: parsed.data.id,
+        OR: [
+          { sourceContextId: { in: accessibleContextIds } },
+          { destinationContextId: { in: accessibleContextIds } },
+        ],
         workspaceId: access.workspaceId,
         version: parsed.data.version,
         status: { not: "CANCELED" },

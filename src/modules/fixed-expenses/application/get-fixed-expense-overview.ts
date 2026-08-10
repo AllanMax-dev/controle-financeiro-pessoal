@@ -11,13 +11,15 @@ export async function getFixedExpenseOverview(
   workspaceId: string,
   referenceDate = new Date(),
   asOfDate = new Date(),
+  contextId?: string,
 ) {
   const database = getDatabase();
   const month = monthStart(referenceDate);
-  const today = await synchronizeDueFixedExpenses(workspaceId, asOfDate);
+  const today = await synchronizeDueFixedExpenses(workspaceId, asOfDate, contextId);
   const fixedExpenses = await database.fixedExpense.findMany({
     where: {
       workspaceId,
+      ...(contextId ? { contextId } : {}),
       OR: [
         { active: true, startMonth: { lte: month } },
         { transactions: { some: { recurrenceMonth: month } } },

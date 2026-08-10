@@ -1,46 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Icon, type IconName } from "@/components/ui/icons";
+import type { FinancialContextOption } from "@/modules/financial-contexts/application/financial-contexts";
 
 const navigationGroups = [
   {
     label: null,
-    items: [{ href: "/painel", icon: "dashboard", label: "Visão geral" }],
+    items: [{ href: "/painel", icon: "dashboard", label: "Dashboard" }],
   },
   {
-    label: "Movimentações",
+    label: "Controle",
     items: [
-      { href: "/lancamentos", icon: "income", label: "Lançamentos" },
-      { href: "/transferencias", icon: "transfer", label: "Transferências" },
+      { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
+      { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
+      { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
+      { href: "/recebimentos", icon: "income", label: "Recebimentos" },
+      { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
     ],
   },
   {
-    label: "Recorrências",
+    label: "Patrimônio",
     items: [
-      { href: "/salarios", icon: "income", label: "Salários" },
-      { href: "/despesas-fixas", icon: "expense", label: "Despesas fixas" },
+      { href: "/bancos", icon: "bank", label: "Bancos" },
+      { href: "/investimentos", icon: "investment", label: "Investimentos" },
     ],
   },
   {
-    label: "Compromissos",
+    label: "Análise",
     items: [
-      { href: "/dividas", icon: "debt", label: "Dívidas" },
       { href: "/planejamento", icon: "planning", label: "Planejamento" },
-    ],
-  },
-  {
-    label: null,
-    items: [{ href: "/relatorios", icon: "report", label: "Relatórios" }],
-  },
-  {
-    label: "Configurações",
-    items: [
-      { href: "/contas", icon: "account", label: "Contas" },
-      { href: "/categorias", icon: "category", label: "Categorias" },
+      { href: "/relatorios", icon: "report", label: "Relatórios" },
+      { href: "/dividas", icon: "debt", label: "Dívidas" },
     ],
   },
 ] as const satisfies ReadonlyArray<{
@@ -52,7 +46,17 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
+function hrefWithContext(href: string, contextId: string) {
+  return `${href}?contextId=${encodeURIComponent(contextId)}`;
+}
+
+function NavigationLinks({
+  contextId,
+  onNavigate,
+}: {
+  contextId: string;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
   return (
@@ -69,7 +73,7 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
                   <Link
                     aria-current={active ? "page" : undefined}
                     className={active ? "active" : undefined}
-                    href={item.href}
+                    href={hrefWithContext(item.href, contextId)}
                     onClick={onNavigate}
                   >
                     <Icon name={item.icon} />
@@ -85,32 +89,76 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function BrandBlock({ workspaceName }: { workspaceName: string }) {
+function BrandBlock({ contextId, workspaceName }: { contextId: string; workspaceName: string }) {
   return (
-    <Link className="brand workspace-brand" href="/painel">
+    <Link className="brand workspace-brand" href={hrefWithContext("/painel", contextId)}>
       <span className="brand-mark" aria-hidden="true">
-        MF
+        CF
       </span>
       <span>
         <strong>{workspaceName}</strong>
-        <small>Controle compartilhado</small>
+        <small>Controle financeiro</small>
       </span>
     </Link>
   );
 }
 
+function ContextSwitcher({
+  contexts,
+  currentContextId,
+  onNavigate,
+}: {
+  contexts: FinancialContextOption[];
+  currentContextId: string;
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  return (
+    <div className="context-switcher" aria-label="Contexto financeiro">
+      {contexts.map((context) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("contextId", context.id);
+        const active = context.id === currentContextId;
+
+        return (
+          <Link
+            aria-current={active ? "true" : undefined}
+            className={active ? "active" : undefined}
+            href={`${pathname}?${params.toString()}`}
+            key={context.id}
+            onClick={onNavigate}
+          >
+            {context.name}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function WorkspaceNavigation({
+  contexts,
+  defaultContextId,
   editorName,
   workspaceName,
 }: {
+  contexts: FinancialContextOption[];
+  defaultContextId: string;
   editorName: string;
   workspaceName: string;
 }) {
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const drawerId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const requestedContextId = searchParams.get("contextId");
+  const currentContextId = contexts.some(({ id }) => id === requestedContextId)
+    ? requestedContextId!
+    : defaultContextId;
 
   useEffect(() => {
     if (!open) {
@@ -209,10 +257,11 @@ export function WorkspaceNavigation({
   return (
     <>
       <aside className="workspace-sidebar">
-        <BrandBlock workspaceName={workspaceName} />
+        <BrandBlock contextId={currentContextId} workspaceName={workspaceName} />
+        <ContextSwitcher contexts={contexts} currentContextId={currentContextId} />
 
         <nav className="workspace-nav workspace-nav-desktop" aria-label="Navegação principal">
-          <NavigationLinks />
+          <NavigationLinks contextId={currentContextId} />
         </nav>
 
         <div className="workspace-editor-card" title="Pessoa identificada pelo link privado">
@@ -225,7 +274,7 @@ export function WorkspaceNavigation({
       </aside>
 
       <header className="workspace-mobile-topbar">
-        <BrandBlock workspaceName={workspaceName} />
+        <BrandBlock contextId={currentContextId} workspaceName={workspaceName} />
         <button
           aria-controls={drawerId}
           aria-expanded={open}
@@ -263,7 +312,12 @@ export function WorkspaceNavigation({
             </button>
           </div>
           <nav aria-label="Navegação principal">
-            <NavigationLinks onNavigate={() => setOpen(false)} />
+            <ContextSwitcher
+              contexts={contexts}
+              currentContextId={currentContextId}
+              onNavigate={() => setOpen(false)}
+            />
+            <NavigationLinks contextId={currentContextId} onNavigate={() => setOpen(false)} />
           </nav>
         </aside>
       </div>

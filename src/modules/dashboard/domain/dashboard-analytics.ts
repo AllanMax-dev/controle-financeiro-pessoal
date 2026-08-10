@@ -28,7 +28,9 @@ export type DashboardBudgetInput = {
 export type PendingTransferInput = {
   amount: MoneyInput;
   destinationAccount: { type: string };
+  destinationContextId?: string | null;
   sourceAccount: { type: string };
+  sourceContextId?: string | null;
   status: "PENDING" | "SETTLED" | "CANCELED";
 };
 
@@ -222,7 +224,10 @@ export function buildBudgetComparison(
   };
 }
 
-export function calculatePendingTransferAvailableDelta(transfers: PendingTransferInput[]): Decimal {
+export function calculatePendingTransferAvailableDelta(
+  transfers: PendingTransferInput[],
+  contextId?: string,
+): Decimal {
   return transfers.reduce((total, transfer) => {
     if (transfer.status !== "PENDING") {
       return total;
@@ -230,6 +235,19 @@ export function calculatePendingTransferAvailableDelta(transfers: PendingTransfe
 
     const sourceOperational = transfer.sourceAccount.type !== "INVESTMENT";
     const destinationOperational = transfer.destinationAccount.type !== "INVESTMENT";
+
+    if (contextId) {
+      const sourceInContext = transfer.sourceContextId === contextId;
+      const destinationInContext = transfer.destinationContextId === contextId;
+
+      if (sourceInContext && !destinationInContext) {
+        return sourceOperational ? money(total.minus(transfer.amount)) : total;
+      }
+
+      if (destinationInContext && !sourceInContext) {
+        return destinationOperational ? money(total.plus(transfer.amount)) : total;
+      }
+    }
 
     if (sourceOperational === destinationOperational) {
       return total;

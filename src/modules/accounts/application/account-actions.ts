@@ -8,6 +8,10 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { calculateCurrentAccountBalance } from "@/modules/accounts/application/calculate-account-balance";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  assertFinancialContextAccess,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   colorSchema,
@@ -24,6 +28,7 @@ const optionalIdentifierSchema = z.preprocess(
 );
 
 const accountSchema = z.object({
+  contextId: identifierSchema,
   name: z.string().trim().min(2, "Informe um nome com pelo menos 2 caracteres.").max(100),
   ownerEditorId: optionalIdentifierSchema,
   type: z.enum(["CHECKING", "SAVINGS", "CASH", "DIGITAL", "INVESTMENT", "OTHER"]),
@@ -61,6 +66,7 @@ const adjustAccountBalanceSchema = z.object({
 
 function accountInput(formData: FormData) {
   return {
+    contextId: formData.get("contextId"),
     name: formData.get("name"),
     ownerEditorId: formData.get("ownerEditorId"),
     type: formData.get("type"),
@@ -71,6 +77,8 @@ function accountInput(formData: FormData) {
 
 function revalidateAccountPaths() {
   revalidatePath("/painel");
+  revalidatePath("/bancos");
+  revalidatePath("/investimentos");
   revalidatePath("/contas");
   revalidatePath("/lancamentos");
   revalidatePath("/transferencias");
@@ -91,15 +99,27 @@ export async function createAccountAction(
   }
 
   const access = await requireCurrentAccess();
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
   const database = getDatabase();
+  const { contextId, ...accountData } = parsed.data;
+  const ownerEditorId =
+    financialContext.type === "PERSONAL" ? financialContext.ownerEditorId : accountData.ownerEditorId;
+
+  if (
+    financialContext.type === "PERSONAL" &&
+    accountData.ownerEditorId &&
+    accountData.ownerEditorId !== ownerEditorId
+  ) {
+    return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
+  }
 
   try {
     await database.$transaction(async (transaction) => {
-      if (parsed.data.ownerEditorId) {
+      if (ownerEditorId) {
         const ownerEditor = await transaction.editor.findFirst({
           where: {
             active: true,
-            id: parsed.data.ownerEditorId,
+            id: ownerEditorId,
             workspaceId: access.workspaceId,
           },
           select: { id: true },
@@ -112,14 +132,17 @@ export async function createAccountAction(
 
       const account = await transaction.financialAccount.create({
         data: {
+          contextId,
           workspaceId: access.workspaceId,
-          ...parsed.data,
+          ...accountData,
+          ownerEditorId,
         },
       });
 
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId,
           actorEditorId: access.editorId,
           action: "account.created",
           entityType: "FinancialAccount",
@@ -155,8 +178,19 @@ export async function updateAccountAction(
   }
 
   const access = await requireCurrentAccess();
-  const { id, version, ...data } = parsed.data;
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+  const { contextId, id, version, ...data } = parsed.data;
   const database = getDatabase();
+  const ownerEditorId =
+    financialContext.type === "PERSONAL" ? financialContext.ownerEditorId : data.ownerEditorId;
+
+  if (
+    financialContext.type === "PERSONAL" &&
+    data.ownerEditorId &&
+    data.ownerEditorId !== ownerEditorId
+  ) {
+    return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
+  }
 
   try {
     const updated = await database.$transaction(async (transaction) => {
@@ -173,6 +207,7 @@ export async function updateAccountAction(
               transactions: true,
             },
           },
+          contextId: true,
           initialBalance: true,
           type: true,
         },
@@ -182,11 +217,15 @@ export async function updateAccountAction(
         return false;
       }
 
-      if (data.ownerEditorId) {
+      if (current.contextId !== contextId) {
+        throw new Error("account_context_locked");
+      }
+
+      if (ownerEditorId) {
         const ownerEditor = await transaction.editor.findFirst({
           where: {
             active: true,
-            id: data.ownerEditorId,
+            id: ownerEditorId,
             workspaceId: access.workspaceId,
           },
           select: { id: true },
@@ -214,8 +253,8 @@ export async function updateAccountAction(
       }
 
       const result = await transaction.financialAccount.updateMany({
-        where: { id, workspaceId: access.workspaceId, version },
-        data: { ...data, version: { increment: 1 } },
+        where: { contextId, id, workspaceId: access.workspaceId, version },
+        data: { ...data, ownerEditorId, version: { increment: 1 } },
       });
 
       if (result.count !== 1) {
@@ -225,6 +264,7 @@ export async function updateAccountAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId,
           actorEditorId: access.editorId,
           action: "account.updated",
           entityType: "FinancialAccount",
@@ -242,6 +282,10 @@ export async function updateAccountAction(
   } catch (error) {
     if (error instanceof Error && error.message === "owner_editor_unavailable") {
       return { error: "A pessoa responsável não está disponível." };
+    }
+
+    if (error instanceof Error && error.message === "account_context_locked") {
+      return { error: "Crie uma nova conta para mudar o contexto financeiro sem mover histórico." };
     }
 
     if (error instanceof Error && error.message === "account_type_locked") {
@@ -280,6 +324,7 @@ export async function deleteArchivedAccountAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   try {
@@ -287,6 +332,7 @@ export async function deleteArchivedAccountAction(
       const account = await transaction.financialAccount.findFirst({
         where: {
           active: false,
+          contextId: { in: accessibleContextIds },
           id: parsed.data.id,
           version: parsed.data.version,
           workspaceId: access.workspaceId,
@@ -302,6 +348,7 @@ export async function deleteArchivedAccountAction(
               transactions: true,
             },
           },
+          contextId: true,
           name: true,
         },
       });
@@ -336,6 +383,7 @@ export async function deleteArchivedAccountAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: account.contextId,
           actorEditorId: access.editorId,
           action: "account.deleted",
           entityType: "FinancialAccount",
@@ -385,6 +433,7 @@ export async function toggleAccountActiveAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id, version, active } = parsed.data;
   const database = getDatabase();
 
@@ -392,8 +441,14 @@ export async function toggleAccountActiveAction(
     const result = await database.$transaction(async (transaction) => {
       if (!active) {
         const account = await transaction.financialAccount.findFirst({
-          where: { active: true, id, version, workspaceId: access.workspaceId },
-          select: { id: true },
+          where: {
+            active: true,
+            contextId: { in: accessibleContextIds },
+            id,
+            version,
+            workspaceId: access.workspaceId,
+          },
+          select: { contextId: true, id: true },
         });
 
         if (!account) {
@@ -409,13 +464,28 @@ export async function toggleAccountActiveAction(
         const [activeFixedExpenses, activeSalaries, pendingTransactions, pendingTransfers] =
           await Promise.all([
             transaction.fixedExpense.count({
-              where: { accountId: id, active: true, workspaceId: access.workspaceId },
+              where: {
+                accountId: id,
+                active: true,
+                contextId: account.contextId,
+                workspaceId: access.workspaceId,
+              },
             }),
             transaction.salary.count({
-              where: { accountId: id, active: true, workspaceId: access.workspaceId },
+              where: {
+                accountId: id,
+                active: true,
+                contextId: account.contextId,
+                workspaceId: access.workspaceId,
+              },
             }),
             transaction.transaction.count({
-              where: { accountId: id, status: "PENDING", workspaceId: access.workspaceId },
+              where: {
+                accountId: id,
+                contextId: account.contextId,
+                status: "PENDING",
+                workspaceId: access.workspaceId,
+              },
             }),
             transaction.transfer.count({
               where: {
@@ -439,8 +509,17 @@ export async function toggleAccountActiveAction(
         }
       }
 
+      const auditAccount = await transaction.financialAccount.findFirst({
+        where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId, version },
+        select: { contextId: true },
+      });
+
+      if (!auditAccount) {
+        return "conflict" as const;
+      }
+
       const updateResult = await transaction.financialAccount.updateMany({
-        where: { id, workspaceId: access.workspaceId, version },
+        where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId, version },
         data: { active, version: { increment: 1 } },
       });
 
@@ -451,6 +530,7 @@ export async function toggleAccountActiveAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: auditAccount.contextId,
           actorEditorId: access.editorId,
           action: active ? "account.activated" : "account.archived",
           entityType: "FinancialAccount",
@@ -504,6 +584,7 @@ export async function adjustAccountBalanceAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   try {
@@ -512,11 +593,12 @@ export async function adjustAccountBalanceAction(
         const account = await transaction.financialAccount.findFirst({
           where: {
             active: true,
+            contextId: { in: accessibleContextIds },
             id: parsed.data.id,
             version: parsed.data.version,
             workspaceId: access.workspaceId,
           },
-          select: { id: true, name: true },
+          select: { contextId: true, id: true, name: true },
         });
 
         if (!account) {
@@ -557,6 +639,7 @@ export async function adjustAccountBalanceAction(
         const adjustment = await transaction.accountBalanceAdjustment.create({
           data: {
             accountId: account.id,
+            contextId: account.contextId,
             difference: difference.toFixed(2),
             editorId: access.editorId,
             informedBalance: informedBalance.toFixed(2),
@@ -569,6 +652,7 @@ export async function adjustAccountBalanceAction(
         await transaction.auditLog.create({
           data: {
             workspaceId: access.workspaceId,
+            contextId: account.contextId,
             actorEditorId: access.editorId,
             action: "account.balance_adjusted",
             entityType: "AccountBalanceAdjustment",

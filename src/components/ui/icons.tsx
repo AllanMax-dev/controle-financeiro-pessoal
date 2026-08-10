@@ -22,6 +22,23 @@ const iconPaths = {
       <path d="M5 4h14v3H5z" />
     </>
   ),
+  bank: (
+    <>
+      <path d="m4 9 8-5 8 5" />
+      <path d="M5 10h14" />
+      <path d="M7 10v8" />
+      <path d="M12 10v8" />
+      <path d="M17 10v8" />
+      <path d="M5 18h14" />
+    </>
+  ),
+  card: (
+    <>
+      <rect x="4" y="6" width="16" height="12" rx="2" />
+      <path d="M4 10h16" />
+      <path d="M8 15h3" />
+    </>
+  ),
   arrow: <path d="M5 12h14m-6-6 6 6-6 6" />,
   calendar: (
     <>
@@ -90,6 +107,23 @@ const iconPaths = {
     <>
       <path d="M12 19V5" />
       <path d="m7 10 5-5 5 5" />
+    </>
+  ),
+  goal: (
+    <>
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 5v2" />
+      <path d="M19 12h-2" />
+      <path d="M12 17v2" />
+      <path d="M7 12H5" />
+    </>
+  ),
+  investment: (
+    <>
+      <path d="M4 18h16" />
+      <path d="M7 15l4-4 3 3 5-7" />
+      <path d="M15 7h4v4" />
     </>
   ),
   menu: (

@@ -3,13 +3,27 @@ import Link from "next/link";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { toggleCategoryActiveAction } from "@/modules/categories/application/category-actions";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 
-export default async function CategoriesPage() {
+export default async function CategoriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const categories = await getDatabase().category.findMany({
-    where: { workspaceId: access.workspaceId },
+    where: { contextId: contextState.current.id, workspaceId: access.workspaceId },
     orderBy: [{ active: "desc" }, { kind: "asc" }, { name: "asc" }],
     include: { _count: { select: { transactions: true } } },
   });
@@ -34,7 +48,7 @@ export default async function CategoriesPage() {
           <h1>Categorias</h1>
           <p>Organize receitas e despesas sem perder o histórico das categorias arquivadas.</p>
         </div>
-        <Link className="primary-button" href="/categorias/nova">
+        <Link className="primary-button" href={contextHref("/categorias/nova", contextState.current.id)}>
           <Icon name="add" />
           Nova categoria
         </Link>
@@ -42,7 +56,7 @@ export default async function CategoriesPage() {
 
       {categories.length === 0 ? (
         <EmptyState
-          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          action={{ href: contextHref("/categorias/nova", contextState.current.id), label: "Criar categoria" }}
           description="Crie categorias para entender receitas, despesas e composição dos lançamentos."
           icon="category"
           title="Nenhuma categoria cadastrada"
@@ -77,7 +91,7 @@ export default async function CategoriesPage() {
                       </span>
                     </div>
                     <div className="row-actions">
-                      <Link className="text-button" href={`/categorias/${category.id}/editar`}>
+                      <Link className="text-button" href={contextHref(`/categorias/${category.id}/editar`, contextState.current.id)}>
                         Editar
                       </Link>
                       <form action={toggleCategoryActiveAction}>

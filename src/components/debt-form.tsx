@@ -155,12 +155,14 @@ export function DebtForm({
   accounts,
   action,
   categories,
+  contextId,
   currentEditorId,
   editors,
 }: {
   accounts: { id: string; name: string }[];
   action: DebtFormAction;
   categories: { id: string; name: string }[];
+  contextId: string;
   currentEditorId: string;
   editors: { id: string; displayName: string }[];
 }) {
@@ -204,6 +206,7 @@ export function DebtForm({
 
   return (
     <form action={formAction} className="entity-form debt-form">
+      <input name="contextId" type="hidden" value={contextId} />
       <div className="form-section-title field-wide">
         <h2>Dados da compra</h2>
         <p>Identifique a dívida, valor total, categoria e forma de pagamento.</p>

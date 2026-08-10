@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { FixedExpenseForm } from "@/components/fixed-expense-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 import { updateFixedExpenseAction } from "@/modules/fixed-expenses/application/fixed-expense-actions";
 
 export default async function EditFixedExpensePage({
@@ -11,10 +12,11 @@ export default async function EditFixedExpensePage({
   params: Promise<{ id: string }>;
 }) {
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id } = await params;
   const database = getDatabase();
   const fixedExpense = await database.fixedExpense.findFirst({
-    where: { active: true, id, workspaceId: access.workspaceId },
+    where: { active: true, contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId },
   });
 
   if (!fixedExpense) {
@@ -25,6 +27,7 @@ export default async function EditFixedExpensePage({
     database.financialAccount.findMany({
       where: {
         workspaceId: access.workspaceId,
+        contextId: fixedExpense.contextId,
         OR: [
           { active: true, type: { not: "INVESTMENT" } },
           { id: fixedExpense.accountId },
@@ -36,6 +39,7 @@ export default async function EditFixedExpensePage({
     database.category.findMany({
       where: {
         workspaceId: access.workspaceId,
+        contextId: fixedExpense.contextId,
         kind: "EXPENSE",
         OR: [{ active: true }, { id: fixedExpense.categoryId }],
       },
@@ -66,12 +70,14 @@ export default async function EditFixedExpensePage({
         accounts={accounts}
         action={updateFixedExpenseAction}
         categories={categories}
+        contextId={fixedExpense.contextId}
         currentMonth={fixedExpense.startMonth.toISOString().slice(0, 7)}
         currentEditorId={access.editorId}
         defaults={{
           accountId: fixedExpense.accountId,
           amount: fixedExpense.amount.toFixed(2).replace(".", ","),
           categoryId: fixedExpense.categoryId,
+          contextId: fixedExpense.contextId,
           description: fixedExpense.description,
           dueDay: fixedExpense.dueDay,
           editorId: fixedExpense.editorId,

@@ -4,13 +4,15 @@ import { AccountForm } from "@/components/account-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { updateAccountAction } from "@/modules/accounts/application/account-actions";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 
 export default async function EditAccountPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id } = await params;
   const database = getDatabase();
   const account = await database.financialAccount.findFirst({
-    where: { id, workspaceId: access.workspaceId },
+    where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId },
     include: {
       _count: {
         select: {
@@ -62,6 +64,7 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
         action={updateAccountAction}
         defaults={{
           color: account.color ?? "#256b4b",
+          contextId: account.contextId,
           id: account.id,
           initialBalance: account.initialBalance.toFixed(2).replace(".", ","),
           name: account.name,

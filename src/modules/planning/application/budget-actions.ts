@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { assertFinancialContextAccess } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   firstValidationMessage,
@@ -23,6 +24,7 @@ const budgetSchema = z
   .object({
     amount: nonnegativeMoneySchema,
     categoryId: identifierSchema,
+    contextId: identifierSchema,
     id: z.preprocess(
       (value) => (value === "" || value === null ? null : value),
       identifierSchema.nullable(),
@@ -50,6 +52,7 @@ export async function saveBudgetAction(
   const parsed = budgetSchema.safeParse({
     amount: formData.get("amount"),
     categoryId: formData.get("categoryId"),
+    contextId: formData.get("contextId"),
     id: formData.get("id"),
     month: formData.get("month"),
     version: formData.get("version"),
@@ -60,9 +63,11 @@ export async function saveBudgetAction(
   }
 
   const access = await requireCurrentAccess();
+  await assertFinancialContextAccess(access, parsed.data.contextId);
   const database = getDatabase();
   const category = await database.category.findFirst({
     where: {
+      contextId: parsed.data.contextId,
       id: parsed.data.categoryId,
       workspaceId: access.workspaceId,
       kind: "EXPENSE",
@@ -83,6 +88,7 @@ export async function saveBudgetAction(
         const result = await transaction.budget.updateMany({
           where: {
             categoryId: parsed.data.categoryId,
+            contextId: parsed.data.contextId,
             id: parsed.data.id,
             month: parsed.data.month,
             workspaceId: access.workspaceId,
@@ -100,6 +106,7 @@ export async function saveBudgetAction(
         const budget = await transaction.budget.create({
           data: {
             workspaceId: access.workspaceId,
+            contextId: parsed.data.contextId,
             categoryId: parsed.data.categoryId,
             month: parsed.data.month,
             amount: parsed.data.amount,
@@ -111,6 +118,7 @@ export async function saveBudgetAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: parsed.data.contextId,
           actorEditorId: access.editorId,
           action: "budget.saved",
           entityType: "Budget",

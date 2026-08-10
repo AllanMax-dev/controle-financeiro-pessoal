@@ -7,6 +7,12 @@ import { ConfirmActionForm } from "@/components/confirm-action-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { cancelTransferAction } from "@/modules/transfers/application/transfer-actions";
 
@@ -20,10 +26,14 @@ function monthInterval(month: string, fallbackMonth: string) {
 export default async function TransfersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; status?: string }>;
+  searchParams: Promise<FinancialContextSearchParams & { month?: string; status?: string }>;
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(filters),
+  );
   const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
   const { end, month, start } = monthInterval(filters.month ?? defaultMonth, defaultMonth);
   const status =
@@ -34,6 +44,10 @@ export default async function TransfersPage({
       : undefined;
   const where: Prisma.TransferWhereInput = {
     workspaceId: access.workspaceId,
+    OR: [
+      { sourceContextId: contextState.current.id },
+      { destinationContextId: contextState.current.id },
+    ],
     transferDate: { gte: start, lt: end },
     ...(status ? { status } : {}),
   };
@@ -52,7 +66,7 @@ export default async function TransfersPage({
           <h1>Transferências</h1>
           <p>Transferências movimentam contas, mas não são contabilizadas como receita ou despesa.</p>
         </div>
-        <Link className="primary-button" href="/transferencias/nova">
+        <Link className="primary-button" href={contextHref("/transferencias/nova", contextState.current.id)}>
           <Icon name="add" />
           Nova transferência
         </Link>
@@ -60,6 +74,7 @@ export default async function TransfersPage({
 
       <section className="filter-panel compact-filter-panel" aria-label="Filtros de transferências">
         <form className="filter-bar compact-filter" method="get">
+          <input name="contextId" type="hidden" value={contextState.current.id} />
           <label>
             <span>Mês</span>
             <input name="month" type="month" defaultValue={month} />
@@ -74,7 +89,7 @@ export default async function TransfersPage({
             </select>
           </label>
           <div className="filter-actions">
-            <Link className="secondary-button" href="/transferencias">
+            <Link className="secondary-button" href={contextHref("/transferencias", contextState.current.id)}>
               Limpar
             </Link>
             <button className="primary-button" type="submit">
@@ -86,7 +101,10 @@ export default async function TransfersPage({
 
       {transfers.length === 0 ? (
         <EmptyState
-          action={{ href: "/transferencias/nova", label: "Criar transferência" }}
+          action={{
+            href: contextHref("/transferencias/nova", contextState.current.id),
+            label: "Criar transferência",
+          }}
           description="Movimente valores entre duas contas sem alterar receitas e despesas."
           icon="transfer"
           title="Nenhuma transferência encontrada"
@@ -123,7 +141,7 @@ export default async function TransfersPage({
               <div className="row-actions">
                 {transfer.status !== "CANCELED" ? (
                   <>
-                    <Link className="text-button" href={`/transferencias/${transfer.id}/editar`}>
+                    <Link className="text-button" href={contextHref(`/transferencias/${transfer.id}/editar`, contextState.current.id)}>
                       Editar
                     </Link>
                     <ConfirmActionForm

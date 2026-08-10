@@ -15,6 +15,7 @@ import {
 export async function synchronizeDueFixedExpenses(
   workspaceId: string,
   referenceDate = new Date(),
+  contextId?: string,
 ): Promise<Date> {
   const database = getDatabase();
   const workspace = await database.workspace.findUniqueOrThrow({
@@ -26,6 +27,7 @@ export async function synchronizeDueFixedExpenses(
   const fixedExpenses = await database.fixedExpense.findMany({
     where: {
       active: true,
+      ...(contextId ? { contextId } : {}),
       startMonth: { lte: currentMonth },
       workspaceId,
     },
@@ -33,6 +35,7 @@ export async function synchronizeDueFixedExpenses(
       accountId: true,
       amount: true,
       categoryId: true,
+      contextId: true,
       description: true,
       dueDay: true,
       id: true,
@@ -69,12 +72,13 @@ export async function synchronizeDueFixedExpenses(
         ({ month }) => !existingKeys.has(`${fixedExpense.id}:${month.toISOString()}`),
       )
       .map(({ dueDate, month }) => ({
-        accountId: fixedExpense.accountId,
-        affectsBalance: false,
-        amount: fixedExpense.amount,
-        categoryId: fixedExpense.categoryId,
-        competenceDate: dueDate,
-        description: fixedExpense.description,
+      accountId: fixedExpense.accountId,
+      affectsBalance: false,
+      amount: fixedExpense.amount,
+      categoryId: fixedExpense.categoryId,
+      competenceDate: dueDate,
+      contextId: fixedExpense.contextId,
+      description: fixedExpense.description,
         dueDate,
         fixedExpenseId: fixedExpense.id,
         notes: fixedExpense.notes,

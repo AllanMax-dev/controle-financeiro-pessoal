@@ -3,16 +3,32 @@ import Link from "next/link";
 import { TransferForm } from "@/components/transfer-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  getAccessibleFinancialContexts,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { createTransferAction } from "@/modules/transfers/application/transfer-actions";
 
-export default async function NewTransferPage() {
+export default async function NewTransferPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const accounts = await getDatabase().financialAccount.findMany({
-    where: { workspaceId: access.workspaceId, active: true },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    where: { workspaceId: access.workspaceId, contextId: { in: accessibleContextIds }, active: true },
+    select: { financialContext: { select: { name: true } }, id: true, name: true },
+    orderBy: [{ contextId: "asc" }, { name: "asc" }],
   });
 
   return (
@@ -28,7 +44,7 @@ export default async function NewTransferPage() {
         <section className="empty-state">
           <h2>Cadastre pelo menos duas contas</h2>
           <p>Uma transferência precisa de contas distintas de origem e destino.</p>
-          <Link className="primary-button" href="/contas/nova">
+          <Link className="primary-button" href={contextHref("/contas/nova", contextState.current.id)}>
             Criar conta
           </Link>
         </section>

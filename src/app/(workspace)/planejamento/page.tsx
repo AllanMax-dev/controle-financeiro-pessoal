@@ -4,6 +4,12 @@ import { Icon } from "@/components/ui/icons";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { saveBudgetAction } from "@/modules/planning/application/budget-actions";
 import {
@@ -23,26 +29,33 @@ function monthInterval(month: string, fallbackMonth: string) {
 export default async function PlanningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<FinancialContextSearchParams & { month?: string }>;
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(filters),
+  );
+  const currentContext = contextState.current;
   const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
   const { end, month, start } = monthInterval(filters.month ?? defaultMonth, defaultMonth);
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(access.workspaceId);
+  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), currentContext.id);
   const [categories, budgets, realizedGroups] = await Promise.all([
     database.category.findMany({
       where: {
+        contextId: currentContext.id,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
         OR: [
           { active: true },
-          { budgets: { some: { month: start } } },
+          { budgets: { some: { contextId: currentContext.id, month: start } } },
           {
             transactions: {
               some: {
                 type: "EXPENSE",
+                contextId: currentContext.id,
                 status: "SETTLED",
                 competenceDate: { gte: start, lt: end },
                 account: { type: { not: "INVESTMENT" } },
@@ -55,6 +68,7 @@ export default async function PlanningPage({
     }),
     database.budget.findMany({
       where: {
+        contextId: currentContext.id,
         workspaceId: access.workspaceId,
         month: start,
         category: { kind: "EXPENSE" },
@@ -63,6 +77,7 @@ export default async function PlanningPage({
     database.transaction.groupBy({
       by: ["categoryId"],
       where: {
+        contextId: currentContext.id,
         workspaceId: access.workspaceId,
         type: "EXPENSE",
         status: "SETTLED",
@@ -104,6 +119,7 @@ export default async function PlanningPage({
           <p>Defina limites por categoria e acompanhe somente despesas realizadas no mês.</p>
         </div>
         <form className="month-picker" method="get">
+          <input name="contextId" type="hidden" value={currentContext.id} />
           <label>
             <span>Mês</span>
             <input name="month" type="month" defaultValue={month} />
@@ -173,7 +189,7 @@ export default async function PlanningPage({
 
       {categories.length === 0 ? (
         <EmptyState
-          action={{ href: "/categorias/nova", label: "Criar categoria" }}
+          action={{ href: contextHref("/categorias/nova", currentContext.id), label: "Criar categoria" }}
           description="Crie uma categoria de despesa antes de definir o planejamento mensal."
           icon="planning"
           title="Nenhuma categoria de despesa ativa"
@@ -270,6 +286,7 @@ export default async function PlanningPage({
                         budgetId={budget?.id}
                         categoryId={category.id}
                         categoryName={category.name}
+                        contextId={currentContext.id}
                         key={`${category.id}-${month}`}
                         month={month}
                         version={budget?.version}

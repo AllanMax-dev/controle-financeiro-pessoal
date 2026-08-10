@@ -12,6 +12,12 @@ import {
   payDebtInstallmentAction,
 } from "@/modules/debts/application/debt-actions";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { calendarDateInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { sumMoney } from "@/modules/shared/domain/money";
 
@@ -34,21 +40,26 @@ function shiftMonthInput(value: string, offset: number): string {
   ).toISOString().slice(0, 7);
 }
 
-function debtsHref(month: string, person?: string) {
+function debtsHref(month: string, contextId: string, person?: string) {
   return {
     pathname: "/dividas",
-    query: person ? { month, person } : { month },
+    query: person ? { contextId, month, person } : { contextId, month },
   } as const;
 }
 
 export default async function DebtsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; person?: string }>;
+  searchParams: Promise<FinancialContextSearchParams & { month?: string; person?: string }>;
 }) {
   const access = await requireCurrentAccess();
   const database = getDatabase();
   const filters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(filters),
+  );
+  const currentContext = contextState.current;
   const now = new Date();
   const today = calendarDateInTimeZone(now, access.workspaceTimezone);
   const todayInput = today.toISOString().slice(0, 10);
@@ -59,9 +70,14 @@ export default async function DebtsPage({
   const previousMonthInput = shiftMonthInput(selectedMonthInput, -1);
   const nextMonthInput = shiftMonthInput(selectedMonthInput, 1);
   const [overview, accounts] = await Promise.all([
-    getDebtOverview(access.workspaceId, overviewDate),
+    getDebtOverview(access.workspaceId, overviewDate, currentContext.id),
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
+      where: {
+        contextId: currentContext.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -88,7 +104,7 @@ export default async function DebtsPage({
           <h1>Dívidas</h1>
           <p>Acompanhe o mês selecionado, atrasos e pagamentos realizados sem perder histórico.</p>
         </div>
-        <Link className="primary-button" href="/dividas/nova">
+        <Link className="primary-button" href={contextHref("/dividas/nova", currentContext.id)}>
           <Icon name="add" />
           Nova dívida
         </Link>
@@ -124,21 +140,21 @@ export default async function DebtsPage({
       </section>
 
       <nav className="person-filter" aria-label="Navegar mês das dívidas">
-        <Link href={debtsHref(previousMonthInput, selectedEditor?.id)}>Mês anterior</Link>
-        <Link className="active" href={debtsHref(selectedMonthInput, selectedEditor?.id)}>
+        <Link href={debtsHref(previousMonthInput, currentContext.id, selectedEditor?.id)}>Mês anterior</Link>
+        <Link className="active" href={debtsHref(selectedMonthInput, currentContext.id, selectedEditor?.id)}>
           {MONTH_FORMATTER.format(overview.month)}
         </Link>
-        <Link href={debtsHref(nextMonthInput, selectedEditor?.id)}>Próximo mês</Link>
+        <Link href={debtsHref(nextMonthInput, currentContext.id, selectedEditor?.id)}>Próximo mês</Link>
       </nav>
 
       <nav className="person-filter" aria-label="Filtrar dívidas por pessoa">
-        <Link className={!selectedEditor ? "active" : ""} href={debtsHref(selectedMonthInput)}>
+        <Link className={!selectedEditor ? "active" : ""} href={debtsHref(selectedMonthInput, currentContext.id)}>
           Casal
         </Link>
         {overview.editors.map((editor) => (
           <Link
             className={selectedEditor?.id === editor.id ? "active" : ""}
-            href={debtsHref(selectedMonthInput, editor.id)}
+            href={debtsHref(selectedMonthInput, currentContext.id, editor.id)}
             key={editor.id}
           >
             {editor.displayName}
@@ -148,7 +164,7 @@ export default async function DebtsPage({
 
       {debts.length === 0 ? (
         <EmptyState
-          action={{ href: "/dividas/nova", label: "Cadastrar dívida" }}
+          action={{ href: contextHref("/dividas/nova", currentContext.id), label: "Cadastrar dívida" }}
           description="Cadastre uma compra individual ou conjunta para começar o acompanhamento."
           icon="debt"
           title="Nenhuma dívida encontrada"

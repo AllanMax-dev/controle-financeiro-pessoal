@@ -13,13 +13,17 @@ import { getSalaryOverview } from "@/modules/salaries/application/get-salary-ove
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
 
-export async function getDashboardSummary(workspaceId: string, referenceDate = new Date()) {
+export async function getDashboardSummary(
+  workspaceId: string,
+  referenceDate = new Date(),
+  contextId?: string,
+) {
   const database = getDatabase();
   const monthBuckets = createTrailingMonthBuckets(6, referenceDate);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
   // Sincroniza antes das consultas paralelas para que todos os indicadores usem a mesma base.
-  const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate);
+  const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate, new Date(), contextId);
   const [
     {
       accounts,
@@ -36,9 +40,13 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
     manualPendingIncome,
     pendingTransfers,
   ] = await Promise.all([
-    getAccountBalances(workspaceId, false),
+    getAccountBalances(workspaceId, false, contextId),
     database.transaction.findMany({
-      where: { workspaceId, competenceDate: { gte: firstMonth.start, lt: currentMonth.end } },
+      where: {
+        workspaceId,
+        ...(contextId ? { contextId } : {}),
+        competenceDate: { gte: firstMonth.start, lt: currentMonth.end },
+      },
       select: {
         account: { select: { type: true } },
         accountId: true,
@@ -52,21 +60,22 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
       },
     }),
     database.transaction.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(contextId ? { contextId } : {}) },
       include: { account: true, category: true },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
       take: 6,
     }),
     database.budget.findMany({
-      where: { workspaceId, month: currentMonth.start },
+      where: { workspaceId, ...(contextId ? { contextId } : {}), month: currentMonth.start },
       select: {
         amount: true,
         category: { select: { color: true, id: true, name: true } },
       },
     }),
-    getSalaryOverview(workspaceId, referenceDate),
+    getSalaryOverview(workspaceId, referenceDate, contextId),
     database.transaction.findMany({
       where: {
+        ...(contextId ? { contextId } : {}),
         competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
         account: { type: { not: "INVESTMENT" } },
         fixedExpenseId: null,
@@ -80,6 +89,7 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
     }),
     database.transaction.findMany({
       where: {
+        ...(contextId ? { contextId } : {}),
         competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
         account: { type: { not: "INVESTMENT" } },
         salaryId: null,
@@ -96,11 +106,16 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
         status: "PENDING",
         transferDate: { gte: currentMonth.start, lt: currentMonth.end },
         workspaceId,
+        ...(contextId
+          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
+          : {}),
       },
       select: {
         amount: true,
         destinationAccount: { select: { type: true } },
+        destinationContextId: true,
         sourceAccount: { select: { type: true } },
+        sourceContextId: true,
         status: true,
       },
     }),
@@ -114,7 +129,7 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
   );
 
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
-  const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers);
+  const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers, contextId);
   const pendingTransactionIncome = sumMoney(
     operationalPeriodTransactions
       .filter(

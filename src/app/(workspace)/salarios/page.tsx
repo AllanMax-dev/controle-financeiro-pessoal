@@ -6,6 +6,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { getSalaryOverview } from "@/modules/salaries/application/get-salary-overview";
 import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import {
@@ -19,10 +25,18 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
 });
 
-export default async function SalariesPage() {
+export default async function SalariesPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
-  const overview = await getSalaryOverview(access.workspaceId, today);
+  const overview = await getSalaryOverview(access.workspaceId, today, contextState.current.id);
   const monthInput = overview.month.toISOString().slice(0, 7);
   const todayInput = today.toISOString().slice(0, 10);
 
@@ -34,7 +48,7 @@ export default async function SalariesPage() {
           <h1>Salários</h1>
           <p>Gerencie suas rendas recorrentes e acompanhe os recebimentos.</p>
         </div>
-        <Link className="primary-button" href="/salarios/novo">
+        <Link className="primary-button" href={contextHref("/salarios/novo", contextState.current.id)}>
           <Icon name="add" />
           Novo salário
         </Link>
@@ -94,7 +108,7 @@ export default async function SalariesPage() {
 
       {overview.items.length === 0 ? (
         <EmptyState
-          action={{ href: "/salarios/novo", label: "Cadastrar salário" }}
+          action={{ href: contextHref("/salarios/novo", contextState.current.id), label: "Cadastrar salário" }}
           description="Cadastre uma renda recorrente para acompanhar recebimentos ao longo dos meses."
           icon="income"
           title="Nenhum salário cadastrado"
@@ -202,7 +216,7 @@ export default async function SalariesPage() {
                         </p>
                         <Link
                           className="text-button"
-                          href={`/lancamentos/${installment.payment.id}/editar`}
+                          href={contextHref(`/lancamentos/${installment.payment.id}/editar`, contextState.current.id)}
                         >
                           Editar recebimento
                         </Link>

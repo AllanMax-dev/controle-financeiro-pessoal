@@ -11,14 +11,31 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getDashboardSummary } from "@/modules/dashboard/application/get-dashboard-summary";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const rawSearchParams = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(rawSearchParams),
+  );
+  const currentContext = contextState.current;
+  const currentHref = (pathname: string) => contextHref(pathname, currentContext.id);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const [summary, debtOverview] = await Promise.all([
-    getDashboardSummary(access.workspaceId, today),
-    getDebtOverview(access.workspaceId, today),
+    getDashboardSummary(access.workspaceId, today, currentContext.id),
+    getDebtOverview(access.workspaceId, today, currentContext.id),
   ]);
   const remainingCommitments = summary.pendingExpense.plus(debtOverview.pendingThisMonth);
   const projectedAvailable = summary.projectedBalance.minus(debtOverview.pendingThisMonth);
@@ -29,7 +46,7 @@ export default async function DashboardPage() {
         amount: fixedExpense.amount,
         detail: `${fixedExpense.editor.displayName} · ${formatDate(fixedExpense.dueDate)}`,
         dueDate: fixedExpense.dueDate,
-        href: "/despesas-fixas",
+        href: currentHref("/despesas-fixas"),
         key: `fixed-${fixedExpense.id}`,
         overdue: fixedExpense.overdue,
         title: fixedExpense.description,
@@ -41,7 +58,7 @@ export default async function DashboardPage() {
           amount: installment.amount,
           detail: `Parcela ${installment.number}/${debt.installmentCount} · ${formatDate(installment.dueDate)}`,
           dueDate: installment.dueDate,
-          href: "/dividas",
+          href: currentHref("/dividas"),
           key: `debt-${installment.id}`,
           overdue: installment.dueDate < today,
           title: debt.description,
@@ -54,7 +71,7 @@ export default async function DashboardPage() {
         amount: transaction.amount,
         detail: `${transaction.account.name} · ${formatDate(dueDate)}`,
         dueDate,
-        href: `/lancamentos/${transaction.id}/editar`,
+        href: currentHref(`/lancamentos/${transaction.id}/editar`),
         key: `manual-expense-${transaction.id}`,
         overdue: dueDate < today,
         title: transaction.description,
@@ -72,7 +89,7 @@ export default async function DashboardPage() {
           amount: installment.amount,
           detail: `${salary.editor.displayName} · ${formatDate(installment.dueDate)}`,
           dueDate: installment.dueDate,
-          href: "/salarios",
+          href: currentHref("/salarios"),
           key: `salary-${salary.id}-${installment.installment}`,
           overdue: installment.overdue,
           title: salary.description,
@@ -85,7 +102,7 @@ export default async function DashboardPage() {
         amount: transaction.amount,
         detail: `${transaction.account.name} · ${formatDate(dueDate)}`,
         dueDate,
-        href: `/lancamentos/${transaction.id}/editar`,
+        href: currentHref(`/lancamentos/${transaction.id}/editar`),
         key: `manual-income-${transaction.id}`,
         overdue: dueDate < today,
         title: transaction.description,
@@ -102,11 +119,11 @@ export default async function DashboardPage() {
           <p>Valores realizados atualizam os saldos; valores pendentes aparecem separadamente.</p>
         </div>
         <div className="page-actions">
-          <Link className="primary-button" href="/lancamentos/novo">
+          <Link className="primary-button" href={currentHref("/lancamentos/novo")}>
             <Icon name="add" />
             Novo lançamento
           </Link>
-          <Link className="secondary-button" href="/transferencias/nova">
+          <Link className="secondary-button" href={currentHref("/transferencias/nova")}>
             <Icon name="transfer" />
             Nova transferência
           </Link>
@@ -220,7 +237,7 @@ export default async function DashboardPage() {
               <p className="eyebrow">A pagar</p>
               <h2>Próximos pagamentos</h2>
             </div>
-            <Link className="text-button" href="/lancamentos">
+            <Link className="text-button" href={currentHref("/lancamentos")}>
               Ver lançamentos
             </Link>
           </div>
@@ -249,7 +266,7 @@ export default async function DashboardPage() {
               <p className="eyebrow">A receber</p>
               <h2>Próximos recebimentos</h2>
             </div>
-            <Link className="text-button" href="/salarios">
+            <Link className="text-button" href={currentHref("/salarios")}>
               Ver salários
             </Link>
           </div>
@@ -337,13 +354,13 @@ export default async function DashboardPage() {
               <p className="eyebrow">Disponibilidade</p>
               <h2>Saldo por conta</h2>
             </div>
-            <Link className="text-button" href="/contas">
+            <Link className="text-button" href={currentHref("/contas")}>
               Ver contas
             </Link>
           </div>
           {summary.accounts.length === 0 ? (
             <EmptyState
-              action={{ href: "/contas/nova", label: "Criar conta" }}
+              action={{ href: currentHref("/contas/nova"), label: "Criar conta" }}
               description="Cadastre uma conta para acompanhar saldos e disponibilidade."
               icon="account"
               title="Nenhuma conta cadastrada"
@@ -367,7 +384,7 @@ export default async function DashboardPage() {
               <p className="eyebrow">Casal</p>
               <h2>Dívidas deste mês</h2>
             </div>
-            <Link className="text-button" href="/dividas">
+            <Link className="text-button" href={currentHref("/dividas")}>
               Ver dívidas
             </Link>
           </div>
@@ -399,13 +416,13 @@ export default async function DashboardPage() {
               <p className="eyebrow">Recorrência mensal</p>
               <h2>Despesas fixas</h2>
             </div>
-            <Link className="text-button" href="/despesas-fixas">
+            <Link className="text-button" href={currentHref("/despesas-fixas")}>
               Ver despesas fixas
             </Link>
           </div>
           {summary.fixedExpenses.items.length === 0 ? (
             <EmptyState
-              action={{ href: "/despesas-fixas/nova", label: "Cadastrar despesa fixa" }}
+              action={{ href: currentHref("/despesas-fixas/nova"), label: "Cadastrar despesa fixa" }}
               description="Aluguel, feira e outras despesas recorrentes aparecerão aqui."
               icon="calendar"
               title="Nenhuma despesa fixa"
@@ -451,13 +468,13 @@ export default async function DashboardPage() {
               <p className="eyebrow">Receitas recorrentes</p>
               <h2>Salários</h2>
             </div>
-            <Link className="text-button" href="/salarios">
+            <Link className="text-button" href={currentHref("/salarios")}>
               Ver salários
             </Link>
           </div>
           {summary.salaries.items.length === 0 ? (
             <EmptyState
-              action={{ href: "/salarios/novo", label: "Cadastrar salário" }}
+              action={{ href: currentHref("/salarios/novo"), label: "Cadastrar salário" }}
               description="Salários mensais e quinzenais aparecerão aqui."
               icon="income"
               title="Nenhum salário cadastrado"
@@ -505,7 +522,7 @@ export default async function DashboardPage() {
             <p className="eyebrow">Histórico</p>
             <h2>Movimentações recentes</h2>
           </div>
-          <Link className="text-button" href="/lancamentos">
+          <Link className="text-button" href={currentHref("/lancamentos")}>
             Ver todas
           </Link>
         </div>

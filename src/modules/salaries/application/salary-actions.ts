@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  assertFinancialContextAccess,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { createSalarySchedule } from "@/modules/salaries/domain/salary-schedule";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -32,6 +36,7 @@ const salarySchema = z
     accountId: identifierSchema,
     amount: positiveMoneyInputSchema,
     categoryId: identifierSchema,
+    contextId: identifierSchema,
     description: z.string().trim().min(2, "Informe uma descrição.").max(160),
     editorId: identifierSchema,
     frequency: z.enum(["MONTHLY", "FORTNIGHTLY"]),
@@ -61,6 +66,7 @@ const archiveSalarySchema = z.object({ id: identifierSchema, version: versionSch
 
 function revalidateSalaryPaths() {
   revalidatePath("/salarios");
+  revalidatePath("/recebimentos");
   revalidatePath("/painel");
   revalidatePath("/contas");
   revalidatePath("/lancamentos");
@@ -75,6 +81,7 @@ export async function createSalaryAction(
     accountId: formData.get("accountId"),
     amount: formData.get("amount"),
     categoryId: formData.get("categoryId"),
+    contextId: formData.get("contextId"),
     description: formData.get("description"),
     editorId: formData.get("editorId"),
     frequency: formData.get("frequency"),
@@ -88,11 +95,18 @@ export async function createSalaryAction(
   }
 
   const access = await requireCurrentAccess();
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+
+  if (financialContext.type === "PERSONAL" && parsed.data.editorId !== financialContext.ownerEditorId) {
+    return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
+  }
+
   const database = getDatabase();
   const [account, category, editor] = await Promise.all([
     database.financialAccount.findFirst({
       where: {
         id: parsed.data.accountId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -102,6 +116,7 @@ export async function createSalaryAction(
     database.category.findFirst({
       where: {
         id: parsed.data.categoryId,
+        contextId: parsed.data.contextId,
         workspaceId: access.workspaceId,
         kind: "INCOME",
         active: true,
@@ -130,6 +145,7 @@ export async function createSalaryAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: parsed.data.contextId,
           actorEditorId: access.editorId,
           action: "salary.created",
           entityType: "Salary",
@@ -163,6 +179,7 @@ export async function receiveSalaryAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   try {
@@ -170,6 +187,7 @@ export async function receiveSalaryAction(
       const salary = await transaction.salary.findFirst({
         where: {
           id: parsed.data.id,
+          contextId: { in: accessibleContextIds },
           workspaceId: access.workspaceId,
           active: true,
           account: { active: true, type: { not: "INVESTMENT" } },
@@ -210,6 +228,7 @@ export async function receiveSalaryAction(
         amount: parsed.data.amount,
         categoryId: salary.categoryId,
         competenceDate: scheduled.dueDate,
+        contextId: salary.contextId,
         description: salary.frequency === "FORTNIGHTLY"
           ? `${salary.description} (${scheduled.installment}/2)`
           : salary.description,
@@ -240,6 +259,7 @@ export async function receiveSalaryAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: salary.contextId,
           actorEditorId: access.editorId,
           action: "salary.received",
           entityType: "Salary",
@@ -277,12 +297,14 @@ export async function archiveSalaryAction(formData: FormData): Promise<void> {
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
     const result = await transaction.salary.updateMany({
       where: {
         id: parsed.data.id,
+        contextId: { in: accessibleContextIds },
         workspaceId: access.workspaceId,
         active: true,
         version: parsed.data.version,

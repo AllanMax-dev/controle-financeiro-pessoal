@@ -7,6 +7,12 @@ import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
+import {
   deleteArchivedAccountFormAction,
   toggleAccountActiveFormAction,
 } from "@/modules/accounts/application/account-actions";
@@ -22,8 +28,16 @@ const accountTypeLabels = {
   OTHER: "Outra",
 } as const;
 
-export default async function AccountsPage() {
+export default async function AccountsPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const {
     accounts,
     activeAccounts,
@@ -32,7 +46,7 @@ export default async function AccountsPage() {
     investmentBalance,
     ownerGroups,
     totalBalance,
-  } = await getAccountBalances(access.workspaceId);
+  } = await getAccountBalances(access.workspaceId, true, contextState.current.id);
 
   return (
     <>
@@ -42,7 +56,7 @@ export default async function AccountsPage() {
           <h1>Contas</h1>
           <p>O dinheiro disponível fica separado dos investimentos e do patrimônio financeiro.</p>
         </div>
-        <Link className="primary-button" href="/contas/nova">
+        <Link className="primary-button" href={contextHref("/contas/nova", contextState.current.id)}>
           <Icon name="add" />
           Nova conta
         </Link>
@@ -68,7 +82,7 @@ export default async function AccountsPage() {
 
       {accounts.length === 0 ? (
         <EmptyState
-          action={{ href: "/contas/nova", label: "Criar conta" }}
+          action={{ href: contextHref("/contas/nova", contextState.current.id), label: "Criar conta" }}
           description="Crie a primeira conta para registrar saldos, lançamentos e transferências."
           icon="account"
           title="Nenhuma conta cadastrada"
@@ -115,10 +129,10 @@ export default async function AccountsPage() {
                           <span className="status-pill status-settled">Ativa</span>
                         </div>
                         <div className="row-actions">
-                          <Link className="text-button" href={`/contas/${account.id}/editar`}>
+                          <Link className="text-button" href={contextHref(`/contas/${account.id}/editar`, contextState.current.id)}>
                             Editar
                           </Link>
-                          <Link className="text-button" href={`/contas/${account.id}/ajustar`}>
+                          <Link className="text-button" href={contextHref(`/contas/${account.id}/ajustar`, contextState.current.id)}>
                             Ajustar saldo atual
                           </Link>
                           <AccountStatusActionForm
@@ -163,7 +177,7 @@ export default async function AccountsPage() {
                       <span className="status-pill status-canceled">Arquivada</span>
                     </div>
                     <div className="row-actions">
-                      <Link className="text-button" href={`/contas/${account.id}/editar`}>
+                      <Link className="text-button" href={contextHref(`/contas/${account.id}/editar`, contextState.current.id)}>
                         Editar
                       </Link>
                       <AccountStatusActionForm

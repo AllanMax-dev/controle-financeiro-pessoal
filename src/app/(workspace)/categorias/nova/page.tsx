@@ -1,7 +1,23 @@
 import { CategoryForm } from "@/components/category-form";
+import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createCategoryAction } from "@/modules/categories/application/category-actions";
+import {
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 
-export default function NewCategoryPage() {
+export default async function NewCategoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
+  const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
+
   return (
     <>
       <section className="page-heading compact-heading">
@@ -13,7 +29,7 @@ export default function NewCategoryPage() {
       </section>
       <CategoryForm
         action={createCategoryAction}
-        defaults={{ color: "#256b4b", kind: "EXPENSE", name: "" }}
+        defaults={{ color: "#256b4b", contextId: contextState.current.id, kind: "EXPENSE", name: "" }}
         submitLabel="Criar categoria"
       />
     </>

@@ -4,18 +4,44 @@ import { DebtForm } from "@/components/debt-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { createDebtAction } from "@/modules/debts/application/debt-actions";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 
-export default async function NewDebtPage() {
+export default async function NewDebtPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const filters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(filters),
+  );
+  const currentContext = contextState.current;
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
+      where: {
+        contextId: currentContext.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { workspaceId: access.workspaceId, active: true, kind: "EXPENSE" },
+      where: {
+        contextId: currentContext.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        kind: "EXPENSE",
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -40,7 +66,7 @@ export default async function NewDebtPage() {
         <section className="empty-state">
           <h2>Crie uma categoria de despesa</h2>
           <p>A dívida precisa de uma categoria para aparecer corretamente nos relatórios.</p>
-          <Link className="primary-button" href="/categorias/nova">
+          <Link className="primary-button" href={contextHref("/categorias/nova", currentContext.id)}>
             Criar categoria
           </Link>
         </section>
@@ -49,6 +75,7 @@ export default async function NewDebtPage() {
           accounts={accounts}
           action={createDebtAction}
           categories={categories}
+          contextId={currentContext.id}
           currentEditorId={access.editorId}
           editors={editors}
         />

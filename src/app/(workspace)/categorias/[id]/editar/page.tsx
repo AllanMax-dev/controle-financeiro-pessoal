@@ -4,12 +4,14 @@ import { CategoryForm } from "@/components/category-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { updateCategoryAction } from "@/modules/categories/application/category-actions";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 
 export default async function EditCategoryPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id } = await params;
   const category = await getDatabase().category.findFirst({
-    where: { id, workspaceId: access.workspaceId },
+    where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId },
   });
 
   if (!category) {
@@ -29,6 +31,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
         action={updateCategoryAction}
         defaults={{
           color: category.color ?? "#256b4b",
+          contextId: category.contextId,
           id: category.id,
           kind: category.kind,
           name: category.name,

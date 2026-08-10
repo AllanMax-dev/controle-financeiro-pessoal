@@ -6,6 +6,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import {
   archiveFixedExpenseAction,
@@ -20,13 +26,21 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
 });
 
 
-export default async function FixedExpensesPage() {
+export default async function FixedExpensesPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const now = new Date();
   const todayInput = dateInputInTimeZone(now, access.workspaceTimezone);
   const monthInput = todayInput.slice(0, 7);
   const month = new Date(`${monthInput}-01T00:00:00.000Z`);
-  const overview = await getFixedExpenseOverview(access.workspaceId, month, now);
+  const overview = await getFixedExpenseOverview(access.workspaceId, month, now, contextState.current.id);
 
   return (
     <>
@@ -37,7 +51,7 @@ export default async function FixedExpensesPage() {
           <p>Gerencie despesas recorrentes e acompanhe os pagamentos do mês atual.</p>
         </div>
         <div className="page-actions fixed-expense-page-actions">
-          <Link className="primary-button" href="/despesas-fixas/nova">
+          <Link className="primary-button" href={contextHref("/despesas-fixas/nova", contextState.current.id)}>
             <Icon name="add" />
             Nova despesa fixa
           </Link>
@@ -74,7 +88,10 @@ export default async function FixedExpensesPage() {
 
       {overview.items.length === 0 ? (
         <EmptyState
-          action={{ href: "/despesas-fixas/nova", label: "Cadastrar despesa fixa" }}
+          action={{
+            href: contextHref("/despesas-fixas/nova", contextState.current.id),
+            label: "Cadastrar despesa fixa",
+          }}
           description="Cadastre uma despesa recorrente para acompanhar os pagamentos ao longo dos meses."
           icon="calendar"
           title="Nenhuma despesa recorrente cadastrada"
@@ -204,7 +221,7 @@ export default async function FixedExpensesPage() {
                         <>
                           <Link
                             className="text-button"
-                            href={`/despesas-fixas/${fixedExpense.id}/editar`}
+                            href={contextHref(`/despesas-fixas/${fixedExpense.id}/editar`, contextState.current.id)}
                           >
                             Editar recorrência
                           </Link>

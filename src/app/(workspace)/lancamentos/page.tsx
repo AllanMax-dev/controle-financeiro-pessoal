@@ -4,6 +4,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { cancelTransactionAction } from "@/modules/transactions/application/transaction-actions";
@@ -19,10 +25,16 @@ import { Icon } from "@/components/ui/icons";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<TransactionListSearchParams>;
+  searchParams: Promise<TransactionListSearchParams & FinancialContextSearchParams>;
 }) {
   const access = await requireCurrentAccess();
   const rawFilters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(rawFilters),
+  );
+  const currentContext = contextState.current;
+  const currentHref = (pathname: string) => contextHref(pathname, currentContext.id);
   const filters = normalizeTransactionListFilters(
     rawFilters,
     calendarDateInTimeZone(new Date(), access.workspaceTimezone),
@@ -44,14 +56,14 @@ export default async function TransactionsPage({
     rawFilters.personId,
   ].filter(Boolean).length;
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(access.workspaceId);
+  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), currentContext.id);
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId },
+      where: { contextId: currentContext.id, workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { workspaceId: access.workspaceId },
+      where: { contextId: currentContext.id, workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
     }),
     database.editor.findMany({
@@ -73,6 +85,7 @@ export default async function TransactionsPage({
     Boolean(filters.categoryId && !categoryId) ||
     Boolean(filters.personId && !personId);
   const where: Prisma.TransactionWhereInput = {
+    contextId: currentContext.id,
     workspaceId: access.workspaceId,
     competenceDate: { gte: filters.start, lt: filters.end },
     ...transactionStatusCriteria(filters.status),
@@ -133,7 +146,7 @@ export default async function TransactionsPage({
           <h1>Lançamentos</h1>
           <p>Receitas e despesas são consolidadas pelo mês de competência.</p>
         </div>
-        <Link className="primary-button" href="/lancamentos/novo">
+        <Link className="primary-button" href={currentHref("/lancamentos/novo")}>
           Novo lançamento
         </Link>
       </section>
@@ -149,6 +162,7 @@ export default async function TransactionsPage({
           </span>
         </div>
         <form className="filter-bar transaction-filter-bar" method="get">
+          <input name="contextId" type="hidden" value={currentContext.id} />
           <div className="filter-fields filter-fields-primary">
             <label className="filter-search">
               <span>Pesquisa</span>
@@ -231,7 +245,7 @@ export default async function TransactionsPage({
             </div>
           </details>
           <div className="filter-actions">
-            <Link className="secondary-button" href="/lancamentos">
+            <Link className="secondary-button" href={currentHref("/lancamentos")}>
               Limpar
             </Link>
             <button className="primary-button" type="submit">
@@ -244,7 +258,7 @@ export default async function TransactionsPage({
 
       {transactions.length === 0 ? (
         <EmptyState
-          action={{ href: "/lancamentos/novo", label: "Adicionar lançamento" }}
+          action={{ href: currentHref("/lancamentos/novo"), label: "Adicionar lançamento" }}
           description="Altere os filtros ou adicione uma movimentação para este período."
           icon="income"
           title="Nenhum lançamento encontrado"
@@ -297,34 +311,34 @@ export default async function TransactionsPage({
               </div>
               <div className="row-actions">
                 {transaction.debtInstallment ? (
-                  <Link className="text-button" href="/dividas">
+                  <Link className="text-button" href={currentHref("/dividas")}>
                     Ver dívida
                   </Link>
                 ) : transaction.fixedExpense ? (
                   <>
                     {transaction.status !== "CANCELED" ? (
-                      <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
+                      <Link className="text-button" href={currentHref(`/lancamentos/${transaction.id}/editar`)}>
                         Editar pagamento
                       </Link>
                     ) : null}
-                    <Link className="text-button" href="/despesas-fixas">
+                    <Link className="text-button" href={currentHref("/despesas-fixas")}>
                       Ver recorrência
                     </Link>
                   </>
                 ) : transaction.salary ? (
                   <>
                     {transaction.status !== "CANCELED" ? (
-                      <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
+                      <Link className="text-button" href={currentHref(`/lancamentos/${transaction.id}/editar`)}>
                         Editar recebimento
                       </Link>
                     ) : null}
-                    <Link className="text-button" href="/salarios">
+                    <Link className="text-button" href={currentHref("/salarios")}>
                       Ver salário
                     </Link>
                   </>
                 ) : transaction.status !== "CANCELED" ? (
                   <>
-                    <Link className="text-button" href={`/lancamentos/${transaction.id}/editar`}>
+                    <Link className="text-button" href={currentHref(`/lancamentos/${transaction.id}/editar`)}>
                       Editar
                     </Link>
                     <ConfirmActionForm

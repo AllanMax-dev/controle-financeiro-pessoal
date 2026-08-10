@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  assertFinancialContextAccess,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   dateInputSchema,
@@ -36,6 +40,7 @@ const transactionSchema = z
     amount: positiveMoneyInputSchema,
     categoryId: optionalIdentifierSchema,
     competenceDate: dateInputSchema,
+    contextId: identifierSchema,
     description: z
       .string()
       .trim()
@@ -73,6 +78,7 @@ function transactionInput(formData: FormData) {
     amount: formData.get("amount"),
     categoryId: formData.get("categoryId"),
     competenceDate: formData.get("competenceDate"),
+    contextId: formData.get("contextId"),
     description: formData.get("description"),
     dueDate: formData.get("dueDate"),
     notes: formData.get("notes"),
@@ -84,6 +90,7 @@ function transactionInput(formData: FormData) {
 
 async function relationsAreValid(
   workspaceId: string,
+  contextId: string,
   accountId: string,
   categoryId: string | null,
   type: "INCOME" | "EXPENSE",
@@ -94,6 +101,7 @@ async function relationsAreValid(
     database.financialAccount.findFirst({
       where: {
         id: accountId,
+        contextId,
         workspaceId,
         ...(requireActive ? { active: true, type: { not: "INVESTMENT" as const } } : {}),
       },
@@ -103,6 +111,7 @@ async function relationsAreValid(
       ? database.category.findFirst({
           where: {
             id: categoryId,
+            contextId,
             workspaceId,
             kind: type,
             ...(requireActive ? { active: true } : {}),
@@ -122,6 +131,7 @@ type CurrentTransactionRelations = {
 
 async function updatedRelationsAreValid(
   workspaceId: string,
+  contextId: string,
   accountId: string,
   categoryId: string | null,
   type: "INCOME" | "EXPENSE",
@@ -132,6 +142,7 @@ async function updatedRelationsAreValid(
     database.financialAccount.findFirst({
       where: {
         id: accountId,
+        contextId,
         workspaceId,
         OR: [{ active: true, type: { not: "INVESTMENT" } }, { id: currentRelations.accountId }],
       },
@@ -141,6 +152,7 @@ async function updatedRelationsAreValid(
       ? database.category.findFirst({
           where: {
             id: categoryId,
+            contextId,
             workspaceId,
             kind: type,
             OR: [
@@ -167,8 +179,10 @@ export async function createTransactionAction(
   }
 
   const access = await requireCurrentAccess();
+  await assertFinancialContextAccess(access, parsed.data.contextId);
   const validRelations = await relationsAreValid(
     access.workspaceId,
+    parsed.data.contextId,
     parsed.data.accountId,
     parsed.data.categoryId,
     parsed.data.type,
@@ -195,6 +209,7 @@ export async function createTransactionAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: data.contextId,
           actorEditorId: access.editorId,
           action: "transaction.created",
           entityType: "Transaction",
@@ -208,13 +223,15 @@ export async function createTransactionAction(
   }
 
   revalidatePath("/painel");
+  revalidatePath("/gastos-variaveis");
+  revalidatePath("/recebimentos");
   revalidatePath("/contas");
   revalidatePath("/despesas-fixas");
   revalidatePath("/lancamentos");
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
   revalidatePath("/salarios");
-  redirect("/lancamentos");
+  redirect(`${data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis"}?contextId=${data.contextId}`);
 }
 
 export async function updateTransactionAction(
@@ -232,15 +249,23 @@ export async function updateTransactionAction(
   }
 
   const access = await requireCurrentAccess();
+  await assertFinancialContextAccess(access, parsed.data.contextId);
   const database = getDatabase();
   const existing = await database.transaction.findFirst({
     where: {
       id: parsed.data.id,
+      contextId: parsed.data.contextId,
       workspaceId: access.workspaceId,
       status: { not: "CANCELED" },
       debtInstallment: { is: null },
     },
-    select: { accountId: true, categoryId: true, fixedExpenseId: true, salaryId: true },
+    select: {
+      accountId: true,
+      categoryId: true,
+      contextId: true,
+      fixedExpenseId: true,
+      salaryId: true,
+    },
   });
 
   if (!existing) {
@@ -257,6 +282,7 @@ export async function updateTransactionAction(
 
   const validRelations = await updatedRelationsAreValid(
     access.workspaceId,
+    parsed.data.contextId,
     parsed.data.accountId,
     parsed.data.categoryId,
     parsed.data.type,
@@ -273,6 +299,7 @@ export async function updateTransactionAction(
     const updated = await database.$transaction(async (transaction) => {
       const result = await transaction.transaction.updateMany({
         where: {
+          contextId: data.contextId,
           id,
           workspaceId: access.workspaceId,
           version,
@@ -293,6 +320,7 @@ export async function updateTransactionAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: data.contextId,
           actorEditorId: access.editorId,
           action: "transaction.updated",
           entityType: "Transaction",
@@ -312,13 +340,15 @@ export async function updateTransactionAction(
   }
 
   revalidatePath("/painel");
+  revalidatePath("/gastos-variaveis");
+  revalidatePath("/recebimentos");
   revalidatePath("/contas");
   revalidatePath("/despesas-fixas");
   revalidatePath("/lancamentos");
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
   revalidatePath("/salarios");
-  redirect("/lancamentos");
+  redirect(`${data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis"}?contextId=${data.contextId}`);
 }
 
 export async function cancelTransactionAction(formData: FormData): Promise<void> {
@@ -332,12 +362,14 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
     const result = await transaction.transaction.updateMany({
       where: {
         id: parsed.data.id,
+        contextId: { in: accessibleContextIds },
         workspaceId: access.workspaceId,
         version: parsed.data.version,
         status: { not: "CANCELED" },

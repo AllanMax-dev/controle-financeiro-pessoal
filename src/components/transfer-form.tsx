@@ -30,7 +30,7 @@ export function TransferForm({
   defaults,
   submitLabel,
 }: {
-  accounts: { id: string; name: string }[];
+  accounts: { financialContext?: { name: string }; id: string; name: string }[];
   action: TransferFormAction;
   defaults: TransferFormDefaults;
   submitLabel: string;
@@ -79,7 +79,7 @@ export function TransferForm({
         <select name="sourceAccountId" defaultValue={defaults.sourceAccountId} required>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
-              {account.name}
+              {account.name}{account.financialContext ? ` · ${account.financialContext.name}` : ""}
             </option>
           ))}
         </select>
@@ -90,7 +90,7 @@ export function TransferForm({
         <select name="destinationAccountId" defaultValue={defaults.destinationAccountId} required>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
-              {account.name}
+              {account.name}{account.financialContext ? ` · ${account.financialContext.name}` : ""}
             </option>
           ))}
         </select>

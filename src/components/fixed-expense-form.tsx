@@ -18,6 +18,7 @@ type FixedExpenseFormDefaults = {
   accountId: string;
   amount: string;
   categoryId: string;
+  contextId: string;
   description: string;
   dueDay: number;
   editorId: string;
@@ -31,6 +32,7 @@ export function FixedExpenseForm({
   accounts,
   action,
   categories,
+  contextId,
   currentMonth,
   currentEditorId,
   defaults,
@@ -40,6 +42,7 @@ export function FixedExpenseForm({
   accounts: { id: string; name: string }[];
   action: FixedExpenseFormAction;
   categories: { id: string; name: string }[];
+  contextId: string;
   currentMonth: string;
   currentEditorId: string;
   defaults?: FixedExpenseFormDefaults;
@@ -51,6 +54,7 @@ export function FixedExpenseForm({
     accountId: "",
     amount: "",
     categoryId: "",
+    contextId,
     description: "",
     dueDay: 10,
     editorId: currentEditorId,
@@ -62,6 +66,7 @@ export function FixedExpenseForm({
     <form action={formAction} className="entity-form fixed-expense-form">
       {values.id ? <input name="id" type="hidden" value={values.id} /> : null}
       {values.version ? <input name="version" type="hidden" value={values.version} /> : null}
+      <input name="contextId" type="hidden" value={values.contextId} />
       <div className="form-section-title field-wide">
         <h2>Dados da despesa</h2>
         <p>Cadastre compromissos mensais como aluguel, feira, internet e assinaturas.</p>

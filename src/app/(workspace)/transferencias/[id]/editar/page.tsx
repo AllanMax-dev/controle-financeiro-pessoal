@@ -4,14 +4,24 @@ import { TransferForm } from "@/components/transfer-form";
 import { getDatabase } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
 import { updateTransferAction } from "@/modules/transfers/application/transfer-actions";
 
 export default async function EditTransferPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const { id } = await params;
   const database = getDatabase();
   const transfer = await database.transfer.findFirst({
-    where: { id, workspaceId: access.workspaceId, status: { not: "CANCELED" } },
+    where: {
+      id,
+      OR: [
+        { sourceContextId: { in: accessibleContextIds } },
+        { destinationContextId: { in: accessibleContextIds } },
+      ],
+      workspaceId: access.workspaceId,
+      status: { not: "CANCELED" },
+    },
   });
 
   if (!transfer) {
@@ -21,14 +31,15 @@ export default async function EditTransferPage({ params }: { params: Promise<{ i
   const accounts = await database.financialAccount.findMany({
     where: {
       workspaceId: access.workspaceId,
+      contextId: { in: accessibleContextIds },
       OR: [
         { active: true },
         { id: transfer.sourceAccountId },
         { id: transfer.destinationAccountId },
       ],
     },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    select: { financialContext: { select: { name: true } }, id: true, name: true },
+    orderBy: [{ contextId: "asc" }, { name: "asc" }],
   });
 
   return (

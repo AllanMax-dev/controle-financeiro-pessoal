@@ -10,6 +10,11 @@ import {
   createDebtInstallmentPlan,
   isFortnightlyDueDate,
 } from "@/modules/debts/domain/installment-plan";
+import {
+  assertFinancialContextAccess,
+  contextHref,
+  getAccessibleFinancialContexts,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   dateInputSchema,
@@ -38,6 +43,7 @@ const debtSchema = z
   .object({
     cardName: optionalCardNameSchema,
     categoryId: identifierSchema,
+    contextId: identifierSchema,
     description: z.string().trim().min(2, "Informe uma descrição.").max(160),
     firstDueDate: dateInputSchema,
     historicalAccountId: optionalIdentifierSchema,
@@ -126,6 +132,7 @@ export async function createDebtAction(
   const parsed = debtSchema.safeParse({
     cardName: formData.get("cardName"),
     categoryId: formData.get("categoryId"),
+    contextId: formData.get("contextId"),
     description: formData.get("description"),
     firstDueDate: formData.get("firstDueDate"),
     historicalAccountId: formData.get("historicalAccountId"),
@@ -171,11 +178,13 @@ export async function createDebtAction(
   }
 
   const access = await requireCurrentAccess();
+  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
   const database = getDatabase();
   const editorIds = shares.map(({ editorId }) => editorId);
   const [category, editorCount, historicalAccount] = await Promise.all([
     database.category.findFirst({
       where: {
+        contextId: parsed.data.contextId,
         id: parsed.data.categoryId,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
@@ -189,6 +198,7 @@ export async function createDebtAction(
     parsed.data.historicalAccountId
       ? database.financialAccount.findFirst({
           where: {
+            contextId: parsed.data.contextId,
             id: parsed.data.historicalAccountId,
             workspaceId: access.workspaceId,
             active: true,
@@ -207,11 +217,19 @@ export async function createDebtAction(
     return { error: "A conta escolhida para o histórico não está disponível." };
   }
 
+  if (
+    financialContext.type === "PERSONAL" &&
+    (shares.length !== 1 || shares[0]?.editorId !== financialContext.ownerEditorId)
+  ) {
+    return { error: "No contexto pessoal, cadastre a dívida apenas para a própria pessoa." };
+  }
+
   try {
     await database.$transaction(async (transaction) => {
       const debt = await transaction.debt.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: parsed.data.contextId,
           cardName: parsed.data.paymentMethod === "CREDIT_CARD" ? parsed.data.cardName : null,
           categoryId: parsed.data.categoryId,
           description: parsed.data.description,
@@ -230,6 +248,7 @@ export async function createDebtAction(
           ? await transaction.transaction.create({
               data: {
                 workspaceId: access.workspaceId,
+                contextId: parsed.data.contextId,
                 accountId: historicalAccount!.id,
                 affectsBalance: false,
                 amount: installment.amount.toFixed(2),
@@ -269,6 +288,7 @@ export async function createDebtAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: parsed.data.contextId,
           actorEditorId: access.editorId,
           action: "debt.created",
           entityType: "Debt",
@@ -289,7 +309,7 @@ export async function createDebtAction(
   revalidatePath("/dividas");
   revalidatePath("/painel");
   revalidatePath("/lancamentos");
-  redirect("/dividas");
+  redirect(contextHref("/dividas", parsed.data.contextId));
 }
 
 export async function payDebtInstallmentAction(
@@ -308,15 +328,17 @@ export async function payDebtInstallmentAction(
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
   const account = await database.financialAccount.findFirst({
     where: {
+      contextId: { in: accessibleContextIds },
       id: parsed.data.accountId,
       workspaceId: access.workspaceId,
       active: true,
       type: { not: "INVESTMENT" },
     },
-    select: { id: true },
+    select: { contextId: true, id: true },
   });
 
   if (!account) {
@@ -328,7 +350,11 @@ export async function payDebtInstallmentAction(
       const installment = await transaction.debtInstallment.findFirst({
         where: {
           id: parsed.data.id,
-          debt: { workspaceId: access.workspaceId, canceledAt: null },
+          debt: {
+            contextId: { in: accessibleContextIds },
+            workspaceId: access.workspaceId,
+            canceledAt: null,
+          },
           status: "PENDING",
         },
         include: { debt: true },
@@ -338,9 +364,14 @@ export async function payDebtInstallmentAction(
         return false;
       }
 
+      if (account.contextId !== installment.debt.contextId) {
+        return false;
+      }
+
       const financialTransaction = await transaction.transaction.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: installment.debt.contextId,
           accountId: parsed.data.accountId,
           affectsBalance: true,
           amount: installment.amount,
@@ -375,6 +406,7 @@ export async function payDebtInstallmentAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId: installment.debt.contextId,
           actorEditorId: access.editorId,
           action: "debt.installment_paid",
           entityType: "DebtInstallment",
@@ -416,17 +448,20 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
   }
 
   const access = await requireCurrentAccess();
+  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
     const debt = await transaction.debt.findFirst({
       where: {
+        contextId: { in: accessibleContextIds },
         id: parsed.data.id,
         workspaceId: access.workspaceId,
         canceledAt: null,
         version: parsed.data.version,
       },
       select: {
+        contextId: true,
         description: true,
         installments: { select: { status: true, transactionId: true } },
       },
@@ -448,6 +483,7 @@ export async function cancelDebtAction(formData: FormData): Promise<void> {
     await transaction.auditLog.create({
       data: {
         workspaceId: access.workspaceId,
+        contextId: debt.contextId,
         actorEditorId: access.editorId,
         action: "debt.deleted",
         entityType: "Debt",

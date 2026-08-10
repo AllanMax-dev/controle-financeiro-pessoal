@@ -3,21 +3,40 @@ import Link from "next/link";
 import { TransactionForm } from "@/components/transaction-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import {
+  contextHref,
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
 import { createTransactionAction } from "@/modules/transactions/application/transaction-actions";
 
-export default async function NewTransactionPage() {
+export default async function NewTransactionPage({
+  searchParams,
+}: {
+  searchParams: Promise<FinancialContextSearchParams>;
+}) {
   const access = await requireCurrentAccess();
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(await searchParams),
+  );
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const database = getDatabase();
   const [accounts, categories] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
+      where: {
+        contextId: contextState.current.id,
+        workspaceId: access.workspaceId,
+        active: true,
+        type: { not: "INVESTMENT" },
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { workspaceId: access.workspaceId, active: true },
+      where: { contextId: contextState.current.id, workspaceId: access.workspaceId, active: true },
       select: { id: true, kind: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -36,7 +55,7 @@ export default async function NewTransactionPage() {
         <section className="empty-state">
           <h2>Crie uma conta primeiro</h2>
           <p>Todo lançamento precisa estar associado a uma conta financeira ativa.</p>
-          <Link className="primary-button" href="/contas/nova">
+          <Link className="primary-button" href={contextHref("/contas/nova", contextState.current.id)}>
             Criar conta
           </Link>
         </section>
@@ -50,6 +69,7 @@ export default async function NewTransactionPage() {
             amount: "",
             categoryId: "",
             competenceDate: today,
+            contextId: contextState.current.id,
             description: "",
             dueDate: today,
             notes: "",
