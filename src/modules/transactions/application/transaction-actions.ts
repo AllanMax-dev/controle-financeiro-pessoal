@@ -8,6 +8,7 @@ import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   assertFinancialContextAccess,
+  contextHref,
   getAccessibleFinancialContexts,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -231,7 +232,7 @@ export async function createTransactionAction(
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
   revalidatePath("/salarios");
-  redirect(`${data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis"}?contextId=${data.contextId}`);
+  redirect(contextHref(data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis", data.contextId));
 }
 
 export async function updateTransactionAction(
@@ -348,7 +349,7 @@ export async function updateTransactionAction(
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
   revalidatePath("/salarios");
-  redirect(`${data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis"}?contextId=${data.contextId}`);
+  redirect(contextHref(data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis", data.contextId));
 }
 
 export async function cancelTransactionAction(formData: FormData): Promise<void> {

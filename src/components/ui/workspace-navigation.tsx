@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -46,8 +47,8 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function hrefWithContext(href: string, contextId: string) {
-  return `${href}?contextId=${encodeURIComponent(contextId)}`;
+function hrefWithContext(href: string, contextId: string): Route {
+  return `${href}?contextId=${encodeURIComponent(contextId)}` as Route;
 }
 
 function NavigationLinks({
@@ -126,7 +127,7 @@ function ContextSwitcher({
           <Link
             aria-current={active ? "true" : undefined}
             className={active ? "active" : undefined}
-            href={`${pathname}?${params.toString()}`}
+            href={`${pathname}?${params.toString()}` as Route}
             key={context.id}
             onClick={onNavigate}
           >

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useActionState, useState } from "react";
 
 import { FormSubmitButton } from "@/components/form-submit-button";
@@ -31,6 +32,7 @@ export function TransactionForm({
   accounts,
   action,
   categories,
+  cancelHref = "/lancamentos",
   defaults,
   lockedType = false,
   submitLabel,
@@ -38,6 +40,7 @@ export function TransactionForm({
   accounts: { id: string; name: string }[];
   action: TransactionFormAction;
   categories: { id: string; kind: "INCOME" | "EXPENSE"; name: string }[];
+  cancelHref?: Route;
   defaults: TransactionFormDefaults;
   lockedType?: boolean;
   submitLabel: string;
@@ -176,7 +179,7 @@ export function TransactionForm({
       ) : null}
 
       <div className="form-actions field-wide">
-        <Link className="secondary-button" href="/lancamentos">
+        <Link className="secondary-button" href={cancelHref}>
           Cancelar
         </Link>
         <FormSubmitButton label={submitLabel} />

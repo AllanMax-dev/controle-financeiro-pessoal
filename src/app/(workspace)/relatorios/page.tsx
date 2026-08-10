@@ -1,6 +1,11 @@
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  resolveFinancialContext,
+  selectedContextIdFromSearchParams,
+  type FinancialContextSearchParams,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { Icon } from "@/components/ui/icons";
 import {
   getMonthlyReport,
@@ -11,13 +16,18 @@ import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<FinancialContextSearchParams & { month?: string }>;
 }) {
   const access = await requireCurrentAccess();
   const filters = await searchParams;
+  const contextState = await resolveFinancialContext(
+    access,
+    selectedContextIdFromSearchParams(filters),
+  );
+  const currentContext = contextState.current;
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const month = normalizeReportMonth(filters.month, today);
-  const report = await getMonthlyReport(access.workspaceId, month, today);
+  const report = await getMonthlyReport(access.workspaceId, month, today, currentContext.id);
 
   return (
     <>
@@ -29,6 +39,7 @@ export default async function ReportsPage({
         </div>
         <div className="report-actions">
           <form className="month-picker" method="get">
+            <input name="contextId" type="hidden" value={currentContext.id} />
             <label>
               <span>Mês</span>
               <input name="month" type="month" defaultValue={month} />
@@ -37,7 +48,7 @@ export default async function ReportsPage({
               Exibir
             </button>
           </form>
-          <a className="primary-button" href={`/api/relatorios/mensal?month=${month}`}>
+          <a className="primary-button" href={`/api/relatorios/mensal?month=${month}&contextId=${currentContext.id}`}>
             <Icon name="download" />
             Exportar CSV
           </a>

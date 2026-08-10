@@ -21,19 +21,26 @@ export async function getMonthlyReport(
   workspaceId: string,
   monthValue?: string,
   referenceDate = new Date(),
+  contextId?: string,
 ) {
   const { end, month, start } = reportMonthInterval(monthValue, referenceDate);
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(workspaceId);
+  await synchronizeDueFixedExpenses(workspaceId, referenceDate, contextId);
   const [{ accounts, totalBalance }, transactions, transfers] = await Promise.all([
-    getAccountBalances(workspaceId, false),
+    getAccountBalances(workspaceId, false, contextId),
     database.transaction.findMany({
-      where: { workspaceId, competenceDate: { gte: start, lt: end } },
+      where: { workspaceId, ...(contextId ? { contextId } : {}), competenceDate: { gte: start, lt: end } },
       include: { account: true, category: true },
       orderBy: [{ competenceDate: "asc" }, { createdAt: "asc" }],
     }),
     database.transfer.findMany({
-      where: { workspaceId, transferDate: { gte: start, lt: end } },
+      where: {
+        workspaceId,
+        transferDate: { gte: start, lt: end },
+        ...(contextId
+          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
+          : {}),
+      },
       include: { destinationAccount: true, sourceAccount: true },
       orderBy: [{ transferDate: "asc" }, { createdAt: "asc" }],
     }),

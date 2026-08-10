@@ -90,10 +90,10 @@ export default async function PlanningPage({
   ]);
   const budgetsByCategory = new Map(budgets.map((budget) => [budget.categoryId, budget]));
   const realizedByCategory = new Map(
-    realizedGroups.map((group) => [group.categoryId, group._sum.amount ?? money(0)]),
+    realizedGroups.map((group) => [group.categoryId, group._sum?.amount ?? money(0)]),
   );
   const totalPlanned = sumMoney(budgets.map(({ amount }) => amount));
-  const totalRealized = sumMoney(realizedGroups.map(({ _sum }) => _sum.amount ?? money(0)));
+  const totalRealized = sumMoney(realizedGroups.map(({ _sum }) => _sum?.amount ?? money(0)));
   const totalUsage = calculateBudgetUsage(totalPlanned, totalRealized);
   const configuredBudgetCount = budgets.filter(({ amount }) => money(amount).greaterThan(0)).length;
   const totalProgressLabel = totalUsage.percentage

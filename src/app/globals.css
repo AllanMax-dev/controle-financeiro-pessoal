@@ -4056,6 +4056,135 @@ h3,
   }
 }
 
+.finance-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  gap: 18px;
+  align-items: start;
+  margin: 18px 0;
+}
+
+.finance-form-stack,
+.credit-card-list,
+.savings-goal-list,
+.compact-finance-list {
+  display: grid;
+  gap: 14px;
+}
+
+.finance-list-panel {
+  min-width: 0;
+}
+
+.compact-finance-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.compact-finance-form .field-wide {
+  grid-column: 1 / -1;
+}
+
+.panel-heading-inline {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.credit-card-summary,
+.savings-goal-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.credit-card-summary header,
+.savings-goal-card header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.credit-card-summary header > div,
+.savings-goal-card header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.credit-card-summary small,
+.savings-goal-card small,
+.compact-finance-list small {
+  color: var(--muted);
+}
+
+.credit-card-values,
+.savings-goal-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.savings-goal-values {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.credit-card-values span,
+.savings-goal-values span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.credit-card-values strong,
+.savings-goal-values strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.compact-finance-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compact-finance-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.compact-finance-list li > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+@media (max-width: 920px) {
+  .finance-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .compact-finance-form,
+  .credit-card-values,
+  .savings-goal-values {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

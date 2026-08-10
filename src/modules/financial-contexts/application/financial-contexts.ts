@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import { notFound } from "next/navigation";
 
 import { getDatabase } from "@/lib/db";
@@ -51,8 +52,8 @@ export function selectedContextIdFromSearchParams(searchParams: FinancialContext
   return firstParam(searchParams.contextId);
 }
 
-export function contextHref(pathname: string, contextId: string) {
-  return `${pathname}?${FINANCIAL_CONTEXT_QUERY_PARAM}=${encodeURIComponent(contextId)}`;
+export function contextHref(pathname: string, contextId: string): Route {
+  return `${pathname}?${FINANCIAL_CONTEXT_QUERY_PARAM}=${encodeURIComponent(contextId)}` as Route;
 }
 
 export async function getAccessibleFinancialContexts(

@@ -389,7 +389,20 @@ export async function archiveFixedExpenseAction(formData: FormData): Promise<voi
   const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const database = getDatabase();
 
-  await synchronizeDueFixedExpenses(access.workspaceId);
+  const fixedExpense = await database.fixedExpense.findFirst({
+    where: {
+      contextId: { in: accessibleContextIds },
+      id: parsed.data.id,
+      workspaceId: access.workspaceId,
+    },
+    select: { contextId: true },
+  });
+
+  if (!fixedExpense) {
+    return;
+  }
+
+  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), fixedExpense.contextId);
   await database.$transaction(async (transaction) => {
     const result = await transaction.fixedExpense.updateMany({
       where: {

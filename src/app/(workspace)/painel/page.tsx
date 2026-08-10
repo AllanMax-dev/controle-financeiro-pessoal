@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
+import { getCreditCardOverview } from "@/modules/credit-cards/application/get-credit-card-overview";
 import { getDashboardSummary } from "@/modules/dashboard/application/get-dashboard-summary";
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
 import {
@@ -17,6 +18,7 @@ import {
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
+import { getSavingsGoalOverview } from "@/modules/savings-goals/application/get-savings-goal-overview";
 import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 
 export default async function DashboardPage({
@@ -33,9 +35,11 @@ export default async function DashboardPage({
   const currentContext = contextState.current;
   const currentHref = (pathname: string) => contextHref(pathname, currentContext.id);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
-  const [summary, debtOverview] = await Promise.all([
+  const [summary, debtOverview, creditCardOverview, savingsGoalOverview] = await Promise.all([
     getDashboardSummary(access.workspaceId, today, currentContext.id),
     getDebtOverview(access.workspaceId, today, currentContext.id),
+    getCreditCardOverview(access.workspaceId, currentContext.id, today),
+    getSavingsGoalOverview(access.workspaceId, currentContext.id),
   ]);
   const remainingCommitments = summary.pendingExpense.plus(debtOverview.pendingThisMonth);
   const projectedAvailable = summary.projectedBalance.minus(debtOverview.pendingThisMonth);
@@ -114,9 +118,9 @@ export default async function DashboardPage({
     <>
       <section className="page-heading dashboard-heading">
         <div>
-          <p className="eyebrow">Visão geral</p>
-          <h1>Olá, {access.editorName}.</h1>
-          <p>Valores realizados atualizam os saldos; valores pendentes aparecem separadamente.</p>
+          <p className="eyebrow">Vis?o geral ? Este m?s</p>
+          <h1>{currentContext.type === "COUPLE" ? "Dashboard do Casal" : "Dashboard Pessoal"}</h1>
+          <p>{currentContext.name} ? valores realizados atualizam saldos; pend?ncias ficam separadas.</p>
         </div>
         <div className="page-actions">
           <Link className="primary-button" href={currentHref("/lancamentos/novo")}>
@@ -283,6 +287,65 @@ export default async function DashboardPage({
                   <strong className={receipt.overdue ? "value-expense" : "value-income"}>
                     {formatCurrency(receipt.amount)}
                   </strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      </section>
+
+
+      <section className="dashboard-operational-grid" aria-label="Cart?es e cofrinhos">
+        <article className="panel-card dashboard-action-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Seus cart?es</p>
+              <h2>Fatura atual</h2>
+            </div>
+            <Link className="text-button" href={currentHref("/cartoes")}>
+              Ver cart?es
+            </Link>
+          </div>
+          {creditCardOverview.cards.length === 0 ? (
+            <div className="compact-empty">Nenhum cart?o cadastrado neste contexto.</div>
+          ) : (
+            <ul className="fixed-expense-dashboard-list">
+              {creditCardOverview.cards.slice(0, 4).map((card) => (
+                <li key={card.id}>
+                  <span>
+                    <strong>{card.name}</strong>
+                    <small>
+                      {card.currentInvoice ? `Vence ${formatDate(card.currentInvoice.dueDate)}` : "Sem fatura aberta"}
+                    </small>
+                  </span>
+                  <strong>{formatCurrency(card.invoiceAmount)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="panel-card dashboard-action-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Cofrinhos</p>
+              <h2>Metas financeiras</h2>
+            </div>
+            <Link className="text-button" href={currentHref("/cofrinhos")}>
+              Ver cofrinhos
+            </Link>
+          </div>
+          {savingsGoalOverview.goals.length === 0 ? (
+            <div className="compact-empty">Nenhuma meta criada neste contexto.</div>
+          ) : (
+            <ul className="fixed-expense-dashboard-list">
+              {savingsGoalOverview.goals.slice(0, 4).map((goal) => (
+                <li key={goal.id}>
+                  <span>
+                    <strong>{goal.name}</strong>
+                    <small>{goal.progress.toFixed(0)}% da meta ? falta {formatCurrency(goal.missingAmount)}</small>
+                  </span>
+                  <strong>{formatCurrency(goal.currentAmount)}</strong>
                 </li>
               ))}
             </ul>
