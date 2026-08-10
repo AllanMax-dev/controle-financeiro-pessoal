@@ -12,7 +12,7 @@ export default async function NewTransactionPage() {
   const database = getDatabase();
   const [accounts, categories] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId: access.workspaceId, active: true },
+      where: { workspaceId: access.workspaceId, active: true, type: { not: "INVESTMENT" } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

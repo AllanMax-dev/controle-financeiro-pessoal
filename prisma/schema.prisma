@@ -72,6 +72,7 @@ model Workspace {
   debts        Debt[]
   fixedExpenses FixedExpense[]
   salaries     Salary[]
+  balanceAdjustments AccountBalanceAdjustment[]
   auditLogs    AuditLog[]
 }
 
@@ -89,6 +90,7 @@ model Editor {
   fixedExpenses FixedExpense[]
   salaries    Salary[]
   ownedAccounts FinancialAccount[] @relation("AccountOwner")
+  balanceAdjustments AccountBalanceAdjustment[]
 
   @@unique([workspaceId, displayName])
   @@index([workspaceId, active])
@@ -139,6 +141,7 @@ model FinancialAccount {
   salaries       Salary[]
   outgoing       Transfer[]  @relation("TransferSource")
   incoming       Transfer[]  @relation("TransferDestination")
+  balanceAdjustments AccountBalanceAdjustment[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId, active])
@@ -229,6 +232,26 @@ model Transfer {
   @@index([workspaceId, transferDate])
   @@index([sourceAccountId, transferDate])
   @@index([destinationAccountId, transferDate])
+}
+
+model AccountBalanceAdjustment {
+  id              String           @id @default(uuid()) @db.Uuid
+  workspaceId     String           @db.Uuid
+  accountId       String           @db.Uuid
+  editorId        String           @db.Uuid
+  previousBalance Decimal          @db.Decimal(19, 2)
+  informedBalance Decimal          @db.Decimal(19, 2)
+  difference      Decimal          @db.Decimal(19, 2)
+  effectiveAt     DateTime         @default(now()) @db.Timestamptz(3)
+  notes           String?          @db.VarChar(1000)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account         FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  editor          Editor           @relation(fields: [editorId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, effectiveAt])
+  @@index([accountId, effectiveAt])
+  @@index([editorId])
 }
 
 model Budget {

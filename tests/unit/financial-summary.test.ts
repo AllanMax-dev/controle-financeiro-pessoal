@@ -68,6 +68,54 @@ describe("financial summary", () => {
     expect(calculateConsolidatedBalance(balances).toFixed(2)).toBe("250.00");
   });
 
+  it("applies balance adjustments without changing the operational result", () => {
+    const transactions = [
+      { accountId: "checking", amount: "100.00", status: "SETTLED" as const, type: "INCOME" as const },
+      { accountId: "checking", amount: "25.00", status: "SETTLED" as const, type: "EXPENSE" as const },
+    ];
+    const balances = calculateAccountBalances(
+      [{ id: "checking", initialBalance: "100.00" }],
+      transactions,
+      [],
+      [{ accountId: "checking", difference: "-30.00" }],
+    );
+    const result = calculatePeriodResult(transactions);
+
+    expect(balances.get("checking")?.toFixed(2)).toBe("145.00");
+    expect(result.income.toFixed(2)).toBe("100.00");
+    expect(result.expense.toFixed(2)).toBe("25.00");
+    expect(result.result.toFixed(2)).toBe("75.00");
+  });
+
+  it("applies positive, negative and multiple adjustments alongside later movements", () => {
+    const balances = calculateAccountBalances(
+      [
+        { id: "checking", initialBalance: "100.00" },
+        { id: "investment", initialBalance: "1000.00" },
+      ],
+      [
+        { accountId: "checking", amount: "100.00", status: "SETTLED", type: "INCOME" },
+        { accountId: "checking", amount: "25.00", status: "SETTLED", type: "EXPENSE" },
+      ],
+      [
+        {
+          amount: "50.00",
+          destinationAccountId: "investment",
+          sourceAccountId: "checking",
+          status: "SETTLED",
+        },
+      ],
+      [
+        { accountId: "checking", difference: "200.00" },
+        { accountId: "checking", difference: "-25.00" },
+        { accountId: "investment", difference: "300.00" },
+      ],
+    );
+
+    expect(balances.get("checking")?.toFixed(2)).toBe("300.00");
+    expect(balances.get("investment")?.toFixed(2)).toBe("1350.00");
+    expect(calculateConsolidatedBalance(balances).toFixed(2)).toBe("1650.00");
+  });
   it("excludes pending and canceled entries from the realized result", () => {
     const result = calculatePeriodResult([
       {

@@ -61,19 +61,33 @@ function addFortnightlyPeriods(value: string, periods: number): string {
   return dateInput(dueDate);
 }
 
-function formatCents(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",");
+const BRAZILIAN_MONEY_INPUT_PATTERN = /^(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?$/;
+const DATABASE_MONEY_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/;
+
+function formatCents(cents: bigint): string {
+  const whole = cents / BigInt(100);
+  const decimal = String(cents % BigInt(100)).padStart(2, "0");
+
+  return `${whole},${decimal}`;
 }
 
-function parseMoneyCents(value: string): number | null {
-  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
-  const amount = Number(normalized);
+function parseMoneyCents(value: string): bigint | null {
+  const trimmedValue = value.trim();
+  const usesBrazilianFormat = trimmedValue.includes(",");
+  const matchesExpectedFormat = usesBrazilianFormat
+    ? BRAZILIAN_MONEY_INPUT_PATTERN.test(trimmedValue)
+    : DATABASE_MONEY_INPUT_PATTERN.test(trimmedValue);
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!matchesExpectedFormat) {
     return null;
   }
 
-  return Math.round(amount * 100);
+  const normalizedValue = usesBrazilianFormat
+    ? trimmedValue.replace(/\./g, "").replace(",", ".")
+    : trimmedValue;
+  const [wholePart, decimalPart = ""] = normalizedValue.split(".");
+
+  return BigInt(wholePart) * BigInt(100) + BigInt(decimalPart.padEnd(2, "0"));
 }
 
 function defaultDueDate(value: string, frequency: InstallmentFrequency): string {
@@ -169,11 +183,11 @@ export function DebtForm({
   function splitSharesEvenly() {
     const totalCents = parseMoneyCents(totalAmount);
 
-    if (!totalCents || !secondEditorId) {
+    if (totalCents === null || !secondEditorId) {
       return;
     }
 
-    const firstCents = Math.ceil(totalCents / 2);
+    const firstCents = (totalCents + BigInt(1)) / BigInt(2);
     setFirstShareAmount(formatCents(firstCents));
     setSecondShareAmount(formatCents(totalCents - firstCents));
   }

@@ -111,18 +111,23 @@ export default async function SalariesPage() {
           <div className="fixed-expense-list" aria-label="Salários cadastrados">
             {overview.items.map((salary) => {
               const receivedCount = salary.installments.filter(({ received }) => received).length;
+              const recurrenceClosed = !salary.active;
               const allReceived = salary.installments.length > 0
                 && receivedCount === salary.installments.length;
               const hasOverdue = salary.installments.some(({ overdue }) => overdue);
-              const summaryStatus = allReceived
-                ? "Recebido"
+              const summaryStatus = recurrenceClosed
+                ? "Encerrado"
+                : allReceived
+                  ? "Recebido"
                 : hasOverdue
                   ? "Atrasado"
                   : receivedCount > 0
                     ? "Parcial"
                     : "A receber";
-              const summaryStatusClass = allReceived
-                ? "status-paid"
+              const summaryStatusClass = recurrenceClosed
+                ? "status-canceled"
+                : allReceived
+                  ? "status-paid"
                 : hasOverdue
                   ? "status-overdue"
                   : "status-pending";
@@ -153,8 +158,8 @@ export default async function SalariesPage() {
                 <div className="debt-expanded-content">
                   <header>
                 <div>
-                  <span className="status-pill status-pending">
-                    {salary.frequency === "MONTHLY" ? "Mensal" : "Quinzenal"}
+                  <span className={`status-pill ${salary.active ? "status-pending" : "status-canceled"}`}>
+                    {salary.active ? (salary.frequency === "MONTHLY" ? "Mensal" : "Quinzenal") : "Encerrado"}
                   </span>
                   <h2>{salary.description}</h2>
                   <p>{salary.category.name} · {salary.account.name} · {salary.editor.displayName}</p>
@@ -202,7 +207,7 @@ export default async function SalariesPage() {
                           Editar recebimento
                         </Link>
                       </>
-                    ) : (
+                    ) : salary.active ? (
                       <ReceiveSalaryForm
                         action={receiveSalaryAction}
                         amount={installment.amount.toFixed(2).replace(".", ",")}
@@ -211,11 +216,14 @@ export default async function SalariesPage() {
                         month={monthInput}
                         salaryId={salary.id}
                       />
+                    ) : (
+                      <p className="fixed-expense-paid-note">Recorrência encerrada; nenhum novo recebimento será criado.</p>
                     )}
                   </section>
                 ))}
               </div>
 
+                  {salary.active ? (
                   <div className="fixed-expense-actions">
                 <ConfirmActionForm
                   action={archiveSalaryAction}
@@ -224,6 +232,7 @@ export default async function SalariesPage() {
                   message="Encerrar este salário? Os recebimentos já registrados permanecerão no histórico."
                 />
                   </div>
+                  ) : null}
                 </div>
               </details>
             </article>

@@ -92,7 +92,11 @@ async function relationsAreValid(
   const database = getDatabase();
   const [account, category] = await Promise.all([
     database.financialAccount.findFirst({
-      where: { id: accountId, workspaceId, ...(requireActive ? { active: true } : {}) },
+      where: {
+        id: accountId,
+        workspaceId,
+        ...(requireActive ? { active: true, type: { not: "INVESTMENT" as const } } : {}),
+      },
       select: { id: true },
     }),
     categoryId
@@ -129,7 +133,7 @@ async function updatedRelationsAreValid(
       where: {
         id: accountId,
         workspaceId,
-        OR: [{ active: true }, { id: currentRelations.accountId }],
+        OR: [{ active: true, type: { not: "INVESTMENT" } }, { id: currentRelations.accountId }],
       },
       select: { id: true },
     }),
@@ -362,4 +366,5 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
   revalidatePath("/lancamentos");
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
+  redirect("/lancamentos");
 }

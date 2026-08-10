@@ -36,7 +36,7 @@ export type NormalizedTransactionListFilters = {
 };
 
 export function transactionStatusCriteria(status?: TransactionStatusFilter) {
-  return status ? { status } : { status: { not: "CANCELED" as const } };
+  return status ? { status } : {};
 }
 
 function dateInputValue(value: Date): string {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { clickNavLink } from "./navigation";
 
 function dateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -21,18 +22,18 @@ test("splits an imported installment debt between two people", async ({ page }, 
   await page.goto(accessUrl!);
   await expect(page).toHaveURL(/\/painel$/);
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await page.getByRole("link", { name: "Nova conta" }).click();
   await page.getByLabel("Nome da conta").fill(accountName);
   await page.getByLabel("Saldo inicial").fill("1.000,00");
   await page.getByRole("button", { name: "Criar conta" }).click();
 
-  await page.getByRole("link", { name: "Categorias", exact: true }).click();
+  await clickNavLink(page, "Categorias");
   await page.getByRole("link", { name: "Nova categoria" }).click();
   await page.getByLabel("Nome da categoria").fill(categoryName);
   await page.getByRole("button", { name: "Criar categoria" }).click();
 
-  await page.getByRole("link", { name: "Dívidas", exact: true }).click();
+  await clickNavLink(page, "Dívidas");
   await page.getByRole("link", { name: "Nova dívida" }).click();
   await page.getByLabel("Descrição da compra ou dívida").fill(debtName);
   await page.getByLabel("Valor total").fill("1.500,00");
@@ -42,36 +43,33 @@ test("splits an imported installment debt between two people", async ({ page }, 
   await page.getByLabel("Quantidade de parcelas").fill("10");
   await page.getByRole("checkbox", { name: /Esta dívida já existia/ }).check();
   await expect(page.getByLabel("Parcelas já pagas")).toHaveValue("4");
+  await page.getByLabel("Parcelas já pagas").fill("3");
   await page.getByLabel("Conta para o histórico").selectOption({ label: accountName });
   await page.getByLabel("Valor da primeira pessoa").fill("900,00");
-  await page.getByLabel("Segunda pessoa", { exact: true }).selectOption({ label: secondEditorName! });
+  await page.getByRole("combobox", { name: "Segunda pessoa" }).selectOption({ label: secondEditorName! });
   await page.getByLabel("Valor da segunda pessoa").fill("600,00");
   await page.getByRole("button", { name: "Cadastrar dívida" }).click();
 
   const debtCard = page.locator("article.debt-card").filter({ hasText: debtName });
-  await expect(debtCard).toContainText("4 de 10 parcelas pagas");
+  await expect(debtCard).toContainText("3/10");
+  await expect(debtCard).toContainText("parcelas pagas");
+  await expect(debtCard).toContainText(secondEditorName!);
+  await expect(debtCard).toContainText(/R\$\s*60,00/);
+
+  await debtCard.locator("summary.debt-compact-summary").click();
+  await debtCard.getByText(/Ver parcelas/).click();
+  const currentInstallment = debtCard.locator("article").filter({ hasText: "Parcela 4/10" });
+  await currentInstallment.getByLabel("Conta do pagamento").selectOption({ label: accountName });
+  await currentInstallment.getByRole("button", { name: "Marcar como paga" }).click();
+  await expect(currentInstallment).toContainText("Paga");
+  await expect(debtCard).toContainText("4/10");
   await expect(debtCard).toContainText(/R\$\s*900,00/);
 
-  const individualMonthlyCards = page
-    .locator("article.metric-card")
-    .filter({ hasText: "Responsabilidade individual neste mês" });
-  await expect(individualMonthlyCards).toHaveCount(2);
-  await expect(
-    individualMonthlyCards.filter({ hasText: `Parcela de ${secondEditorName} neste mês` }),
-  ).toContainText(/R\$\s*60,00/);
-
-  await debtCard.getByText("Ver todas as parcelas").click();
-  const fifthInstallment = debtCard.locator("article").filter({ hasText: "Parcela 5/10" });
-  await fifthInstallment.getByLabel("Conta do pagamento").selectOption({ label: accountName });
-  await fifthInstallment.getByRole("button", { name: "Marcar como paga" }).click();
-  await expect(debtCard).toContainText("5 de 10 parcelas pagas");
-  await expect(debtCard).toContainText(/R\$\s*750,00/);
-
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await page.goto("/contas");
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(
     /R\$\s*850,00/,
   );
 
-  await page.getByRole("link", { name: "Visão geral", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Dívidas em aberto" })).toBeVisible();
+  await page.goto("/painel");
+  await expect(page.getByRole("heading", { name: "Dívidas deste mês" })).toBeVisible();
 });

@@ -8,12 +8,13 @@ export async function getAccountBalances(workspaceId: string, synchronize = true
   if (synchronize) {
     await synchronizeDueFixedExpenses(workspaceId);
   }
-  const [accounts, transactions, transfers] = await Promise.all([
+  const [accounts, transactions, transfers, adjustments] = await Promise.all([
     database.financialAccount.findMany({
       where: { workspaceId },
       include: {
         _count: {
           select: {
+            balanceAdjustments: true,
             fixedExpenses: true,
             incoming: true,
             outgoing: true,
@@ -38,9 +39,14 @@ export async function getAccountBalances(workspaceId: string, synchronize = true
         status: true,
       },
     }),
+    database.accountBalanceAdjustment.findMany({
+      where: { workspaceId },
+      select: { accountId: true, difference: true },
+      orderBy: { effectiveAt: "asc" },
+    }),
   ]);
 
-  const balances = calculateAccountBalances(accounts, transactions, transfers);
+  const balances = calculateAccountBalances(accounts, transactions, transfers, adjustments);
   const accountsWithBalances = accounts.map((account) => ({
     ...account,
     balance: balances.get(account.id) ?? money(account.initialBalance),

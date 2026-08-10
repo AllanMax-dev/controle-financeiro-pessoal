@@ -11,11 +11,32 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
   const database = getDatabase();
   const account = await database.financialAccount.findFirst({
     where: { id, workspaceId: access.workspaceId },
+    include: {
+      _count: {
+        select: {
+          balanceAdjustments: true,
+          fixedExpenses: true,
+          incoming: true,
+          outgoing: true,
+          salaries: true,
+          transactions: true,
+        },
+      },
+    },
   });
 
   if (!account) {
     notFound();
   }
+
+  const hasFinancialHistory =
+    account._count.balanceAdjustments +
+      account._count.fixedExpenses +
+      account._count.incoming +
+      account._count.outgoing +
+      account._count.salaries +
+      account._count.transactions >
+    0;
 
   const editors = await database.editor.findMany({
     where: {
@@ -48,6 +69,8 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
           type: account.type,
           version: account.version,
         }}
+        initialBalanceLocked={hasFinancialHistory}
+        typeLocked={hasFinancialHistory}
         editors={editors}
         submitLabel="Salvar alterações"
       />

@@ -1,11 +1,14 @@
 import Link from "next/link";
 
+import { AccountDeleteForm } from "@/components/account-delete-form";
+import { AccountStatusActionForm } from "@/components/account-status-action-form";
+
 import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import {
-  deleteArchivedAccountAction,
-  toggleAccountActiveAction,
+  deleteArchivedAccountFormAction,
+  toggleAccountActiveFormAction,
 } from "@/modules/accounts/application/account-actions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
@@ -115,12 +118,15 @@ export default async function AccountsPage() {
                           <Link className="text-button" href={`/contas/${account.id}/editar`}>
                             Editar
                           </Link>
-                          <form action={toggleAccountActiveAction}>
-                            <input name="id" type="hidden" value={account.id} />
-                            <input name="version" type="hidden" value={account.version} />
-                            <input name="active" type="hidden" value="false" />
-                            <button className="text-button" type="submit">Arquivar</button>
-                          </form>
+                          <Link className="text-button" href={`/contas/${account.id}/ajustar`}>
+                            Ajustar saldo atual
+                          </Link>
+                          <AccountStatusActionForm
+                            stateAction={toggleAccountActiveFormAction}
+                            accountId={account.id}
+                            active={false}
+                            version={account.version}
+                          />
                         </div>
                       </article>
                     ))}
@@ -136,6 +142,7 @@ export default async function AccountsPage() {
               <section className="entity-list" aria-label="Contas arquivadas">
                 {archivedAccounts.map((account) => {
                   const dependencyCount =
+                    account._count.balanceAdjustments +
                     account._count.fixedExpenses +
                     account._count.incoming +
                     account._count.outgoing +
@@ -159,20 +166,18 @@ export default async function AccountsPage() {
                       <Link className="text-button" href={`/contas/${account.id}/editar`}>
                         Editar
                       </Link>
-                      <form action={toggleAccountActiveAction}>
-                        <input name="id" type="hidden" value={account.id} />
-                        <input name="version" type="hidden" value={account.version} />
-                        <input name="active" type="hidden" value="true" />
-                        <button className="text-button" type="submit">Reativar</button>
-                      </form>
+                      <AccountStatusActionForm
+                        stateAction={toggleAccountActiveFormAction}
+                        accountId={account.id}
+                        active={true}
+                        version={account.version}
+                      />
                       {dependencyCount === 0 ? (
-                        <form action={deleteArchivedAccountAction}>
-                          <input name="id" type="hidden" value={account.id} />
-                          <input name="version" type="hidden" value={account.version} />
-                          <button className="text-button text-button-danger" type="submit">
-                            Excluir
-                          </button>
-                        </form>
+                        <AccountDeleteForm
+                          stateAction={deleteArchivedAccountFormAction}
+                          accountId={account.id}
+                          version={account.version}
+                        />
                       ) : null}
                     </div>
                   </article>

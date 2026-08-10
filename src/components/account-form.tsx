@@ -34,12 +34,16 @@ export function AccountForm({
   action,
   defaults,
   editors,
+  initialBalanceLocked = false,
   submitLabel,
+  typeLocked = false,
 }: {
   action: AccountFormAction;
   defaults: AccountFormDefaults;
   editors: { id: string; displayName: string }[];
+  initialBalanceLocked?: boolean;
   submitLabel: string;
+  typeLocked?: boolean;
 }) {
   const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
 
@@ -69,15 +73,16 @@ export function AccountForm({
 
       <label className="field">
         <span>Tipo</span>
-        <select name="type" defaultValue={defaults.type} required>
+        {typeLocked ? <input name="type" type="hidden" value={defaults.type} /> : null}
+        <select name="type" defaultValue={defaults.type} disabled={typeLocked} required>
           {accountTypes.map((type) => (
             <option key={type.value} value={type.value}>
               {type.label}
             </option>
           ))}
         </select>
+        {typeLocked ? <small>O tipo fica bloqueado depois que a conta possui histórico.</small> : null}
       </label>
-
       <label className="field">
         <span>Responsável</span>
         <select name="ownerEditorId" defaultValue={defaults.ownerEditorId ?? ""}>
@@ -98,10 +103,11 @@ export function AccountForm({
           inputMode="decimal"
           defaultValue={defaults.initialBalance}
           placeholder="0,00"
+          readOnly={initialBalanceLocked}
           required
         />
+        {initialBalanceLocked ? <small>Use Ajustar saldo atual para conciliar esta conta.</small> : null}
       </label>
-
       <label className="field field-color">
         <span>Cor</span>
         <input name="color" type="color" defaultValue={defaults.color} required />

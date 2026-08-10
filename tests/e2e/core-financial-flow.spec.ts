@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { clickNavLink } from "./navigation";
 
 test("creates and updates the core financial records", async ({ page }, testInfo) => {
   const accessUrl = process.env.E2E_ACCESS_URL;
@@ -14,20 +15,20 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   await page.goto(accessUrl!);
   await expect(page).toHaveURL(/\/painel$/);
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await page.getByRole("link", { name: "Nova conta" }).click();
   await page.getByLabel("Nome da conta").fill(accountName);
   await page.getByLabel("Saldo inicial").fill("1.000,00");
   await page.getByRole("button", { name: "Criar conta" }).click();
   await expect(page.getByText(accountName)).toBeVisible();
 
-  await page.getByRole("link", { name: "Categorias", exact: true }).click();
+  await clickNavLink(page, "Categorias");
   await page.getByRole("link", { name: "Nova categoria" }).click();
   await page.getByLabel("Nome da categoria").fill(categoryName);
   await page.getByRole("button", { name: "Criar categoria" }).click();
   await expect(page.getByText(categoryName)).toBeVisible();
 
-  await page.getByRole("link", { name: "Lançamentos", exact: true }).click();
+  await clickNavLink(page, "Lançamentos");
   await page.getByRole("link", { name: "Novo lançamento" }).click();
   await page.getByLabel("Descrição").fill(transactionName);
   await page.getByLabel("Valor").fill("123,45");
@@ -42,17 +43,17 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   await page.getByLabel("Valor").fill("100,00");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   const accountRow = page.locator("article").filter({ hasText: accountName });
   await expect(accountRow).toContainText(/R\$\s*900,00/);
 
-  await page.getByRole("link", { name: "Lançamentos", exact: true }).click();
+  await clickNavLink(page, "Lançamentos");
   const updatedTransactionRow = page.locator("article").filter({ hasText: transactionName });
   page.once("dialog", (dialog) => dialog.accept());
   await updatedTransactionRow.getByRole("button", { name: "Cancelar" }).click();
   await expect(updatedTransactionRow).toContainText("Cancelado");
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(/R\$\s*1\.000,00/);
 
   await page.getByRole("link", { name: "Nova conta" }).click();
@@ -60,7 +61,7 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   await page.getByLabel("Saldo inicial").fill("0,00");
   await page.getByRole("button", { name: "Criar conta" }).click();
 
-  await page.getByRole("link", { name: "Transferências", exact: true }).click();
+  await clickNavLink(page, "Transferências");
   await page.getByRole("link", { name: "Nova transferência" }).click();
   await page.getByLabel("Descrição").fill(transferName);
   await page.getByLabel("Valor").fill("250,00");
@@ -70,13 +71,13 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   await page.getByRole("button", { name: "Criar transferência" }).click();
   await expect(page.getByText(transferName)).toBeVisible();
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(/R\$\s*750,00/);
   await expect(page.locator("article").filter({ hasText: destinationAccountName })).toContainText(
     /R\$\s*250,00/,
   );
 
-  await page.getByRole("link", { name: "Planejamento", exact: true }).click();
+  await clickNavLink(page, "Planejamento");
   const budgetCard = page.locator("article.planning-budget-card").filter({ hasText: categoryName });
   await budgetCard.getByText("Definir limite", { exact: true }).click();
   const budgetInput = page.getByLabel(`Orçamento de ${categoryName}`);
@@ -85,7 +86,7 @@ test("creates and updates the core financial records", async ({ page }, testInfo
   await budgetForm.getByRole("button", { name: "Salvar" }).click();
   await expect(page.getByText("Orçamento salvo.")).toBeVisible();
 
-  await page.getByRole("link", { name: "Relatórios", exact: true }).click();
+  await clickNavLink(page, "Relatórios");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "Exportar CSV" }).click();
   const download = await downloadPromise;

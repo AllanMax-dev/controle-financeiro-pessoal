@@ -171,7 +171,7 @@ export default async function TransactionsPage({
             <label>
               <span>Status</span>
               <select name="status" defaultValue={filters.status ?? ""}>
-                <option value="">Operacionais</option>
+                <option value="">Todos</option>
                 <option value="PENDING">Pendentes</option>
                 <option value="SETTLED">Realizados</option>
                 <option value="CANCELED">Cancelados</option>

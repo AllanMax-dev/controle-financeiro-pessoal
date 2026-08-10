@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBudgetComparison,
   buildMonthlyEvolution,
+  calculatePendingTransferAvailableDelta,
   calculateProjectedBalance,
   createTrailingMonthBuckets,
 } from "../../src/modules/dashboard/domain/dashboard-analytics";
@@ -137,7 +138,43 @@ describe("dashboard analytics", () => {
     expect(buildBudgetComparison([], transactions).categories.map(({ id }) => id)).toEqual(["food"]);
   });
 
-  it("projects balance from pending income and expense without floating point drift", () => {
-    expect(calculateProjectedBalance("1000.00", "100.55", "30.10").toFixed(2)).toBe("1070.45");
+  it("calculates pending transfer effects on available money without double counting", () => {
+    const delta = calculatePendingTransferAvailableDelta([
+      {
+        amount: "200.00",
+        destinationAccount: { type: "INVESTMENT" },
+        sourceAccount: { type: "CHECKING" },
+        status: "PENDING",
+      },
+      {
+        amount: "75.00",
+        destinationAccount: { type: "CHECKING" },
+        sourceAccount: { type: "INVESTMENT" },
+        status: "PENDING",
+      },
+      {
+        amount: "999.00",
+        destinationAccount: { type: "SAVINGS" },
+        sourceAccount: { type: "CHECKING" },
+        status: "PENDING",
+      },
+      {
+        amount: "888.00",
+        destinationAccount: { type: "INVESTMENT" },
+        sourceAccount: { type: "INVESTMENT" },
+        status: "PENDING",
+      },
+      {
+        amount: "50.00",
+        destinationAccount: { type: "INVESTMENT" },
+        sourceAccount: { type: "CHECKING" },
+        status: "SETTLED",
+      },
+    ]);
+
+    expect(delta.toFixed(2)).toBe("-125.00");
+  });
+  it("projects balance from pendencies and transfer delta without floating point drift", () => {
+    expect(calculateProjectedBalance("1000.00", "100.55", "30.10", "-125.00").toFixed(2)).toBe("945.45");
   });
 });

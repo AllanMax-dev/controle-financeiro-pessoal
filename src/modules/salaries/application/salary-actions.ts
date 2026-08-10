@@ -172,6 +172,7 @@ export async function receiveSalaryAction(
           id: parsed.data.id,
           workspaceId: access.workspaceId,
           active: true,
+          account: { active: true, type: { not: "INVESTMENT" } },
           startMonth: { lte: parsed.data.month },
         },
       });
@@ -222,13 +223,20 @@ export async function receiveSalaryAction(
         type: "INCOME" as const,
         workspaceId: access.workspaceId,
       };
-      const financialTransaction = existing
-        ? await transaction.transaction.update({
-            where: { id: existing.id },
-            data: { ...transactionData, version: { increment: 1 } },
-          })
-        : await transaction.transaction.create({ data: transactionData });
+      const financialTransactionId = existing
+        ? existing.id
+        : (await transaction.transaction.create({ data: transactionData })).id;
 
+      if (existing) {
+        const updateResult = await transaction.transaction.updateMany({
+          where: { id: existing.id, status: { not: "SETTLED" } },
+          data: { ...transactionData, version: { increment: 1 } },
+        });
+
+        if (updateResult.count !== 1) {
+          return false;
+        }
+      }
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
@@ -239,7 +247,7 @@ export async function receiveSalaryAction(
           metadata: {
             amount: parsed.data.amount,
             installment: scheduled.installment,
-            transactionId: financialTransaction.id,
+            transactionId: financialTransactionId,
           },
         },
       });

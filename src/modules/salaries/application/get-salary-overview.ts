@@ -13,7 +13,13 @@ export async function getSalaryOverview(workspaceId: string, referenceDate = new
     Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()),
   );
   const salaries = await database.salary.findMany({
-    where: { workspaceId, active: true, startMonth: { lte: month } },
+    where: {
+      workspaceId,
+      OR: [
+        { active: true, startMonth: { lte: month } },
+        { transactions: { some: { salaryMonth: month } } },
+      ],
+    },
     include: {
       account: true,
       category: true,
@@ -26,7 +32,7 @@ export async function getSalaryOverview(workspaceId: string, referenceDate = new
     orderBy: [{ description: "asc" }],
   });
   const items = salaries.map((salary) => {
-    const installments = createSalarySchedule({
+    const scheduledInstallments = createSalarySchedule({
       amount: salary.amount,
       frequency: salary.frequency,
       month,
@@ -44,6 +50,10 @@ export async function getSalaryOverview(workspaceId: string, referenceDate = new
         received,
       };
     });
+
+    const installments = salary.active
+      ? scheduledInstallments
+      : scheduledInstallments.filter(({ payment }) => payment);
 
     return { ...salary, installments };
   });

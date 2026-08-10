@@ -40,7 +40,7 @@ describe("transaction list filters", () => {
   });
 
   it("keeps canceled transactions out of the operational view by default", () => {
-    expect(transactionStatusCriteria()).toEqual({ status: { not: "CANCELED" } });
+    expect(transactionStatusCriteria()).toEqual({});
     expect(transactionStatusCriteria("CANCELED")).toEqual({ status: "CANCELED" });
   });
 

@@ -4,6 +4,7 @@ import {
   buildBudgetComparison,
   buildExpenseDistribution,
   buildMonthlyEvolution,
+  calculatePendingTransferAvailableDelta,
   calculateProjectedBalance,
   createTrailingMonthBuckets,
 } from "@/modules/dashboard/domain/dashboard-analytics";
@@ -33,6 +34,7 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
     salaries,
     manualPendingExpenses,
     manualPendingIncome,
+    pendingTransfers,
   ] = await Promise.all([
     getAccountBalances(workspaceId, false),
     database.transaction.findMany({
@@ -89,6 +91,19 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
       orderBy: [{ dueDate: "asc" }, { competenceDate: "asc" }, { createdAt: "asc" }],
       take: 6,
     }),
+    database.transfer.findMany({
+      where: {
+        status: "PENDING",
+        transferDate: { gte: currentMonth.start, lt: currentMonth.end },
+        workspaceId,
+      },
+      select: {
+        amount: true,
+        destinationAccount: { select: { type: true } },
+        sourceAccount: { select: { type: true } },
+        status: true,
+      },
+    }),
   ]);
   const periodTransactions = transactions.filter(
     ({ competenceDate }) =>
@@ -99,6 +114,7 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
   );
 
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
+  const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers);
   const pendingTransactionIncome = sumMoney(
     operationalPeriodTransactions
       .filter(
@@ -145,7 +161,13 @@ export async function getDashboardSummary(workspaceId: string, referenceDate = n
     pendingExpense,
     pendingIncome,
     periodResult,
-    projectedBalance: calculateProjectedBalance(availableBalance, pendingIncome, pendingExpense),
+    pendingTransferDelta,
+    projectedBalance: calculateProjectedBalance(
+      availableBalance,
+      pendingIncome,
+      pendingExpense,
+      pendingTransferDelta,
+    ),
     recentTransactions,
     salaries,
     totalBalance,

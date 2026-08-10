@@ -25,6 +25,13 @@ export type DashboardBudgetInput = {
   category: { color: string | null; id: string; name: string };
 };
 
+export type PendingTransferInput = {
+  amount: MoneyInput;
+  destinationAccount: { type: string };
+  sourceAccount: { type: string };
+  status: "PENDING" | "SETTLED" | "CANCELED";
+};
+
 export type MonthBucket = {
   end: Date;
   key: string;
@@ -215,10 +222,32 @@ export function buildBudgetComparison(
   };
 }
 
+export function calculatePendingTransferAvailableDelta(transfers: PendingTransferInput[]): Decimal {
+  return transfers.reduce((total, transfer) => {
+    if (transfer.status !== "PENDING") {
+      return total;
+    }
+
+    const sourceOperational = transfer.sourceAccount.type !== "INVESTMENT";
+    const destinationOperational = transfer.destinationAccount.type !== "INVESTMENT";
+
+    if (sourceOperational === destinationOperational) {
+      return total;
+    }
+
+    return sourceOperational
+      ? money(total.minus(transfer.amount))
+      : money(total.plus(transfer.amount));
+  }, money(0));
+}
+
 export function calculateProjectedBalance(
   totalBalance: MoneyInput,
   pendingIncome: MoneyInput,
   pendingExpense: MoneyInput,
+  pendingTransferDelta: MoneyInput = 0,
 ): Decimal {
-  return money(money(totalBalance).plus(pendingIncome).minus(pendingExpense));
+  return money(
+    money(totalBalance).plus(pendingIncome).minus(pendingExpense).plus(pendingTransferDelta),
+  );
 }

@@ -27,7 +27,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
     database.financialAccount.findMany({
       where: {
         workspaceId: access.workspaceId,
-        OR: [{ active: true }, { id: transaction.accountId }],
+        OR: [{ active: true, type: { not: "INVESTMENT" } }, { id: transaction.accountId }],
       },
       select: { id: true, name: true },
       orderBy: { name: "asc" },

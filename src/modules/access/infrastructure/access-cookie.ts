@@ -2,9 +2,9 @@ export const ACCESS_COOKIE_NAME = "shared_finance_session";
 
 export function accessCookieOptions(expiresAt: Date) {
   const configuredApplicationUrl = process.env.APP_URL;
-  const secure = configuredApplicationUrl
-    ? new URL(configuredApplicationUrl).protocol === "https:"
-    : process.env.NODE_ENV === "production";
+  const secure = process.env.NODE_ENV === "production"
+    ? true
+    : Boolean(configuredApplicationUrl && new URL(configuredApplicationUrl).protocol === "https:");
 
   return {
     httpOnly: true,

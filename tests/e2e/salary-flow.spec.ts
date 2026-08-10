@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { clickNavLink } from "./navigation";
 
 test("registers and receives a fortnightly salary", async ({ page }, testInfo) => {
   const accessUrl = process.env.E2E_ACCESS_URL;
@@ -12,19 +13,19 @@ test("registers and receives a fortnightly salary", async ({ page }, testInfo) =
   await page.goto(accessUrl!);
   await expect(page).toHaveURL(/\/painel$/);
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await page.getByRole("link", { name: "Nova conta" }).click();
   await page.getByLabel("Nome da conta").fill(accountName);
   await page.getByLabel("Saldo inicial").fill("0,00");
   await page.getByRole("button", { name: "Criar conta" }).click();
 
-  await page.getByRole("link", { name: "Categorias", exact: true }).click();
+  await clickNavLink(page, "Categorias");
   await page.getByRole("link", { name: "Nova categoria" }).click();
   await page.getByLabel("Nome da categoria").fill(categoryName);
   await page.getByLabel("Aplicação").selectOption("INCOME");
   await page.getByRole("button", { name: "Criar categoria" }).click();
 
-  await page.getByRole("link", { name: "Salários", exact: true }).click();
+  await clickNavLink(page, "Salários");
   await page.getByRole("link", { name: "Novo salário" }).click();
   await page.getByLabel("Descrição").fill(salaryName);
   await page.getByLabel("Valor mensal total").fill("3.000,01");
@@ -44,13 +45,12 @@ test("registers and receives a fortnightly salary", async ({ page }, testInfo) =
   await firstInstallment.getByRole("button", { name: "Registrar recebimento" }).click();
   await expect(firstInstallment).toContainText("Recebido");
 
-  await page.getByRole("link", { name: "Contas", exact: true }).click();
+  await clickNavLink(page, "Contas");
   await expect(page.locator("article").filter({ hasText: accountName })).toContainText(
     /R\$\s*1\.500,01/,
   );
 
-  await page.getByRole("link", { name: "Visão geral", exact: true }).click();
-  await expect(page.getByText("Salários do mês")).toBeVisible();
+  await clickNavLink(page, "Visão geral");
   const salaryPanel = page.locator("article.dashboard-fixed-expense-panel").filter({
     has: page.getByRole("heading", { name: "Salários" }),
   });

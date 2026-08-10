@@ -23,10 +23,16 @@ export type BalanceTransfer = {
   status: "PENDING" | "SETTLED" | "CANCELED";
 };
 
+export type BalanceAdjustment = {
+  accountId: string;
+  difference: MoneyInput;
+};
+
 export function calculateAccountBalances(
   accounts: BalanceAccount[],
   transactions: BalanceTransaction[],
   transfers: BalanceTransfer[],
+  adjustments: BalanceAdjustment[] = [],
 ): Map<string, Decimal> {
   const balances = new Map(accounts.map((account) => [account.id, money(account.initialBalance)]));
 
@@ -62,6 +68,15 @@ export function calculateAccountBalances(
         money(destinationBalance.plus(transfer.amount)),
       );
     }
+  }
+
+  for (const adjustment of adjustments) {
+    if (!balances.has(adjustment.accountId)) {
+      continue;
+    }
+
+    const currentBalance = balances.get(adjustment.accountId) ?? money(0);
+    balances.set(adjustment.accountId, money(currentBalance.plus(adjustment.difference)));
   }
 
   return balances;
