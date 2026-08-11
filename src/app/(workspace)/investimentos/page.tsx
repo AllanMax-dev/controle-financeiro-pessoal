@@ -23,7 +23,7 @@ export default async function InvestmentsPage({
     selectedContextIdFromSearchParams(await searchParams),
   );
   const currentContext = contextState.current;
-  const balances = await getAccountBalances(access.workspaceId, true, currentContext.id);
+  const balances = await getAccountBalances(access.workspaceId, true, contextState.scope);
   const investments = balances.activeAccounts.filter(({ type }) => type === "INVESTMENT");
 
   return (
@@ -31,8 +31,8 @@ export default async function InvestmentsPage({
       <section className="page-heading compact-heading">
         <div>
           <p className="eyebrow">Investimentos</p>
-          <h1>PatrimÃ´nio investido</h1>
-          <p>Investimentos aparecem separados do dinheiro operacional disponÃ­vel.</p>
+          <h1>Patrimônio investido</h1>
+          <p>Investimentos aparecem separados do dinheiro operacional disponível.</p>
         </div>
         <Link className="primary-button" href={contextHref("/contas/nova", currentContext.id)}>
           <Icon name="add" />
@@ -49,12 +49,12 @@ export default async function InvestmentsPage({
         <article className="metric-card">
           <span>Saldo operacional</span>
           <strong>{formatCurrency(balances.availableBalance)}</strong>
-          <small>NÃ£o inclui investimentos</small>
+          <small>Não inclui investimentos</small>
         </article>
         <article className="metric-card">
-          <span>PatrimÃ´nio financeiro</span>
+          <span>Patrimônio financeiro</span>
           <strong>{formatCurrency(balances.totalBalance)}</strong>
-          <small>DisponÃ­vel + investimentos</small>
+          <small>Disponível + investimentos</small>
         </article>
       </section>
 

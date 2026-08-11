@@ -15,12 +15,24 @@ export type FinancialContextOption = {
   name: string;
   ownerEditorId: string | null;
   type: "PERSONAL" | "COUPLE";
+  ownerName?: string | null;
+};
+
+export type FinancialDataScope = {
+  contextIds: string[];
+  contextsById: Record<string, FinancialContextOption>;
+  current: FinancialContextOption;
+  mode: "PERSONAL" | "COUPLE";
+  writeContext: FinancialContextOption;
 };
 
 export type ResolvedFinancialContext = {
   contexts: FinancialContextOption[];
   current: FinancialContextOption;
+  scope: FinancialDataScope;
 };
+
+export type FinancialContextFilter = FinancialDataScope | string | string[] | undefined;
 
 export type FinancialContextSearchParams = {
   contextId?: string | string[];
@@ -56,6 +68,60 @@ export function contextHref(pathname: string, contextId: string): Route {
   return `${pathname}?${FINANCIAL_CONTEXT_QUERY_PARAM}=${encodeURIComponent(contextId)}` as Route;
 }
 
+function uniq(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+export function financialContextIds(scope: FinancialContextFilter): string[] | undefined {
+  if (!scope) {
+    return undefined;
+  }
+
+  if (typeof scope === "string") {
+    return [scope];
+  }
+
+  if (Array.isArray(scope)) {
+    return uniq(scope);
+  }
+
+  return uniq(scope.contextIds);
+}
+
+export function financialContextWhere(scope: FinancialContextFilter) {
+  const contextIds = financialContextIds(scope);
+
+  if (!contextIds || contextIds.length === 0) {
+    return {};
+  }
+
+  return contextIds.length === 1
+    ? { contextId: contextIds[0] }
+    : { contextId: { in: contextIds } };
+}
+
+export function transferContextWhere(scope: FinancialContextFilter) {
+  const contextIds = financialContextIds(scope);
+
+  if (!contextIds || contextIds.length === 0) {
+    return {};
+  }
+
+  const contextFilter = contextIds.length === 1 ? contextIds[0] : { in: contextIds };
+
+  return {
+    OR: [
+      { sourceContextId: contextFilter },
+      { destinationContextId: contextFilter },
+    ],
+  };
+}
+
+export function originLabelForContext(scope: FinancialDataScope, contextId: string): string {
+  const context = scope.contextsById[contextId];
+  return context?.ownerName ?? context?.name ?? "Origem";
+}
+
 export async function getAccessibleFinancialContexts(
   access: CurrentAccessScope,
 ): Promise<FinancialContextOption[]> {
@@ -68,10 +134,19 @@ export async function getAccessibleFinancialContexts(
         { ownerEditorId: access.editorId, type: "PERSONAL" },
       ],
     },
-    select: { id: true, name: true, ownerEditorId: true, type: true },
+    select: {
+      id: true,
+      name: true,
+      ownerEditor: { select: { displayName: true } },
+      ownerEditorId: true,
+      type: true,
+    },
   });
 
-  return sortContextsForEditor(access, contexts);
+  return sortContextsForEditor(access, contexts.map(({ ownerEditor, ...context }) => ({
+    ...context,
+    ownerName: ownerEditor?.displayName ?? null,
+  })));
 }
 
 export async function resolveFinancialContext(
@@ -79,6 +154,21 @@ export async function resolveFinancialContext(
   requestedContextId?: string,
 ): Promise<ResolvedFinancialContext> {
   const contexts = await getAccessibleFinancialContexts(access);
+  const workspaceContexts = await getDatabase().financialContext.findMany({
+    where: { active: true, workspaceId: access.workspaceId },
+    select: {
+      id: true,
+      name: true,
+      ownerEditor: { select: { displayName: true } },
+      ownerEditorId: true,
+      type: true,
+    },
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+  });
+  const workspaceContextOptions = workspaceContexts.map(({ ownerEditor, ...context }) => ({
+    ...context,
+    ownerName: ownerEditor?.displayName ?? null,
+  }));
 
   if (contexts.length === 0) {
     notFound();
@@ -90,7 +180,26 @@ export async function resolveFinancialContext(
     contexts.find(({ type }) => type === "COUPLE") ??
     contexts[0]!;
 
-  return { contexts, current };
+  const writeContext =
+    contexts.find(({ ownerEditorId, type }) => type === "PERSONAL" && ownerEditorId === access.editorId) ??
+    current;
+  const contextIds = current.type === "COUPLE"
+    ? workspaceContextOptions
+        .filter(({ type }) => type === "PERSONAL" || type === "COUPLE")
+        .map(({ id }) => id)
+    : [current.id];
+
+  return {
+    contexts,
+    current,
+    scope: {
+      contextIds: uniq(contextIds),
+      contextsById: Object.fromEntries(workspaceContextOptions.map((context) => [context.id, context])),
+      current,
+      mode: current.type,
+      writeContext,
+    },
+  };
 }
 
 export async function assertFinancialContextAccess(
@@ -105,4 +214,13 @@ export async function assertFinancialContextAccess(
   }
 
   return context;
+}
+
+export async function resolveWritableFinancialContext(
+  access: CurrentAccessScope,
+  requestedContextId: string,
+) {
+  const { current, scope } = await resolveFinancialContext(access, requestedContextId);
+
+  return current.type === "COUPLE" ? scope.writeContext : current;
 }

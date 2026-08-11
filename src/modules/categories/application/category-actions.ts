@@ -9,6 +9,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   assertFinancialContextAccess,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -55,8 +56,9 @@ export async function createCategoryAction(
     return { error: firstValidationMessage(parsed.error) };
   }
 
+  const { contextId: requestedContextId, ...categoryData } = parsed.data;
   const access = await requireCurrentAccess();
-  await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, requestedContextId);
   const database = getDatabase();
 
   try {
@@ -64,14 +66,15 @@ export async function createCategoryAction(
       const category = await transaction.category.create({
         data: {
           workspaceId: access.workspaceId,
-          ...parsed.data,
+          contextId: financialContext.id,
+          ...categoryData,
         },
       });
 
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId: financialContext.id,
           actorEditorId: access.editorId,
           action: "category.created",
           entityType: "Category",

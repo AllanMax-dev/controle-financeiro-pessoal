@@ -5,7 +5,6 @@ import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   contextHref,
-  getAccessibleFinancialContexts,
   resolveFinancialContext,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
@@ -23,10 +22,9 @@ export default async function NewTransferPage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const accounts = await getDatabase().financialAccount.findMany({
-    where: { workspaceId: access.workspaceId, contextId: { in: accessibleContextIds }, active: true },
+    where: { workspaceId: access.workspaceId, contextId: { in: contextState.scope.contextIds }, active: true },
     select: { financialContext: { select: { name: true } }, id: true, name: true },
     orderBy: [{ contextId: "asc" }, { name: "asc" }],
   });
@@ -56,6 +54,7 @@ export default async function NewTransferPage({
             amount: "",
             description: "",
             destinationAccountId: accounts[1]?.id ?? "",
+            contextId: contextState.current.id,
             notes: "",
             settledDate: today,
             sourceAccountId: accounts[0]?.id ?? "",

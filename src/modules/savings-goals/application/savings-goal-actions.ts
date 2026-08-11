@@ -7,9 +7,9 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
-  assertFinancialContextAccess,
   contextHref,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -77,14 +77,15 @@ export async function createSavingsGoalAction(
   }
 
   const access = await requireCurrentAccess();
-  await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, parsed.data.contextId);
+  const contextId = financialContext.id;
   const database = getDatabase();
 
   if (parsed.data.accountId) {
     const account = await database.financialAccount.findFirst({
       where: {
         active: true,
-        contextId: parsed.data.contextId,
+        contextId,
         id: parsed.data.accountId,
         type: { not: "INVESTMENT" },
         workspaceId: access.workspaceId,
@@ -93,7 +94,7 @@ export async function createSavingsGoalAction(
     });
 
     if (!account) {
-      return { error: "A conta vinculada nÃ£o estÃ¡ disponÃ­vel neste contexto." };
+      return { error: "A conta vinculada não está disponível neste contexto." };
     }
   }
 
@@ -103,13 +104,14 @@ export async function createSavingsGoalAction(
         data: {
           ...parsed.data,
           workspaceId: access.workspaceId,
+          contextId,
         },
       });
 
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId,
           actorEditorId: access.editorId,
           action: "savings_goal.created",
           entityType: "SavingsGoal",
@@ -119,7 +121,7 @@ export async function createSavingsGoalAction(
       });
     });
   } catch {
-    return { error: "NÃ£o foi possÃ­vel criar o cofrinho. Verifique se o nome jÃ¡ estÃ¡ em uso." };
+    return { error: "Não foi possível criar o cofrinho. Verifique se o nome já está em uso." };
   }
 
   revalidateSavingsGoalPaths();
@@ -157,7 +159,7 @@ export async function createSavingsGoalMovementAction(
   });
 
   if (!goal) {
-    return { error: "O cofrinho selecionado nÃ£o estÃ¡ disponÃ­vel." };
+    return { error: "O cofrinho selecionado não está disponível." };
   }
 
   if (parsed.data.accountId) {
@@ -173,7 +175,7 @@ export async function createSavingsGoalMovementAction(
     });
 
     if (!account) {
-      return { error: "A conta vinculada nÃ£o estÃ¡ disponÃ­vel neste contexto." };
+      return { error: "A conta vinculada não está disponível neste contexto." };
     }
   }
 
@@ -184,7 +186,7 @@ export async function createSavingsGoalMovementAction(
   const movementAmount = money(parsed.data.amount);
 
   if (parsed.data.type === "WITHDRAWAL" && movementAmount.greaterThan(currentAmount)) {
-    return { error: "A retirada nÃ£o pode ser maior que o valor atual do cofrinho." };
+    return { error: "A retirada não pode ser maior que o valor atual do cofrinho." };
   }
 
   try {
@@ -226,7 +228,7 @@ export async function createSavingsGoalMovementAction(
       });
     });
   } catch {
-    return { error: "NÃ£o foi possÃ­vel movimentar o cofrinho." };
+    return { error: "Não foi possível movimentar o cofrinho." };
   }
 
   revalidateSavingsGoalPaths();

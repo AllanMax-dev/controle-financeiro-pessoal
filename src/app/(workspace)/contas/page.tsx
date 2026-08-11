@@ -46,7 +46,7 @@ export default async function AccountsPage({
     investmentBalance,
     ownerGroups,
     totalBalance,
-  } = await getAccountBalances(access.workspaceId, true, contextState.current.id);
+  } = await getAccountBalances(access.workspaceId, true, contextState.scope);
 
   return (
     <>

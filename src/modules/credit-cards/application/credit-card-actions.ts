@@ -12,9 +12,9 @@ import {
   invoiceMonthForPurchase,
 } from "@/modules/credit-cards/domain/credit-card-schedule";
 import {
-  assertFinancialContextAccess,
   contextHref,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -43,14 +43,14 @@ const creditCardSchema = z.object({
   dueDay: z.coerce.number().int().min(1).max(31),
   institution: optionalTextSchema(100),
   limit: positiveMoneyInputSchema,
-  name: z.string().trim().min(2, "Informe o nome do cartÃ£o.").max(100),
+  name: z.string().trim().min(2, "Informe o nome do cartão.").max(100),
   paymentAccountId: optionalIdentifierSchema,
 });
 
 const creditCardPurchaseSchema = z.object({
   categoryId: optionalIdentifierSchema,
   creditCardId: identifierSchema,
-  description: z.string().trim().min(2, "Informe uma descriÃ§Ã£o.").max(160),
+  description: z.string().trim().min(2, "Informe uma descrição.").max(160),
   installmentCount: z.coerce.number().int().min(1).max(48),
   notes: optionalTextSchema(1000),
   purchaseDate: dateInputSchema,
@@ -83,14 +83,15 @@ export async function createCreditCardAction(
   }
 
   const access = await requireCurrentAccess();
-  await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, parsed.data.contextId);
+  const contextId = financialContext.id;
   const database = getDatabase();
 
   if (parsed.data.paymentAccountId) {
     const account = await database.financialAccount.findFirst({
       where: {
         active: true,
-        contextId: parsed.data.contextId,
+        contextId,
         id: parsed.data.paymentAccountId,
         type: { not: "INVESTMENT" },
         workspaceId: access.workspaceId,
@@ -99,7 +100,7 @@ export async function createCreditCardAction(
     });
 
     if (!account) {
-      return { error: "A conta de pagamento nÃ£o estÃ¡ disponÃ­vel neste contexto." };
+      return { error: "A conta de pagamento não está disponível neste contexto." };
     }
   }
 
@@ -109,13 +110,14 @@ export async function createCreditCardAction(
         data: {
           ...parsed.data,
           workspaceId: access.workspaceId,
+          contextId,
         },
       });
 
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId,
           actorEditorId: access.editorId,
           action: "credit_card.created",
           entityType: "CreditCard",
@@ -125,11 +127,11 @@ export async function createCreditCardAction(
       });
     });
   } catch {
-    return { error: "NÃ£o foi possÃ­vel criar o cartÃ£o. Verifique se o nome jÃ¡ estÃ¡ em uso." };
+    return { error: "Não foi possível criar o cartão. Verifique se o nome já está em uso." };
   }
 
   revalidateCreditCardPaths();
-  return { error: null, success: "CartÃ£o criado." };
+  return { error: null, success: "Cartão criado." };
 }
 
 export async function createCreditCardPurchaseAction(
@@ -177,11 +179,11 @@ export async function createCreditCardPurchaseAction(
   ]);
 
   if (!card) {
-    return { error: "O cartÃ£o selecionado nÃ£o estÃ¡ disponÃ­vel." };
+    return { error: "O cartão selecionado não está disponível." };
   }
 
   if (parsed.data.categoryId && (!category || category.contextId !== card.contextId)) {
-    return { error: "A categoria selecionada nÃ£o pertence ao contexto do cartÃ£o." };
+    return { error: "A categoria selecionada não pertence ao contexto do cartão." };
   }
 
   const firstInvoiceMonth = invoiceMonthForPurchase(parsed.data.purchaseDate, card.closingDay);
@@ -262,7 +264,7 @@ export async function createCreditCardPurchaseAction(
       });
     });
   } catch {
-    return { error: "NÃ£o foi possÃ­vel registrar a compra no cartÃ£o." };
+    return { error: "Não foi possível registrar a compra no cartão." };
   }
 
   revalidateCreditCardPaths();

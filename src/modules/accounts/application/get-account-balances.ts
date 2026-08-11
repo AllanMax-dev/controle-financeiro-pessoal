@@ -1,4 +1,9 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  transferContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculateAccountBalances } from "@/modules/transactions/domain/financial-summary";
@@ -6,15 +11,15 @@ import { calculateAccountBalances } from "@/modules/transactions/domain/financia
 export async function getAccountBalances(
   workspaceId: string,
   synchronize = true,
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ) {
   const database = getDatabase();
   if (synchronize) {
-    await synchronizeDueFixedExpenses(workspaceId, new Date(), contextId);
+    await synchronizeDueFixedExpenses(workspaceId, new Date(), scope);
   }
   const [accounts, transactions, transfers, adjustments] = await Promise.all([
     database.financialAccount.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}) },
+      where: { workspaceId, ...financialContextWhere(scope) },
       include: {
         _count: {
           select: {
@@ -34,7 +39,7 @@ export async function getAccountBalances(
     database.transaction.findMany({
       where: {
         workspaceId,
-        ...(contextId ? { contextId } : {}),
+        ...financialContextWhere(scope),
         status: "SETTLED",
         affectsBalance: true,
       },
@@ -44,9 +49,7 @@ export async function getAccountBalances(
       where: {
         workspaceId,
         status: "SETTLED",
-        ...(contextId
-          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
-          : {}),
+        ...transferContextWhere(scope),
       },
       select: {
         amount: true,
@@ -56,7 +59,7 @@ export async function getAccountBalances(
       },
     }),
     database.accountBalanceAdjustment.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}) },
+      where: { workspaceId, ...financialContextWhere(scope) },
       select: { accountId: true, difference: true },
       orderBy: { effectiveAt: "asc" },
     }),

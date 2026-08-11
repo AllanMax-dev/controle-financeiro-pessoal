@@ -1,4 +1,8 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 function currentMonthInterval(referenceDate: Date) {
@@ -21,7 +25,7 @@ function currentMonthInterval(referenceDate: Date) {
 export async function getDebtOverview(
   workspaceId: string,
   referenceDate = new Date(),
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ) {
   const database = getDatabase();
   const { end, start, today } = currentMonthInterval(referenceDate);
@@ -32,9 +36,10 @@ export async function getDebtOverview(
       orderBy: { createdAt: "asc" },
     }),
     database.debt.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}) },
+      where: { workspaceId, ...financialContextWhere(scope) },
       include: {
         category: true,
+        financialContext: { select: { name: true } },
         installments: {
           include: { shares: { include: { editor: true } } },
           orderBy: { number: "asc" },

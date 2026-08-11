@@ -1,22 +1,27 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { startOfInvoiceMonth } from "@/modules/credit-cards/domain/credit-card-schedule";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 export async function getCreditCardOverview(
   workspaceId: string,
-  contextId: string,
+  scope: FinancialContextFilter,
   referenceDate = new Date(),
 ) {
   const database = getDatabase();
   const currentInvoiceMonth = startOfInvoiceMonth(referenceDate);
   const cards = await database.creditCard.findMany({
-    where: { contextId, workspaceId },
+    where: { workspaceId, ...financialContextWhere(scope) },
     include: {
       invoices: {
         where: { month: currentInvoiceMonth },
         include: { installments: { include: { purchase: { include: { category: true } } } } },
         take: 1,
       },
+      financialContext: { select: { name: true } },
       paymentAccount: { select: { id: true, name: true } },
     },
     orderBy: [{ active: "desc" }, { name: "asc" }],

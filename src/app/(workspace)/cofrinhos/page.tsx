@@ -31,13 +31,14 @@ export default async function SavingsGoalsPage({
   );
   const currentContext = contextState.current;
   const database = getDatabase();
+  const writeContext = contextState.scope.writeContext;
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const [overview, accounts] = await Promise.all([
-    getSavingsGoalOverview(access.workspaceId, currentContext.id),
+    getSavingsGoalOverview(access.workspaceId, contextState.scope),
     database.financialAccount.findMany({
       where: {
         active: true,
-        contextId: currentContext.id,
+        contextId: writeContext.id,
         type: { not: "INVESTMENT" },
         workspaceId: access.workspaceId,
       },
@@ -47,13 +48,14 @@ export default async function SavingsGoalsPage({
   ]);
   const activeGoals = overview.goals.filter(({ status }) => status !== "ARCHIVED");
 
+  const writableGoals = activeGoals.filter(({ contextId }) => contextId === writeContext.id);
   return (
     <>
       <section className="page-heading compact-heading">
         <div>
           <p className="eyebrow">Cofrinhos</p>
           <h1>Metas financeiras</h1>
-          <p>Acompanhe objetivos sem somar o mesmo dinheiro duas vezes no patrimÃ´nio.</p>
+          <p>Acompanhe objetivos sem somar o mesmo dinheiro duas vezes no patrimônio.</p>
         </div>
       </section>
 
@@ -62,13 +64,13 @@ export default async function SavingsGoalsPage({
           <SavingsGoalForm
             accounts={accounts}
             action={createSavingsGoalAction}
-            contextId={currentContext.id}
+            contextId={writeContext.id}
           />
-          {activeGoals.length > 0 ? (
+          {writableGoals.length > 0 ? (
             <SavingsGoalMovementForm
               accounts={accounts}
               action={createSavingsGoalMovementAction}
-              goals={activeGoals}
+              goals={writableGoals}
               today={today}
             />
           ) : null}
@@ -95,13 +97,14 @@ export default async function SavingsGoalsPage({
                   <header>
                     <div>
                       <strong>{goal.name}</strong>
+                      <small>{goal.financialContext.name}</small>
                       <small>
-                        {goal.account?.name ?? "Sem conta especÃ­fica"}
-                        {goal.deadline ? ` Â· atÃ© ${formatDate(goal.deadline)}` : ""}
+                        {goal.account?.name ?? "Sem conta específica"}
+                        {goal.deadline ? ` · até ${formatDate(goal.deadline)}` : ""}
                       </small>
                     </div>
                     <span className={`status-pill status-${goal.status.toLowerCase()}`}>
-                      {goal.status === "COMPLETED" ? "ConcluÃ­do" : goal.status === "ACTIVE" ? "Ativo" : "Arquivado"}
+                      {goal.status === "COMPLETED" ? "Concluído" : goal.status === "ACTIVE" ? "Ativo" : "Arquivado"}
                     </span>
                   </header>
                   <div className="savings-goal-values">
@@ -126,9 +129,9 @@ export default async function SavingsGoalsPage({
                       {goal.movements.slice(0, 4).map((movement) => (
                         <li key={movement.id}>
                           <span>
-                            <strong>{movement.type === "DEPOSIT" ? "DepÃ³sito" : "Retirada"}</strong>
+                            <strong>{movement.type === "DEPOSIT" ? "Depósito" : "Retirada"}</strong>
                             <small>
-                              {movement.editor.displayName} Â· {formatDate(movement.movementDate)}
+                              {movement.editor.displayName} · {formatDate(movement.movementDate)}
                             </small>
                           </span>
                           <strong className={movement.type === "DEPOSIT" ? "value-income" : "value-expense"}>

@@ -7,6 +7,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   contextHref,
   resolveFinancialContext,
+  financialContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -41,21 +42,21 @@ export default async function PlanningPage({
   const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
   const { end, month, start } = monthInterval(filters.month ?? defaultMonth, defaultMonth);
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), currentContext.id);
+  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), contextState.scope);
   const [categories, budgets, realizedGroups] = await Promise.all([
     database.category.findMany({
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
         OR: [
           { active: true },
-          { budgets: { some: { contextId: currentContext.id, month: start } } },
+          { budgets: { some: { ...financialContextWhere(contextState.scope), month: start } } },
           {
             transactions: {
               some: {
                 type: "EXPENSE",
-                contextId: currentContext.id,
+                ...financialContextWhere(contextState.scope),
                 status: "SETTLED",
                 competenceDate: { gte: start, lt: end },
                 account: { type: { not: "INVESTMENT" } },
@@ -68,7 +69,7 @@ export default async function PlanningPage({
     }),
     database.budget.findMany({
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         workspaceId: access.workspaceId,
         month: start,
         category: { kind: "EXPENSE" },
@@ -77,7 +78,7 @@ export default async function PlanningPage({
     database.transaction.groupBy({
       by: ["categoryId"],
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         workspaceId: access.workspaceId,
         type: "EXPENSE",
         status: "SETTLED",

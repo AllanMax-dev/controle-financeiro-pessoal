@@ -58,6 +58,7 @@ export default async function EditTransferPage({ params }: { params: Promise<{ i
           amount: transfer.amount.toFixed(2).replace(".", ","),
           description: transfer.description,
           destinationAccountId: transfer.destinationAccountId,
+          contextId: transfer.sourceContextId,
           id: transfer.id,
           notes: transfer.notes ?? "",
           settledDate: transfer.settledAt ? toDateInputValue(transfer.settledAt) : "",

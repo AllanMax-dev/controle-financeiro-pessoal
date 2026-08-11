@@ -9,6 +9,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   contextHref,
   resolveFinancialContext,
+  financialContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -28,12 +29,13 @@ export default async function ReceiptsPage({
   );
   const currentContext = contextState.current;
   const database = getDatabase();
+  const writeContext = contextState.scope.writeContext;
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const [accounts, categories, incomes, salaryOverview] = await Promise.all([
     database.financialAccount.findMany({
       where: {
         active: true,
-        contextId: currentContext.id,
+        contextId: writeContext.id,
         type: { not: "INVESTMENT" },
         workspaceId: access.workspaceId,
       },
@@ -43,7 +45,7 @@ export default async function ReceiptsPage({
     database.category.findMany({
       where: {
         active: true,
-        contextId: currentContext.id,
+        contextId: writeContext.id,
         kind: "INCOME",
         workspaceId: access.workspaceId,
       },
@@ -52,16 +54,16 @@ export default async function ReceiptsPage({
     }),
     database.transaction.findMany({
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         salaryId: null,
         type: "INCOME",
         workspaceId: access.workspaceId,
       },
-      include: { account: true, category: true },
+      include: { account: true, category: true, financialContext: { select: { name: true } } },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
       take: 50,
     }),
-    getSalaryOverview(access.workspaceId, new Date(), currentContext.id),
+    getSalaryOverview(access.workspaceId, new Date(), contextState.scope),
   ]);
 
   return (
@@ -69,12 +71,12 @@ export default async function ReceiptsPage({
       <section className="page-heading compact-heading">
         <div>
           <p className="eyebrow">Recebimentos</p>
-          <h1>Entradas do mÃªs</h1>
-          <p>Registre receitas avulsas e acompanhe salÃ¡rios recorrentes em um sÃ³ lugar.</p>
+          <h1>Entradas do mês</h1>
+          <p>Registre receitas avulsas e acompanhe salários recorrentes em um só lugar.</p>
         </div>
         <Link className="secondary-button" href={contextHref("/salarios/novo", currentContext.id)}>
           <Icon name="add" />
-          SalÃ¡rio recorrente
+          Salário recorrente
         </Link>
       </section>
 
@@ -85,7 +87,7 @@ export default async function ReceiptsPage({
               action={{ href: contextHref("/contas/nova", currentContext.id), label: "Criar conta" }}
               description="Crie uma conta operacional para registrar recebimentos."
               icon="account"
-              title="Conta necessÃ¡ria"
+              title="Conta necessária"
             />
           ) : (
             <>
@@ -99,7 +101,7 @@ export default async function ReceiptsPage({
                   amount: "",
                   categoryId: "",
                   competenceDate: today,
-                  contextId: currentContext.id,
+                  contextId: writeContext.id,
                   description: "",
                   dueDate: today,
                   notes: "",
@@ -121,11 +123,11 @@ export default async function ReceiptsPage({
         <section className="panel-card finance-list-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">SalÃ¡rios</p>
-              <h2>RecorrÃªncias e recebidos</h2>
+              <p className="eyebrow">Salários</p>
+              <h2>Recorrências e recebidos</h2>
             </div>
             <Link className="text-button" href={contextHref("/salarios", currentContext.id)}>
-              Ver salÃ¡rios
+              Ver salários
             </Link>
           </div>
           <div className="fixed-expense-dashboard-summary">
@@ -146,7 +148,7 @@ export default async function ReceiptsPage({
           <div className="panel-heading panel-heading-inline">
             <div>
               <p className="eyebrow">Avulsos</p>
-              <h2>Ãšltimos recebimentos</h2>
+              <h2>Últimos recebimentos</h2>
             </div>
             <Link className="text-button" href={contextHref("/lancamentos", currentContext.id)}>
               Ver todos
@@ -154,7 +156,7 @@ export default async function ReceiptsPage({
           </div>
           {incomes.length === 0 ? (
             <EmptyState
-              description="Os recebimentos avulsos aparecerÃ£o aqui depois do primeiro registro."
+              description="Os recebimentos avulsos aparecerão aqui depois do primeiro registro."
               icon="income"
               title="Nenhum recebimento avulso"
             />
@@ -164,8 +166,9 @@ export default async function ReceiptsPage({
                 <li key={income.id}>
                   <span>
                     <strong>{income.description}</strong>
+                    <small>{income.financialContext.name}</small>
                     <small>
-                      {income.account.name} Â· {income.category?.name ?? "Sem categoria"} Â· {formatDate(income.competenceDate)}
+                      {income.account.name} · {income.category?.name ?? "Sem categoria"} · {formatDate(income.competenceDate)}
                     </small>
                   </span>
                   <strong className="value-income">{formatCurrency(income.amount)}</strong>

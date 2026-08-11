@@ -7,6 +7,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   contextHref,
   resolveFinancialContext,
+  financialContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -56,14 +57,14 @@ export default async function TransactionsPage({
     rawFilters.personId,
   ].filter(Boolean).length;
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), currentContext.id);
+  await synchronizeDueFixedExpenses(access.workspaceId, new Date(), contextState.scope);
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
-      where: { contextId: currentContext.id, workspaceId: access.workspaceId },
+      where: { workspaceId: access.workspaceId, ...financialContextWhere(contextState.scope) },
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { contextId: currentContext.id, workspaceId: access.workspaceId },
+      where: { workspaceId: access.workspaceId, ...financialContextWhere(contextState.scope) },
       orderBy: { name: "asc" },
     }),
     database.editor.findMany({
@@ -85,7 +86,7 @@ export default async function TransactionsPage({
     Boolean(filters.categoryId && !categoryId) ||
     Boolean(filters.personId && !personId);
   const where: Prisma.TransactionWhereInput = {
-    contextId: currentContext.id,
+    ...financialContextWhere(contextState.scope),
     workspaceId: access.workspaceId,
     competenceDate: { gte: filters.start, lt: filters.end },
     ...transactionStatusCriteria(filters.status),
@@ -123,6 +124,7 @@ export default async function TransactionsPage({
         include: {
           account: true,
           category: true,
+          financialContext: { select: { name: true } },
           debtInstallment: {
             select: {
               debtId: true,
@@ -286,6 +288,12 @@ export default async function TransactionsPage({
               <div className="entity-main">
                 <strong>{transaction.description}</strong>
                 <span>
+                  {contextState.scope.mode === "COUPLE" ? (
+                    <>
+                      {transaction.financialContext.name}
+                      {" · "}
+                    </>
+                  ) : null}
                   {transaction.account.name} · {transaction.category?.name ?? "Sem categoria"} ·{" "}
                   {formatDate(transaction.competenceDate)}
                   {personNames ? (

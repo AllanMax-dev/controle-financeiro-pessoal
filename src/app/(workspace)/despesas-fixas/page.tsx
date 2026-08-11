@@ -40,7 +40,7 @@ export default async function FixedExpensesPage({
   const todayInput = dateInputInTimeZone(now, access.workspaceTimezone);
   const monthInput = todayInput.slice(0, 7);
   const month = new Date(`${monthInput}-01T00:00:00.000Z`);
-  const overview = await getFixedExpenseOverview(access.workspaceId, month, now, contextState.current.id);
+  const overview = await getFixedExpenseOverview(access.workspaceId, month, now, contextState.scope);
 
   return (
     <>

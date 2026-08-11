@@ -26,7 +26,7 @@ export function SavingsGoalForm({
       <input name="contextId" type="hidden" value={contextId} />
       <div className="form-section-title field-wide">
         <h2>Novo cofrinho</h2>
-        <p>Metas organizam o dinheiro jÃ¡ existente sem duplicar patrimÃ´nio.</p>
+        <p>Metas organizam o dinheiro já existente sem duplicar patrimônio.</p>
       </div>
       <label className="field field-wide-on-mobile">
         <span>Nome</span>
@@ -43,7 +43,7 @@ export function SavingsGoalForm({
       <label className="field">
         <span>Conta vinculada</span>
         <select name="accountId" defaultValue="">
-          <option value="">Sem conta especÃ­fica</option>
+          <option value="">Sem conta específica</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
@@ -52,7 +52,7 @@ export function SavingsGoalForm({
         </select>
       </label>
       <label className="field field-wide">
-        <span>DescriÃ§Ã£o</span>
+        <span>Descrição</span>
         <textarea name="description" maxLength={1000} rows={3} />
       </label>
       {state.error ? <p className="form-error">{state.error}</p> : null}
@@ -81,7 +81,7 @@ export function SavingsGoalMovementForm({
     <form action={formAction} className="entity-form compact-finance-form">
       <div className="form-section-title field-wide">
         <h2>Movimentar meta</h2>
-        <p>Deposite ou retire valores jÃ¡ alocados a um objetivo.</p>
+        <p>Deposite ou retire valores já alocados a um objetivo.</p>
       </div>
       <label className="field">
         <span>Cofrinho</span>
@@ -99,7 +99,7 @@ export function SavingsGoalMovementForm({
       <label className="field">
         <span>Tipo</span>
         <select name="type" defaultValue="DEPOSIT" required>
-          <option value="DEPOSIT">DepÃ³sito</option>
+          <option value="DEPOSIT">Depósito</option>
           <option value="WITHDRAWAL">Retirada</option>
         </select>
       </label>
@@ -114,7 +114,7 @@ export function SavingsGoalMovementForm({
       <label className="field">
         <span>Conta</span>
         <select name="accountId" defaultValue="">
-          <option value="">Sem conta especÃ­fica</option>
+          <option value="">Sem conta específica</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
@@ -123,7 +123,7 @@ export function SavingsGoalMovementForm({
         </select>
       </label>
       <label className="field field-wide">
-        <span>ObservaÃ§Ãµes</span>
+        <span>Observações</span>
         <textarea name="notes" maxLength={1000} rows={3} />
       </label>
       {state.error ? <p className="form-error">{state.error}</p> : null}

@@ -22,11 +22,12 @@ export default async function NewSalaryPage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
+  const writeContext = contextState.scope.writeContext;
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
       where: {
-        contextId: contextState.current.id,
+        contextId: writeContext.id,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -36,7 +37,7 @@ export default async function NewSalaryPage({
     }),
     database.category.findMany({
       where: {
-        contextId: contextState.current.id,
+        contextId: writeContext.id,
         workspaceId: access.workspaceId,
         active: true,
         kind: "INCOME",
@@ -92,7 +93,7 @@ export default async function NewSalaryPage({
           accounts={accounts}
           action={createSalaryAction}
           categories={categories}
-          contextId={contextState.current.id}
+          contextId={writeContext.id}
           currentMonth={monthInputInTimeZone(new Date(), access.workspaceTimezone)}
           currentEditorId={access.editorId}
           editors={editors}

@@ -10,6 +10,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   contextHref,
   resolveFinancialContext,
+  transferContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -44,10 +45,7 @@ export default async function TransfersPage({
       : undefined;
   const where: Prisma.TransferWhereInput = {
     workspaceId: access.workspaceId,
-    OR: [
-      { sourceContextId: contextState.current.id },
-      { destinationContextId: contextState.current.id },
-    ],
+    ...transferContextWhere(contextState.scope),
     transferDate: { gte: start, lt: end },
     ...(status ? { status } : {}),
   };

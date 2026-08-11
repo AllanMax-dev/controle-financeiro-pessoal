@@ -1,11 +1,16 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
-export async function getSavingsGoalOverview(workspaceId: string, contextId: string) {
+export async function getSavingsGoalOverview(workspaceId: string, scope: FinancialContextFilter) {
   const goals = await getDatabase().savingsGoal.findMany({
-    where: { contextId, workspaceId },
+    where: { workspaceId, ...financialContextWhere(scope) },
     include: {
       account: { select: { id: true, name: true } },
+      financialContext: { select: { name: true } },
       movements: {
         include: { editor: { select: { displayName: true } } },
         orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }],

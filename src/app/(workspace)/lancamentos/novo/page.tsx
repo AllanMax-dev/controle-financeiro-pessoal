@@ -22,12 +22,13 @@ export default async function NewTransactionPage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
+  const writeContext = contextState.scope.writeContext;
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const database = getDatabase();
   const [accounts, categories] = await Promise.all([
     database.financialAccount.findMany({
       where: {
-        contextId: contextState.current.id,
+        contextId: writeContext.id,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -36,7 +37,7 @@ export default async function NewTransactionPage({
       orderBy: { name: "asc" },
     }),
     database.category.findMany({
-      where: { contextId: contextState.current.id, workspaceId: access.workspaceId, active: true },
+      where: { contextId: writeContext.id, workspaceId: access.workspaceId, active: true },
       select: { id: true, kind: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -69,7 +70,7 @@ export default async function NewTransactionPage({
             amount: "",
             categoryId: "",
             competenceDate: today,
-            contextId: contextState.current.id,
+            contextId: writeContext.id,
             description: "",
             dueDate: today,
             notes: "",

@@ -1,4 +1,10 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextIds,
+  financialContextWhere,
+  transferContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import {
   buildBudgetComparison,
@@ -16,14 +22,14 @@ import { calculatePeriodResult } from "@/modules/transactions/domain/financial-s
 export async function getDashboardSummary(
   workspaceId: string,
   referenceDate = new Date(),
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ) {
   const database = getDatabase();
   const monthBuckets = createTrailingMonthBuckets(6, referenceDate);
   const firstMonth = monthBuckets[0]!;
   const currentMonth = monthBuckets[monthBuckets.length - 1]!;
   // Sincroniza antes das consultas paralelas para que todos os indicadores usem a mesma base.
-  const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate, new Date(), contextId);
+  const fixedExpenses = await getFixedExpenseOverview(workspaceId, referenceDate, new Date(), scope);
   const [
     {
       accounts,
@@ -40,11 +46,11 @@ export async function getDashboardSummary(
     manualPendingIncome,
     pendingTransfers,
   ] = await Promise.all([
-    getAccountBalances(workspaceId, false, contextId),
+    getAccountBalances(workspaceId, false, scope),
     database.transaction.findMany({
       where: {
         workspaceId,
-        ...(contextId ? { contextId } : {}),
+        ...financialContextWhere(scope),
         competenceDate: { gte: firstMonth.start, lt: currentMonth.end },
       },
       select: {
@@ -60,22 +66,22 @@ export async function getDashboardSummary(
       },
     }),
     database.transaction.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}) },
+      where: { workspaceId, ...financialContextWhere(scope) },
       include: { account: true, category: true },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
       take: 6,
     }),
     database.budget.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}), month: currentMonth.start },
+      where: { workspaceId, ...financialContextWhere(scope), month: currentMonth.start },
       select: {
         amount: true,
         category: { select: { color: true, id: true, name: true } },
       },
     }),
-    getSalaryOverview(workspaceId, referenceDate, contextId),
+    getSalaryOverview(workspaceId, referenceDate, scope),
     database.transaction.findMany({
       where: {
-        ...(contextId ? { contextId } : {}),
+        ...financialContextWhere(scope),
         competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
         account: { type: { not: "INVESTMENT" } },
         fixedExpenseId: null,
@@ -89,7 +95,7 @@ export async function getDashboardSummary(
     }),
     database.transaction.findMany({
       where: {
-        ...(contextId ? { contextId } : {}),
+        ...financialContextWhere(scope),
         competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
         account: { type: { not: "INVESTMENT" } },
         salaryId: null,
@@ -106,9 +112,7 @@ export async function getDashboardSummary(
         status: "PENDING",
         transferDate: { gte: currentMonth.start, lt: currentMonth.end },
         workspaceId,
-        ...(contextId
-          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
-          : {}),
+        ...transferContextWhere(scope),
       },
       select: {
         amount: true,
@@ -129,7 +133,7 @@ export async function getDashboardSummary(
   );
 
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
-  const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers, contextId);
+  const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers, financialContextIds(scope));
   const pendingTransactionIncome = sumMoney(
     operationalPeriodTransactions
       .filter(

@@ -11,9 +11,9 @@ import {
   isFortnightlyDueDate,
 } from "@/modules/debts/domain/installment-plan";
 import {
-  assertFinancialContextAccess,
   contextHref,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -178,13 +178,14 @@ export async function createDebtAction(
   }
 
   const access = await requireCurrentAccess();
-  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, parsed.data.contextId);
+  const contextId = financialContext.id;
   const database = getDatabase();
   const editorIds = shares.map(({ editorId }) => editorId);
   const [category, editorCount, historicalAccount] = await Promise.all([
     database.category.findFirst({
       where: {
-        contextId: parsed.data.contextId,
+        contextId,
         id: parsed.data.categoryId,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
@@ -198,7 +199,7 @@ export async function createDebtAction(
     parsed.data.historicalAccountId
       ? database.financialAccount.findFirst({
           where: {
-            contextId: parsed.data.contextId,
+            contextId,
             id: parsed.data.historicalAccountId,
             workspaceId: access.workspaceId,
             active: true,
@@ -229,7 +230,7 @@ export async function createDebtAction(
       const debt = await transaction.debt.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId,
           cardName: parsed.data.paymentMethod === "CREDIT_CARD" ? parsed.data.cardName : null,
           categoryId: parsed.data.categoryId,
           description: parsed.data.description,
@@ -248,7 +249,7 @@ export async function createDebtAction(
           ? await transaction.transaction.create({
               data: {
                 workspaceId: access.workspaceId,
-                contextId: parsed.data.contextId,
+                contextId,
                 accountId: historicalAccount!.id,
                 affectsBalance: false,
                 amount: installment.amount.toFixed(2),
@@ -288,7 +289,7 @@ export async function createDebtAction(
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId,
           actorEditorId: access.editorId,
           action: "debt.created",
           entityType: "Debt",
@@ -309,7 +310,7 @@ export async function createDebtAction(
   revalidatePath("/dividas");
   revalidatePath("/painel");
   revalidatePath("/lancamentos");
-  redirect(contextHref("/dividas", parsed.data.contextId));
+  redirect(contextHref("/dividas", contextId));
 }
 
 export async function payDebtInstallmentAction(

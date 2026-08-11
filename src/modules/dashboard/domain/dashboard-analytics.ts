@@ -226,7 +226,7 @@ export function buildBudgetComparison(
 
 export function calculatePendingTransferAvailableDelta(
   transfers: PendingTransferInput[],
-  contextId?: string,
+  contextIds?: string[],
 ): Decimal {
   return transfers.reduce((total, transfer) => {
     if (transfer.status !== "PENDING") {
@@ -236,9 +236,9 @@ export function calculatePendingTransferAvailableDelta(
     const sourceOperational = transfer.sourceAccount.type !== "INVESTMENT";
     const destinationOperational = transfer.destinationAccount.type !== "INVESTMENT";
 
-    if (contextId) {
-      const sourceInContext = transfer.sourceContextId === contextId;
-      const destinationInContext = transfer.destinationContextId === contextId;
+    if (contextIds && contextIds.length > 0) {
+      const sourceInContext = Boolean(transfer.sourceContextId && contextIds.includes(transfer.sourceContextId));
+      const destinationInContext = Boolean(transfer.destinationContextId && contextIds.includes(transfer.destinationContextId));
 
       if (sourceInContext && !destinationInContext) {
         return sourceOperational ? money(total.minus(transfer.amount)) : total;

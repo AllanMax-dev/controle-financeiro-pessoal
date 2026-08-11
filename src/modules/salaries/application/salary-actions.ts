@@ -7,8 +7,8 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
-  assertFinancialContextAccess,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { createSalarySchedule } from "@/modules/salaries/domain/salary-schedule";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -95,7 +95,8 @@ export async function createSalaryAction(
   }
 
   const access = await requireCurrentAccess();
-  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, parsed.data.contextId);
+  const contextId = financialContext.id;
 
   if (financialContext.type === "PERSONAL" && parsed.data.editorId !== financialContext.ownerEditorId) {
     return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
@@ -106,7 +107,7 @@ export async function createSalaryAction(
     database.financialAccount.findFirst({
       where: {
         id: parsed.data.accountId,
-        contextId: parsed.data.contextId,
+        contextId,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -116,7 +117,7 @@ export async function createSalaryAction(
     database.category.findFirst({
       where: {
         id: parsed.data.categoryId,
-        contextId: parsed.data.contextId,
+        contextId,
         workspaceId: access.workspaceId,
         kind: "INCOME",
         active: true,
@@ -139,13 +140,14 @@ export async function createSalaryAction(
         data: {
           ...parsed.data,
           paymentDay: parsed.data.frequency === "MONTHLY" ? parsed.data.paymentDay : null,
+          contextId,
           workspaceId: access.workspaceId,
         },
       });
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: parsed.data.contextId,
+          contextId,
           actorEditorId: access.editorId,
           action: "salary.created",
           entityType: "Salary",

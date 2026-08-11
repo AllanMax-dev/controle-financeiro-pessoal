@@ -1,4 +1,9 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  transferContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { money, sumMoney } from "@/modules/shared/domain/money";
@@ -21,15 +26,15 @@ export async function getMonthlyReport(
   workspaceId: string,
   monthValue?: string,
   referenceDate = new Date(),
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ) {
   const { end, month, start } = reportMonthInterval(monthValue, referenceDate);
   const database = getDatabase();
-  await synchronizeDueFixedExpenses(workspaceId, referenceDate, contextId);
+  await synchronizeDueFixedExpenses(workspaceId, referenceDate, scope);
   const [{ accounts, totalBalance }, transactions, transfers] = await Promise.all([
-    getAccountBalances(workspaceId, false, contextId),
+    getAccountBalances(workspaceId, false, scope),
     database.transaction.findMany({
-      where: { workspaceId, ...(contextId ? { contextId } : {}), competenceDate: { gte: start, lt: end } },
+      where: { workspaceId, ...financialContextWhere(scope), competenceDate: { gte: start, lt: end } },
       include: { account: true, category: true },
       orderBy: [{ competenceDate: "asc" }, { createdAt: "asc" }],
     }),
@@ -37,9 +42,7 @@ export async function getMonthlyReport(
       where: {
         workspaceId,
         transferDate: { gte: start, lt: end },
-        ...(contextId
-          ? { OR: [{ sourceContextId: contextId }, { destinationContextId: contextId }] }
-          : {}),
+        ...transferContextWhere(scope),
       },
       include: { destinationAccount: true, sourceAccount: true },
       orderBy: [{ transferDate: "asc" }, { createdAt: "asc" }],

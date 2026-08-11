@@ -6,7 +6,11 @@ import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import {
+  financialContextIds,
+  getAccessibleFinancialContexts,
+  resolveFinancialContext,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
   dateInputSchema,
@@ -31,6 +35,7 @@ const transferSchema = z
     amount: positiveMoneyInputSchema,
     description: z.string().trim().min(2, "Informe uma descrição.").max(160),
     destinationAccountId: identifierSchema,
+    contextId: identifierSchema,
     notes: optionalNotesSchema,
     settledDate: optionalDateInputSchema,
     sourceAccountId: identifierSchema,
@@ -66,6 +71,7 @@ function transferInput(formData: FormData) {
   return {
     amount: formData.get("amount"),
     description: formData.get("description"),
+    contextId: formData.get("contextId"),
     destinationAccountId: formData.get("destinationAccountId"),
     notes: formData.get("notes"),
     settledDate: formData.get("settledDate"),
@@ -150,7 +156,8 @@ export async function createTransferAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const contextState = await resolveFinancialContext(access, parsed.data.contextId);
+  const accessibleContextIds = financialContextIds(contextState.scope) ?? [];
   const validAccounts = await accountsAreValid(
     access.workspaceId,
     accessibleContextIds,
@@ -162,7 +169,7 @@ export async function createTransferAction(
     return { error: "Selecione duas contas ativas deste espaço financeiro." };
   }
 
-  const { settledDate, ...data } = parsed.data;
+  const { contextId, settledDate, ...data } = parsed.data;
   const database = getDatabase();
 
   try {
@@ -200,7 +207,7 @@ export async function createTransferAction(
   revalidatePath("/investimentos");
   revalidatePath("/contas");
   revalidatePath("/transferencias");
-  redirect("/transferencias");
+  redirect(`/transferencias?contextId=${encodeURIComponent(contextId)}`);
 }
 
 export async function updateTransferAction(
@@ -248,7 +255,7 @@ export async function updateTransferAction(
     return { error: "Uma das contas selecionadas não está disponível." };
   }
 
-  const { id, settledDate, version, ...data } = parsed.data;
+  const { contextId, id, settledDate, version, ...data } = parsed.data;
 
   try {
     const updated = await database.$transaction(async (transaction) => {
@@ -305,7 +312,7 @@ export async function updateTransferAction(
   revalidatePath("/investimentos");
   revalidatePath("/contas");
   revalidatePath("/transferencias");
-  redirect("/transferencias");
+  redirect(`/transferencias?contextId=${encodeURIComponent(contextId)}`);
 }
 
 export async function cancelTransferAction(formData: FormData): Promise<void> {

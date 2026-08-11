@@ -6,6 +6,7 @@ import { toggleCategoryActiveAction } from "@/modules/categories/application/cat
 import {
   contextHref,
   resolveFinancialContext,
+  financialContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -23,9 +24,9 @@ export default async function CategoriesPage({
     selectedContextIdFromSearchParams(await searchParams),
   );
   const categories = await getDatabase().category.findMany({
-    where: { contextId: contextState.current.id, workspaceId: access.workspaceId },
+    where: { workspaceId: access.workspaceId, ...financialContextWhere(contextState.scope) },
     orderBy: [{ active: "desc" }, { kind: "asc" }, { name: "asc" }],
-    include: { _count: { select: { transactions: true } } },
+    include: { _count: { select: { transactions: true } }, financialContext: { select: { name: true } } },
   });
   const categoryGroups = [
     {
@@ -81,7 +82,7 @@ export default async function CategoriesPage({
                     <span className="entity-color" style={{ backgroundColor: category.color ?? "#256b4b" }} />
                     <div className="entity-main">
                       <strong>{category.name}</strong>
-                      <span>{category.kind === "INCOME" ? "Receita" : "Despesa"}</span>
+                      <span>{category.kind === "INCOME" ? "Receita" : "Despesa"} · {category.financialContext.name}</span>
                     </div>
                     <div className="entity-value">
                       <strong>{category._count.transactions}</strong>

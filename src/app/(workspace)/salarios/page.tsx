@@ -36,7 +36,7 @@ export default async function SalariesPage({
     selectedContextIdFromSearchParams(await searchParams),
   );
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
-  const overview = await getSalaryOverview(access.workspaceId, today, contextState.current.id);
+  const overview = await getSalaryOverview(access.workspaceId, today, contextState.scope);
   const monthInput = overview.month.toISOString().slice(0, 7);
   const todayInput = today.toISOString().slice(0, 10);
 

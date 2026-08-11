@@ -1,4 +1,8 @@
 import { getDatabase } from "@/lib/db";
+import {
+  financialContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
 import { monthStart } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
 import {
   calculateSalaryTotals,
@@ -9,7 +13,7 @@ import { money } from "@/modules/shared/domain/money";
 export async function getSalaryOverview(
   workspaceId: string,
   referenceDate = new Date(),
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ) {
   const database = getDatabase();
   const month = monthStart(referenceDate);
@@ -19,7 +23,7 @@ export async function getSalaryOverview(
   const salaries = await database.salary.findMany({
     where: {
       workspaceId,
-      ...(contextId ? { contextId } : {}),
+      ...financialContextWhere(scope),
       OR: [
         { active: true, startMonth: { lte: month } },
         { transactions: { some: { salaryMonth: month } } },

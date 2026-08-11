@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     access.workspaceId,
     month,
     calendarDateInTimeZone(new Date(), access.workspaceTimezone),
-    contextState.current.id,
+    contextState.scope,
   );
   const csv = createMonthlyReportCsv(report);
 

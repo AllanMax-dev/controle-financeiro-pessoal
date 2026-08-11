@@ -9,6 +9,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   contextHref,
   resolveFinancialContext,
+  financialContextWhere,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
@@ -27,12 +28,13 @@ export default async function VariableExpensesPage({
   );
   const currentContext = contextState.current;
   const database = getDatabase();
+  const writeContext = contextState.scope.writeContext;
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const [accounts, categories, expenses] = await Promise.all([
     database.financialAccount.findMany({
       where: {
         active: true,
-        contextId: currentContext.id,
+        contextId: writeContext.id,
         type: { not: "INVESTMENT" },
         workspaceId: access.workspaceId,
       },
@@ -42,7 +44,7 @@ export default async function VariableExpensesPage({
     database.category.findMany({
       where: {
         active: true,
-        contextId: currentContext.id,
+        contextId: writeContext.id,
         kind: "EXPENSE",
         workspaceId: access.workspaceId,
       },
@@ -51,12 +53,12 @@ export default async function VariableExpensesPage({
     }),
     database.transaction.findMany({
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         fixedExpenseId: null,
         type: "EXPENSE",
         workspaceId: access.workspaceId,
       },
-      include: { account: true, category: true },
+      include: { account: true, category: true, financialContext: { select: { name: true } } },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
       take: 50,
     }),
@@ -66,7 +68,7 @@ export default async function VariableExpensesPage({
     <>
       <section className="page-heading compact-heading">
         <div>
-          <p className="eyebrow">Gastos variÃ¡veis</p>
+          <p className="eyebrow">Gastos variáveis</p>
           <h1>Despesas avulsas</h1>
           <p>Registre compras do dia a dia separadas dos gastos fixos e das faturas.</p>
         </div>
@@ -77,9 +79,9 @@ export default async function VariableExpensesPage({
           {accounts.length === 0 ? (
             <EmptyState
               action={{ href: contextHref("/contas/nova", currentContext.id), label: "Criar conta" }}
-              description="Crie uma conta operacional para registrar gastos variÃ¡veis."
+              description="Crie uma conta operacional para registrar gastos variáveis."
               icon="account"
-              title="Conta necessÃ¡ria"
+              title="Conta necessária"
             />
           ) : (
             <>
@@ -93,7 +95,7 @@ export default async function VariableExpensesPage({
                   amount: "",
                   categoryId: "",
                   competenceDate: today,
-                  contextId: currentContext.id,
+                  contextId: writeContext.id,
                   description: "",
                   dueDate: today,
                   notes: "",
@@ -102,7 +104,7 @@ export default async function VariableExpensesPage({
                   type: "EXPENSE",
                 }}
                 lockedType
-                submitLabel="Adicionar lanÃ§amento"
+                submitLabel="Adicionar lançamento"
               />
               <Link className="secondary-button" href={contextHref("/categorias/nova", currentContext.id)}>
                 <Icon name="add" />
@@ -115,8 +117,8 @@ export default async function VariableExpensesPage({
         <section className="panel-card finance-list-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">HistÃ³rico</p>
-              <h2>Ãšltimos gastos</h2>
+              <p className="eyebrow">Histórico</p>
+              <h2>Últimos gastos</h2>
             </div>
             <Link className="text-button" href={contextHref("/lancamentos", currentContext.id)}>
               Ver todos
@@ -124,9 +126,9 @@ export default async function VariableExpensesPage({
           </div>
           {expenses.length === 0 ? (
             <EmptyState
-              description="Os gastos variÃ¡veis aparecerÃ£o aqui depois do primeiro registro."
+              description="Os gastos variáveis aparecerão aqui depois do primeiro registro."
               icon="expense"
-              title="Nenhum gasto variÃ¡vel"
+              title="Nenhum gasto variável"
             />
           ) : (
             <ul className="compact-finance-list">
@@ -134,8 +136,9 @@ export default async function VariableExpensesPage({
                 <li key={expense.id}>
                   <span>
                     <strong>{expense.description}</strong>
+                    <small>{expense.financialContext.name}</small>
                     <small>
-                      {expense.account.name} Â· {expense.category?.name ?? "Sem categoria"} Â· {formatDate(expense.competenceDate)}
+                      {expense.account.name} · {expense.category?.name ?? "Sem categoria"} · {formatDate(expense.competenceDate)}
                     </small>
                   </span>
                   <strong className="value-expense">{formatCurrency(expense.amount)}</strong>

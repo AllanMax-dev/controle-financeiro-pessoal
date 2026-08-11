@@ -174,6 +174,41 @@ describe("dashboard analytics", () => {
 
     expect(delta.toFixed(2)).toBe("-125.00");
   });
+
+  it("keeps operational transfers between couple contexts neutral in the consolidated view", () => {
+    const delta = calculatePendingTransferAvailableDelta(
+      [
+        {
+          amount: "300.00",
+          destinationAccount: { type: "CHECKING" },
+          destinationContextId: "mayara-personal",
+          sourceAccount: { type: "CHECKING" },
+          sourceContextId: "allan-personal",
+          status: "PENDING",
+        },
+        {
+          amount: "120.00",
+          destinationAccount: { type: "INVESTMENT" },
+          destinationContextId: "mayara-personal",
+          sourceAccount: { type: "CHECKING" },
+          sourceContextId: "allan-personal",
+          status: "PENDING",
+        },
+        {
+          amount: "40.00",
+          destinationAccount: { type: "CHECKING" },
+          destinationContextId: "allan-personal",
+          sourceAccount: { type: "CHECKING" },
+          sourceContextId: "external-context",
+          status: "PENDING",
+        },
+      ],
+      ["allan-personal", "mayara-personal", "legacy-couple"],
+    );
+
+    expect(delta.toFixed(2)).toBe("-80.00");
+  });
+
   it("projects balance from pendencies and transfer delta without floating point drift", () => {
     expect(calculateProjectedBalance("1000.00", "100.55", "30.10", "-125.00").toFixed(2)).toBe("945.45");
   });

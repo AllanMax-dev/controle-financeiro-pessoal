@@ -1,5 +1,9 @@
 import { getDatabase } from "@/lib/db";
 import {
+  financialContextWhere,
+  type FinancialContextFilter,
+} from "@/modules/financial-contexts/application/financial-contexts";
+import {
   calendarDateInTimeZone,
   fixedExpenseOccurrencesThrough,
   monthStart,
@@ -15,7 +19,7 @@ import {
 export async function synchronizeDueFixedExpenses(
   workspaceId: string,
   referenceDate = new Date(),
-  contextId?: string,
+  scope?: FinancialContextFilter,
 ): Promise<Date> {
   const database = getDatabase();
   const workspace = await database.workspace.findUniqueOrThrow({
@@ -27,7 +31,7 @@ export async function synchronizeDueFixedExpenses(
   const fixedExpenses = await database.fixedExpense.findMany({
     where: {
       active: true,
-      ...(contextId ? { contextId } : {}),
+      ...financialContextWhere(scope),
       startMonth: { lte: currentMonth },
       workspaceId,
     },

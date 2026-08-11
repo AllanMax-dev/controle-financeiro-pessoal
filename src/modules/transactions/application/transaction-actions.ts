@@ -10,6 +10,7 @@ import {
   assertFinancialContextAccess,
   contextHref,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -179,14 +180,16 @@ export async function createTransactionAction(
     return { error: firstValidationMessage(parsed.error) };
   }
 
+  const { contextId: requestedContextId, settledDate, ...data } = parsed.data;
   const access = await requireCurrentAccess();
-  await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, requestedContextId);
+  const contextId = financialContext.id;
   const validRelations = await relationsAreValid(
     access.workspaceId,
-    parsed.data.contextId,
-    parsed.data.accountId,
-    parsed.data.categoryId,
-    parsed.data.type,
+    contextId,
+    data.accountId,
+    data.categoryId,
+    data.type,
     true,
   );
 
@@ -194,7 +197,6 @@ export async function createTransactionAction(
     return { error: "Selecione uma conta e uma categoria compatíveis e ativas." };
   }
 
-  const { settledDate, ...data } = parsed.data;
   const database = getDatabase();
 
   try {
@@ -202,15 +204,16 @@ export async function createTransactionAction(
       const created = await transaction.transaction.create({
         data: {
           workspaceId: access.workspaceId,
-          ...data,
+          contextId,
           settledAt: data.status === "SETTLED" ? settledDate : null,
+          ...data,
         },
       });
 
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
-          contextId: data.contextId,
+          contextId,
           actorEditorId: access.editorId,
           action: "transaction.created",
           entityType: "Transaction",
@@ -232,7 +235,7 @@ export async function createTransactionAction(
   revalidatePath("/planejamento");
   revalidatePath("/relatorios");
   revalidatePath("/salarios");
-  redirect(contextHref(data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis", data.contextId));
+  redirect(contextHref(data.type === "INCOME" ? "/recebimentos" : "/gastos-variaveis", contextId));
 }
 
 export async function updateTransactionAction(

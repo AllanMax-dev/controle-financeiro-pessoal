@@ -9,6 +9,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   assertFinancialContextAccess,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { fixedExpenseDueDate } from "@/modules/fixed-expenses/domain/fixed-expense-schedule";
@@ -87,7 +88,8 @@ export async function createFixedExpenseAction(
   }
 
   const access = await requireCurrentAccess();
-  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, parsed.data.contextId);
+  const contextId = financialContext.id;
 
   if (financialContext.type === "PERSONAL" && parsed.data.editorId !== financialContext.ownerEditorId) {
     return { error: "O contexto pessoal só pode usar a própria pessoa como responsável." };
@@ -98,7 +100,7 @@ export async function createFixedExpenseAction(
     database.financialAccount.findFirst({
       where: {
         id: parsed.data.accountId,
-        contextId: parsed.data.contextId,
+        contextId,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -108,7 +110,7 @@ export async function createFixedExpenseAction(
     database.category.findFirst({
       where: {
         id: parsed.data.categoryId,
-        contextId: parsed.data.contextId,
+        contextId,
         workspaceId: access.workspaceId,
         kind: "EXPENSE",
         active: true,
@@ -128,11 +130,12 @@ export async function createFixedExpenseAction(
   try {
     await database.$transaction(async (transaction) => {
       const fixedExpense = await transaction.fixedExpense.create({
-        data: { workspaceId: access.workspaceId, ...parsed.data },
+        data: { workspaceId: access.workspaceId, ...parsed.data, contextId },
       });
       await transaction.auditLog.create({
         data: {
           workspaceId: access.workspaceId,
+          contextId,
           actorEditorId: access.editorId,
           action: "fixed_expense.created",
           entityType: "FixedExpense",

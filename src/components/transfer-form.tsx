@@ -15,6 +15,7 @@ type TransferFormDefaults = {
   amount: string;
   description: string;
   destinationAccountId: string;
+  contextId: string;
   id?: string;
   notes: string;
   settledDate: string;
@@ -43,6 +44,7 @@ export function TransferForm({
       {defaults.id ? <input name="id" type="hidden" value={defaults.id} /> : null}
       {defaults.version ? <input name="version" type="hidden" value={defaults.version} /> : null}
 
+      <input name="contextId" type="hidden" value={defaults.contextId} />
       <div className="form-section-title field-wide">
         <h2>Origem, destino e valor</h2>
         <p>Transferências movimentam contas sem classificar receita ou despesa.</p>

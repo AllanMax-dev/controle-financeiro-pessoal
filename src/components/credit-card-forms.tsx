@@ -25,7 +25,7 @@ export function CreditCardForm({
     <form action={formAction} className="entity-form compact-finance-form">
       <input name="contextId" type="hidden" value={contextId} />
       <div className="form-section-title field-wide">
-        <h2>Novo cartÃ£o</h2>
+        <h2>Novo cartão</h2>
         <p>Cadastre limite, fechamento e vencimento para organizar as faturas.</p>
       </div>
       <label className="field">
@@ -33,7 +33,7 @@ export function CreditCardForm({
         <input name="name" minLength={2} maxLength={100} placeholder="Ex.: Nubank" required />
       </label>
       <label className="field">
-        <span>InstituiÃ§Ã£o</span>
+        <span>Instituição</span>
         <input name="institution" maxLength={100} placeholder="Banco emissor" />
       </label>
       <label className="field">
@@ -43,7 +43,7 @@ export function CreditCardForm({
       <label className="field">
         <span>Conta de pagamento</span>
         <select name="paymentAccountId" defaultValue="">
-          <option value="">Sem conta padrÃ£o</option>
+          <option value="">Sem conta padrão</option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
@@ -66,7 +66,7 @@ export function CreditCardForm({
       {state.error ? <p className="form-error">{state.error}</p> : null}
       {state.success ? <p className="inline-success">{state.success}</p> : null}
       <div className="form-actions field-wide">
-        <FormSubmitButton label="Salvar cartÃ£o" />
+        <FormSubmitButton label="Salvar cartão" />
       </div>
     </form>
   );
@@ -89,14 +89,14 @@ export function CreditCardPurchaseForm({
     <form action={formAction} className="entity-form compact-finance-form">
       <div className="form-section-title field-wide">
         <h2>Nova compra</h2>
-        <p>Compras parceladas sÃ£o distribuÃ­das nas faturas futuras.</p>
+        <p>Compras parceladas são distribuídas nas faturas futuras.</p>
       </div>
       <label className="field field-wide-on-mobile">
-        <span>DescriÃ§Ã£o</span>
+        <span>Descrição</span>
         <input name="description" minLength={2} maxLength={160} placeholder="Ex.: Mercado" required />
       </label>
       <label className="field">
-        <span>CartÃ£o</span>
+        <span>Cartão</span>
         <select name="creditCardId" defaultValue="" required>
           <option value="" disabled>
             Selecione
@@ -132,7 +132,7 @@ export function CreditCardPurchaseForm({
         <input name="purchaseDate" type="date" defaultValue={today} required />
       </label>
       <label className="field field-wide">
-        <span>ObservaÃ§Ãµes</span>
+        <span>Observações</span>
         <textarea name="notes" maxLength={1000} rows={3} />
       </label>
       {state.error ? <p className="form-error">{state.error}</p> : null}

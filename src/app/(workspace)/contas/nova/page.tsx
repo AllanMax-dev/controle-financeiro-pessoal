@@ -18,6 +18,7 @@ export default async function NewAccountPage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
+  const writeContext = contextState.scope.writeContext;
   const editors = await getDatabase().editor.findMany({
     where: { workspaceId: access.workspaceId, active: true },
     select: { displayName: true, id: true },
@@ -37,7 +38,7 @@ export default async function NewAccountPage({
         action={createAccountAction}
         defaults={{
           color: "#256b4b",
-          contextId: contextState.current.id,
+          contextId: writeContext.id,
           initialBalance: "0,00",
           name: "",
           ownerEditorId: null,

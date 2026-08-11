@@ -16,7 +16,7 @@ import {
 
 const accountTypeLabels = {
   CHECKING: "Conta corrente",
-  SAVINGS: "PoupanÃ§a",
+  SAVINGS: "Poupança",
   CASH: "Dinheiro",
   DIGITAL: "Conta digital",
   INVESTMENT: "Investimento",
@@ -34,7 +34,7 @@ export default async function BanksPage({
     selectedContextIdFromSearchParams(await searchParams),
   );
   const currentContext = contextState.current;
-  const balances = await getAccountBalances(access.workspaceId, true, currentContext.id);
+  const balances = await getAccountBalances(access.workspaceId, true, contextState.scope);
   const accounts = balances.activeAccounts.filter(({ type }) => type !== "INVESTMENT");
 
   return (
@@ -43,7 +43,7 @@ export default async function BanksPage({
         <div>
           <p className="eyebrow">Bancos</p>
           <h1>Contas operacionais</h1>
-          <p>Dinheiro disponÃ­vel para o dia a dia, separado dos investimentos.</p>
+          <p>Dinheiro disponível para o dia a dia, separado dos investimentos.</p>
         </div>
         <div className="page-actions">
           <Link className="primary-button" href={contextHref("/contas/nova", currentContext.id)}>
@@ -57,28 +57,28 @@ export default async function BanksPage({
         </div>
       </section>
 
-      <section className="metric-grid" aria-label="Resumo bancÃ¡rio">
+      <section className="metric-grid" aria-label="Resumo bancário">
         <article className="metric-card metric-card-featured">
-          <span>Saldo disponÃ­vel</span>
+          <span>Saldo disponível</span>
           <strong>{formatCurrency(balances.availableBalance)}</strong>
           <small>{accounts.length} contas operacionais</small>
         </article>
         <article className="metric-card">
-          <span>PatrimÃ´nio separado</span>
+          <span>Patrimônio separado</span>
           <strong>{formatCurrency(balances.investmentBalance)}</strong>
-          <small>Investimentos nÃ£o entram no disponÃ­vel</small>
+          <small>Investimentos não entram no disponível</small>
         </article>
       </section>
 
       {accounts.length === 0 ? (
         <EmptyState
           action={{ href: contextHref("/contas/nova", currentContext.id), label: "Criar conta" }}
-          description="Crie uma conta corrente, digital, poupanÃ§a ou dinheiro para operar o contexto atual."
+          description="Crie uma conta corrente, digital, poupança ou dinheiro para operar o contexto atual."
           icon="bank"
           title="Nenhuma conta operacional"
         />
       ) : (
-        <section className="entity-list compact-entity-list" aria-label="Contas bancÃ¡rias">
+        <section className="entity-list compact-entity-list" aria-label="Contas bancárias">
           {accounts.map((account) => (
             <article className="entity-row account-row" key={account.id}>
               <span className="entity-color" style={{ backgroundColor: account.color ?? "#e85d25" }} />

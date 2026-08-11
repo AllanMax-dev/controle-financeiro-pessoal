@@ -21,11 +21,12 @@ export default async function NewFixedExpensePage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
+  const writeContext = contextState.scope.writeContext;
   const database = getDatabase();
   const [accounts, categories, editors] = await Promise.all([
     database.financialAccount.findMany({
       where: {
-        contextId: contextState.current.id,
+        contextId: writeContext.id,
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -35,7 +36,7 @@ export default async function NewFixedExpensePage({
     }),
     database.category.findMany({
       where: {
-        contextId: contextState.current.id,
+        contextId: writeContext.id,
         workspaceId: access.workspaceId,
         active: true,
         kind: "EXPENSE",
@@ -89,7 +90,7 @@ export default async function NewFixedExpensePage({
           accounts={accounts}
           action={createFixedExpenseAction}
           categories={categories}
-          contextId={contextState.current.id}
+          contextId={writeContext.id}
           currentMonth={monthInputInTimeZone(new Date(), access.workspaceTimezone)}
           currentEditorId={access.editorId}
           editors={editors}

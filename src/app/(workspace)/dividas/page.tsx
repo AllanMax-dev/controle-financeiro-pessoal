@@ -14,6 +14,7 @@ import {
 import { getDebtOverview } from "@/modules/debts/application/get-debt-overview";
 import {
   contextHref,
+  financialContextWhere,
   resolveFinancialContext,
   selectedContextIdFromSearchParams,
   type FinancialContextSearchParams,
@@ -70,10 +71,10 @@ export default async function DebtsPage({
   const previousMonthInput = shiftMonthInput(selectedMonthInput, -1);
   const nextMonthInput = shiftMonthInput(selectedMonthInput, 1);
   const [overview, accounts] = await Promise.all([
-    getDebtOverview(access.workspaceId, overviewDate, currentContext.id),
+    getDebtOverview(access.workspaceId, overviewDate, contextState.scope),
     database.financialAccount.findMany({
       where: {
-        contextId: currentContext.id,
+        ...financialContextWhere(contextState.scope),
         workspaceId: access.workspaceId,
         active: true,
         type: { not: "INVESTMENT" },
@@ -238,6 +239,7 @@ export default async function DebtsPage({
                       <strong>
                         {debt.description} ({summaryInstallmentsLabel})
                       </strong>
+                      <small>{debt.financialContext.name}</small>
                       <small>
                         {debt.category.name} · {responsiblePeople.map(({ name }) => name).join(" e ")} · Ver detalhes
                       </small>

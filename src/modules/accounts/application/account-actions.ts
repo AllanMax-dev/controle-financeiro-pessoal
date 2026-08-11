@@ -11,6 +11,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   assertFinancialContextAccess,
   getAccessibleFinancialContexts,
+  resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
 import {
@@ -98,10 +99,11 @@ export async function createAccountAction(
     return { error: firstValidationMessage(parsed.error) };
   }
 
+  const { contextId: requestedContextId, ...accountData } = parsed.data;
   const access = await requireCurrentAccess();
-  const financialContext = await assertFinancialContextAccess(access, parsed.data.contextId);
+  const financialContext = await resolveWritableFinancialContext(access, requestedContextId);
   const database = getDatabase();
-  const { contextId, ...accountData } = parsed.data;
+  const contextId = financialContext.id;
   const ownerEditorId =
     financialContext.type === "PERSONAL" ? financialContext.ownerEditorId : accountData.ownerEditorId;
 

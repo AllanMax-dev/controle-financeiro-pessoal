@@ -27,7 +27,7 @@ export default async function ReportsPage({
   const currentContext = contextState.current;
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const month = normalizeReportMonth(filters.month, today);
-  const report = await getMonthlyReport(access.workspaceId, month, today, currentContext.id);
+  const report = await getMonthlyReport(access.workspaceId, month, today, contextState.scope);
 
   return (
     <>

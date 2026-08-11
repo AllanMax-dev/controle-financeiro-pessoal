@@ -36,10 +36,10 @@ export default async function DashboardPage({
   const currentHref = (pathname: string) => contextHref(pathname, currentContext.id);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const [summary, debtOverview, creditCardOverview, savingsGoalOverview] = await Promise.all([
-    getDashboardSummary(access.workspaceId, today, currentContext.id),
-    getDebtOverview(access.workspaceId, today, currentContext.id),
-    getCreditCardOverview(access.workspaceId, currentContext.id, today),
-    getSavingsGoalOverview(access.workspaceId, currentContext.id),
+    getDashboardSummary(access.workspaceId, today, contextState.scope),
+    getDebtOverview(access.workspaceId, today, contextState.scope),
+    getCreditCardOverview(access.workspaceId, contextState.scope, today),
+    getSavingsGoalOverview(access.workspaceId, contextState.scope),
   ]);
   const remainingCommitments = summary.pendingExpense.plus(debtOverview.pendingThisMonth);
   const projectedAvailable = summary.projectedBalance.minus(debtOverview.pendingThisMonth);
@@ -85,6 +85,9 @@ export default async function DashboardPage({
   const budgetSpentPercent = summary.budgetComparison.totalPlanned.isPositive()
     ? summary.budgetComparison.totalRealized.div(summary.budgetComparison.totalPlanned).mul(100)
     : null;
+  const budgetSpentPercentLabel = budgetSpentPercent && Number.isFinite(budgetSpentPercent.toNumber())
+    ? budgetSpentPercent.toDecimalPlaces(1).toFixed(1)
+    : null;
   const upcomingReceipts = [
     ...summary.salaries.items.flatMap((salary) =>
       salary.installments
@@ -118,9 +121,9 @@ export default async function DashboardPage({
     <>
       <section className="page-heading dashboard-heading">
         <div>
-          <p className="eyebrow">Vis?o geral ? Este m?s</p>
+          <p className="eyebrow">Visão geral · Este mês</p>
           <h1>{currentContext.type === "COUPLE" ? "Dashboard do Casal" : "Dashboard Pessoal"}</h1>
-          <p>{currentContext.name} ? valores realizados atualizam saldos; pend?ncias ficam separadas.</p>
+          <p>{currentContext.name} · valores realizados atualizam saldos; pendências ficam separadas.</p>
         </div>
         <div className="page-actions">
           <Link className="primary-button" href={currentHref("/lancamentos/novo")}>
@@ -299,15 +302,15 @@ export default async function DashboardPage({
         <article className="panel-card dashboard-action-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">Seus cart?es</p>
+              <p className="eyebrow">Seus cartões</p>
               <h2>Fatura atual</h2>
             </div>
             <Link className="text-button" href={currentHref("/cartoes")}>
-              Ver cart?es
+              Ver cartões
             </Link>
           </div>
           {creditCardOverview.cards.length === 0 ? (
-            <div className="compact-empty">Nenhum cart?o cadastrado neste contexto.</div>
+            <div className="compact-empty">Nenhum cartão cadastrado neste contexto.</div>
           ) : (
             <ul className="fixed-expense-dashboard-list">
               {creditCardOverview.cards.slice(0, 4).map((card) => (
@@ -343,7 +346,7 @@ export default async function DashboardPage({
                 <li key={goal.id}>
                   <span>
                     <strong>{goal.name}</strong>
-                    <small>{goal.progress.toFixed(0)}% da meta ? falta {formatCurrency(goal.missingAmount)}</small>
+                    <small>{goal.progress.toFixed(0)}% da meta · falta {formatCurrency(goal.missingAmount)}</small>
                   </span>
                   <strong>{formatCurrency(goal.currentAmount)}</strong>
                 </li>
@@ -391,9 +394,9 @@ export default async function DashboardPage({
               </strong>
             </div>
           </div>
-          {budgetSpentPercent ? (
+          {budgetSpentPercentLabel ? (
             <p className="fixed-expense-paid-note">
-              {budgetSpentPercent.toDecimalPlaces(1).toFixed(1)}% do orçamento planejado já foi gasto.
+              {budgetSpentPercentLabel}% do orçamento planejado já foi gasto.
             </p>
           ) : null}
           <BudgetComparisonChart data={summary.budgetComparison.categories} />

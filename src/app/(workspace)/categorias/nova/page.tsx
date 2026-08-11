@@ -17,6 +17,7 @@ export default async function NewCategoryPage({
     access,
     selectedContextIdFromSearchParams(await searchParams),
   );
+  const writeContext = contextState.scope.writeContext;
 
   return (
     <>
@@ -29,7 +30,7 @@ export default async function NewCategoryPage({
       </section>
       <CategoryForm
         action={createCategoryAction}
-        defaults={{ color: "#256b4b", contextId: contextState.current.id, kind: "EXPENSE", name: "" }}
+        defaults={{ color: "#256b4b", contextId: writeContext.id, kind: "EXPENSE", name: "" }}
         submitLabel="Criar categoria"
       />
     </>
