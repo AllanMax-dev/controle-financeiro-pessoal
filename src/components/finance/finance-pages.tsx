@@ -338,19 +338,25 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
   );
 }
 
+function CreatePanel({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="finance-workspace finance-workspace-form-only finance-create-section">
+      <details className="finance-panel finance-create-sheet" id="finance-create">
+        <summary>
+          <span>{title}</span>
+          <strong>Adicionar</strong>
+        </summary>
+        <div className="finance-create-body">{children}</div>
+      </details>
+    </section>
+  );
+}
+
 function WorkspacePage({ children, formTitle, month, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; subtitle: string; title: string }) {
   return (
     <>
       <PageHeader month={month} subtitle={subtitle} title={title} />
-      <section className="finance-workspace finance-workspace-form-only">
-        <details className="finance-panel finance-create-sheet" id="finance-create">
-          <summary>
-            <span>{formTitle}</span>
-            <strong>Adicionar</strong>
-          </summary>
-          <div className="finance-create-body">{children}</div>
-        </details>
-      </section>
+      <CreatePanel title={formTitle}>{children}</CreatePanel>
     </>
   );
 }
@@ -358,28 +364,8 @@ function WorkspacePage({ children, formTitle, month, subtitle, title }: { childr
 export function BanksPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Nova conta" listTitle="Contas cadastradas" month={month} subtitle="Bancos e dinheiro" title="Bancos">
-        <form action={createAccountAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/bancos" />
-          <PersonSelect people={options.people} />
-          <TextInput label="Instituição" name="institution" required={false} />
-          <TextInput label="Nome" name="name" placeholder="Conta principal" />
-          <label className="finance-field">
-            <span>Tipo</span>
-            <select name="type" required>
-              <option value="CHECKING">Conta corrente</option>
-              <option value="DIGITAL">Conta digital</option>
-              <option value="SAVINGS">Poupança</option>
-              <option value="CASH">Dinheiro</option>
-              <option value="OTHER">Outra</option>
-            </select>
-          </label>
-          <MoneyInput label="Saldo inicial" name="initialBalance" />
-          <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
-          <button className="finance-primary" type="submit">Criar conta</button>
-        </form>
-      </WorkspacePage>
-      <ul className="finance-list detached-list">
+      <PageHeader month={month} subtitle="Bancos e dinheiro" title="Bancos" />
+      <ul className="finance-list detached-list account-list">
         {overview.accounts.map((account) => (
           <li key={account.id}>
             <div className="finance-item-main">
@@ -418,6 +404,27 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
           </li>
         ))}
       </ul>
+      <CreatePanel title="Nova conta">
+        <form action={createAccountAction} className="finance-form">
+          <ReturnFields month={month} returnTo="/bancos" />
+          <PersonSelect people={options.people} />
+          <TextInput label="Instituição" name="institution" required={false} />
+          <TextInput label="Nome" name="name" placeholder="Conta principal" />
+          <label className="finance-field">
+            <span>Tipo</span>
+            <select name="type" required>
+              <option value="CHECKING">Conta corrente</option>
+              <option value="DIGITAL">Conta digital</option>
+              <option value="SAVINGS">Poupança</option>
+              <option value="CASH">Dinheiro</option>
+              <option value="OTHER">Outra</option>
+            </select>
+          </label>
+          <MoneyInput label="Saldo inicial" name="initialBalance" />
+          <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
+          <button className="finance-primary" type="submit">Criar conta</button>
+        </form>
+      </CreatePanel>
       <form action={createBalanceAdjustmentAction} className="finance-form compact-card">
         <ReturnFields month={month} returnTo="/bancos" />
         <AccountSelect accounts={options.accounts} label="Conta para ajustar" name="accountId" optional={false} />
@@ -1208,15 +1215,10 @@ export function CategoriesPageContent({ month, options }: { month: string; optio
   return (
     <>
       <PageHeader month={month} subtitle="Globais ao sistema" title="Categorias" />
-      <section className="finance-workspace">
-        <article className="finance-panel">
-          <h2>Nova categoria</h2>
-          <CategoryInlineForm kind="EXPENSE" month={month} returnTo="/categorias" />
-          <CategoryInlineForm kind="INCOME" month={month} returnTo="/categorias" />
-        </article>
-        <article className="finance-panel">
+      <section className="finance-workspace category-workspace">
+        <article className="finance-panel category-list-panel">
           <h2>Categorias compartilhadas</h2>
-          <ul className="finance-list">
+          <ul className="finance-list category-list">
             {options.categories.map((category) => (
               <li key={category.id}>
                 <div className="finance-item-main">
@@ -1249,6 +1251,16 @@ export function CategoriesPageContent({ month, options }: { month: string; optio
             ))}
           </ul>
         </article>
+        <details className="finance-panel finance-create-sheet category-create-panel" id="finance-create">
+          <summary>
+            <span>Nova categoria</span>
+            <strong>Adicionar</strong>
+          </summary>
+          <div className="finance-create-body">
+            <CategoryInlineForm kind="EXPENSE" month={month} returnTo="/categorias" />
+            <CategoryInlineForm kind="INCOME" month={month} returnTo="/categorias" />
+          </div>
+        </details>
       </section>
     </>
   );
