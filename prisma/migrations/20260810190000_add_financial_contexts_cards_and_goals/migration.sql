@@ -2,22 +2,42 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- CreateEnum
-CREATE TYPE "FinancialContextType" AS ENUM ('PERSONAL', 'COUPLE');
+DO $$
+BEGIN
+  CREATE TYPE "FinancialContextType" AS ENUM ('PERSONAL', 'COUPLE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CreditCardInvoiceStatus" AS ENUM ('OPEN', 'CLOSED', 'PAID', 'OVERDUE', 'CANCELED');
+DO $$
+BEGIN
+  CREATE TYPE "CreditCardInvoiceStatus" AS ENUM ('OPEN', 'CLOSED', 'PAID', 'OVERDUE', 'CANCELED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CreditCardPurchaseInstallmentStatus" AS ENUM ('OPEN', 'CANCELED');
+DO $$
+BEGIN
+  CREATE TYPE "CreditCardPurchaseInstallmentStatus" AS ENUM ('OPEN', 'CANCELED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "SavingsGoalStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'ARCHIVED');
+DO $$
+BEGIN
+  CREATE TYPE "SavingsGoalStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'ARCHIVED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "SavingsGoalMovementType" AS ENUM ('DEPOSIT', 'WITHDRAWAL');
+DO $$
+BEGIN
+  CREATE TYPE "SavingsGoalMovementType" AS ENUM ('DEPOSIT', 'WITHDRAWAL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateTable
-CREATE TABLE "FinancialContext" (
+CREATE TABLE IF NOT EXISTS "FinancialContext" (
     "id" UUID NOT NULL,
     "workspaceId" UUID NOT NULL,
     "ownerEditorId" UUID,
@@ -33,24 +53,32 @@ CREATE TABLE "FinancialContext" (
 -- Seed contexts before wiring legacy rows.
 INSERT INTO "FinancialContext" ("id", "workspaceId", "ownerEditorId", "type", "name", "active", "createdAt", "updatedAt")
 SELECT gen_random_uuid(), w."id", NULL, 'COUPLE', 'Casal', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-FROM "Workspace" w;
+FROM "Workspace" w
+WHERE NOT EXISTS (
+  SELECT 1 FROM "FinancialContext" fc
+  WHERE fc."workspaceId" = w."id" AND fc."type" = 'COUPLE'
+);
 
 INSERT INTO "FinancialContext" ("id", "workspaceId", "ownerEditorId", "type", "name", "active", "createdAt", "updatedAt")
 SELECT gen_random_uuid(), e."workspaceId", e."id", 'PERSONAL', e."displayName", e."active", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-FROM "Editor" e;
+FROM "Editor" e
+WHERE NOT EXISTS (
+  SELECT 1 FROM "FinancialContext" fc
+  WHERE fc."workspaceId" = e."workspaceId" AND fc."type" = 'PERSONAL' AND fc."ownerEditorId" = e."id"
+);
 
 -- Add nullable context columns so existing data can be classified safely.
-ALTER TABLE "FinancialAccount" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Category" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Transaction" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Transfer" ADD COLUMN "sourceContextId" UUID;
-ALTER TABLE "Transfer" ADD COLUMN "destinationContextId" UUID;
-ALTER TABLE "AccountBalanceAdjustment" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Budget" ADD COLUMN "contextId" UUID;
-ALTER TABLE "FixedExpense" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Salary" ADD COLUMN "contextId" UUID;
-ALTER TABLE "Debt" ADD COLUMN "contextId" UUID;
-ALTER TABLE "AuditLog" ADD COLUMN "contextId" UUID;
+ALTER TABLE "FinancialAccount" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Category" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Transfer" ADD COLUMN IF NOT EXISTS "sourceContextId" UUID;
+ALTER TABLE "Transfer" ADD COLUMN IF NOT EXISTS "destinationContextId" UUID;
+ALTER TABLE "AccountBalanceAdjustment" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Budget" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "FixedExpense" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Salary" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "Debt" ADD COLUMN IF NOT EXISTS "contextId" UUID;
+ALTER TABLE "AuditLog" ADD COLUMN IF NOT EXISTS "contextId" UUID;
 
 -- Unambiguous legacy mapping: accounts already owned by an editor become personal; shared accounts become Casal.
 UPDATE "FinancialAccount" a
