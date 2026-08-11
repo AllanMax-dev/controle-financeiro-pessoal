@@ -11,31 +11,16 @@ import type { FinancialContextOption } from "@/modules/financial-contexts/applic
 const navigationGroups = [
   {
     label: null,
-    items: [{ href: "/painel", icon: "dashboard", label: "Dashboard" }],
-  },
-  {
-    label: "Controle",
     items: [
+      { href: "/painel", icon: "dashboard", label: "Dashboard" },
       { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
       { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
       { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
       { href: "/recebimentos", icon: "income", label: "Recebimentos" },
+      { href: "/dividas", icon: "debt", label: "Dívidas" },
       { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
-    ],
-  },
-  {
-    label: "Patrimônio",
-    items: [
       { href: "/bancos", icon: "bank", label: "Bancos" },
       { href: "/investimentos", icon: "investment", label: "Investimentos" },
-    ],
-  },
-  {
-    label: "Análise",
-    items: [
-      { href: "/planejamento", icon: "planning", label: "Planejamento" },
-      { href: "/relatorios", icon: "report", label: "Relatórios" },
-      { href: "/dividas", icon: "debt", label: "Dívidas" },
     ],
   },
 ] as const satisfies ReadonlyArray<{
@@ -104,7 +89,7 @@ function BrandBlock({ contextId, month, workspaceName }: { contextId: string; mo
       </span>
       <span>
         <strong>{workspaceName}</strong>
-        <small>Controle financeiro</small>
+        <small>Allan, Mayara e Casal</small>
       </span>
     </Link>
   );
@@ -123,7 +108,8 @@ function ContextSwitcher({
   const searchParams = useSearchParams();
 
   return (
-    <div className="context-switcher" aria-label="Contexto financeiro">
+    <div className="context-switcher" aria-label="Filtro de visão">
+      <p>Visão</p>
       {contexts.map((context) => {
         const params = new URLSearchParams(searchParams.toString());
         params.set("contextId", context.id);

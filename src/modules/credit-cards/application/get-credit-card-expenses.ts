@@ -38,6 +38,7 @@ export async function getCreditCardInstallmentExpenses(
     amount: installment.amount,
     categoryId: installment.purchase.category?.id ?? null,
     category: installment.purchase.category,
+    contextId: installment.contextId,
     fixedExpenseId: null,
     competenceDate: installment.dueMonth,
     status: "SETTLED" as const,

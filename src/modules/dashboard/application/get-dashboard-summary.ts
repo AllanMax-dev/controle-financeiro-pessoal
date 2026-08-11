@@ -3,6 +3,7 @@ import {
   financialContextIds,
   financialContextWhere,
   transferContextWhere,
+  type FinancialDataScope,
   type FinancialContextFilter,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
@@ -19,6 +20,10 @@ import { getFixedExpenseOverview } from "@/modules/fixed-expenses/application/ge
 import { getSalaryOverview } from "@/modules/salaries/application/get-salary-overview";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
+
+function isFinancialDataScope(scope: FinancialContextFilter): scope is FinancialDataScope {
+  return Boolean(scope && typeof scope === "object" && !Array.isArray(scope) && "contextsById" in scope);
+}
 
 export async function getDashboardSummary(
   workspaceId: string,
@@ -62,6 +67,7 @@ export async function getDashboardSummary(
         amount: true,
         category: { select: { color: true, id: true, name: true } },
         competenceDate: true,
+        contextId: true,
         fixedExpenseId: true,
         salaryId: true,
         status: true,
@@ -139,6 +145,49 @@ export async function getDashboardSummary(
   );
 
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
+  const ownerGroupsByKey = new Map(ownerGroups.map((group) => [group.key, group]));
+  const personContexts = isFinancialDataScope(scope)
+    ? scope.contextIds
+        .map((contextId) => scope.contextsById[contextId])
+        .filter((context): context is NonNullable<typeof context> => Boolean(context) && context.type === "PERSONAL")
+    : [];
+  const personSummarySources = personContexts.length > 0
+    ? personContexts.map((context) => ({ key: context.id, label: context.ownerName ?? context.name }))
+    : ownerGroups.map(({ key, label }) => ({ key, label }));
+  const personSummaries = personSummarySources.map((person) => {
+    const group = ownerGroupsByKey.get(person.key);
+    const personPeriodResult = calculatePeriodResult(
+      periodTransactions
+        .filter(({ contextId }) => contextId === person.key)
+        .filter(({ account }) => account?.type !== "INVESTMENT"),
+    );
+
+    return {
+      availableBalance: group?.availableBalance ?? money(0),
+      expense: personPeriodResult.expense,
+      income: personPeriodResult.income,
+      investmentBalance: group?.investmentBalance ?? money(0),
+      key: person.key,
+      label: person.label,
+      result: personPeriodResult.result,
+      totalBalance: group?.totalBalance ?? money(0),
+    };
+  });
+  const summaryByPerson = isFinancialDataScope(scope) && scope.mode === "COUPLE"
+    ? [
+        {
+          availableBalance,
+          expense: periodResult.expense,
+          income: periodResult.income,
+          investmentBalance,
+          key: "casal",
+          label: "Casal",
+          result: periodResult.result,
+          totalBalance,
+        },
+        ...personSummaries,
+      ]
+    : personSummaries;
   const pendingTransferDelta = calculatePendingTransferAvailableDelta(pendingTransfers, financialContextIds(scope));
   const pendingTransactionIncome = sumMoney(
     operationalPeriodTransactions
@@ -186,6 +235,7 @@ export async function getDashboardSummary(
     pendingExpense,
     pendingIncome,
     periodResult,
+    personSummaries: summaryByPerson,
     pendingTransferDelta,
     projectedBalance: calculateProjectedBalance(
       availableBalance,

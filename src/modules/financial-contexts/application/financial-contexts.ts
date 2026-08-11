@@ -44,16 +44,16 @@ function firstParam(value: string | string[] | undefined) {
 
 function sortContextsForEditor(access: CurrentAccessScope, contexts: FinancialContextOption[]) {
   return [...contexts].sort((first, second) => {
+    if (first.type !== second.type) {
+      return first.type === "COUPLE" ? -1 : 1;
+    }
+
     if (first.ownerEditorId === access.editorId && second.ownerEditorId !== access.editorId) {
       return -1;
     }
 
     if (second.ownerEditorId === access.editorId && first.ownerEditorId !== access.editorId) {
       return 1;
-    }
-
-    if (first.type !== second.type) {
-      return first.type === "PERSONAL" ? -1 : 1;
     }
 
     return first.name.localeCompare(second.name, "pt-BR");
@@ -129,15 +129,42 @@ function toContextOption({ ownerEditor, ...context }: FinancialContextOption & {
   };
 }
 
+async function getSharedPersonEditorIds(access: CurrentAccessScope) {
+  const coupleMemberships = await getDatabase().financialContextMember.findMany({
+    where: {
+      editorId: access.editorId,
+      financialContext: { active: true, type: "COUPLE" },
+      workspaceId: access.workspaceId,
+    },
+    select: { financialContextId: true },
+  });
+  const coupleContextIds = coupleMemberships.map(({ financialContextId }) => financialContextId);
+
+  if (coupleContextIds.length === 0) {
+    return [access.editorId];
+  }
+
+  const members = await getDatabase().financialContextMember.findMany({
+    where: {
+      financialContextId: { in: coupleContextIds },
+      workspaceId: access.workspaceId,
+    },
+    select: { editorId: true },
+  });
+
+  return uniq([access.editorId, ...members.map(({ editorId }) => editorId)]);
+}
+
 export async function getAccessibleFinancialContexts(
   access: CurrentAccessScope,
 ): Promise<FinancialContextOption[]> {
+  const personEditorIds = await getSharedPersonEditorIds(access);
   const contexts = await getDatabase().financialContext.findMany({
     where: {
       active: true,
       workspaceId: access.workspaceId,
       OR: [
-        { ownerEditorId: access.editorId, type: "PERSONAL" },
+        { ownerEditorId: { in: personEditorIds }, type: "PERSONAL" },
         { members: { some: { editorId: access.editorId } }, type: "COUPLE" },
       ],
     },
@@ -156,10 +183,11 @@ export async function getAccessibleFinancialContexts(
 export async function getWritableFinancialContexts(
   access: CurrentAccessScope,
 ): Promise<FinancialContextOption[]> {
+  const personEditorIds = await getSharedPersonEditorIds(access);
   const contexts = await getDatabase().financialContext.findMany({
     where: {
       active: true,
-      ownerEditorId: access.editorId,
+      ownerEditorId: { in: personEditorIds },
       type: "PERSONAL",
       workspaceId: access.workspaceId,
     },
@@ -190,21 +218,14 @@ function uniqueContextOptions(contexts: FinancialContextOption[]) {
   return [...new Map(contexts.map((context) => [context.id, context])).values()];
 }
 
-async function getCoupleScopeContexts(access: CurrentAccessScope, coupleContextId: string) {
-  const members = await getDatabase().financialContextMember.findMany({
-    where: { financialContextId: coupleContextId, workspaceId: access.workspaceId },
-    select: { editorId: true },
-  });
-  const memberEditorIds = members.map(({ editorId }) => editorId);
-
+async function getCoupleScopeContexts(access: CurrentAccessScope) {
+  const personEditorIds = await getSharedPersonEditorIds(access);
   const contexts = await getDatabase().financialContext.findMany({
     where: {
       active: true,
       workspaceId: access.workspaceId,
-      OR: [
-        { id: coupleContextId },
-        { ownerEditorId: { in: memberEditorIds }, type: "PERSONAL" },
-      ],
+      ownerEditorId: { in: personEditorIds },
+      type: "PERSONAL",
     },
     select: {
       id: true,
@@ -231,16 +252,17 @@ export async function resolveFinancialContext(
 
   const current =
     contexts.find(({ id }) => id === requestedContextId) ??
-    contexts.find(({ ownerEditorId }) => ownerEditorId === access.editorId) ??
     contexts.find(({ type }) => type === "COUPLE") ??
+    contexts.find(({ ownerEditorId }) => ownerEditorId === access.editorId) ??
     contexts[0]!;
 
   const writableContexts = await getWritableFinancialContexts(access);
   const writeContext =
     writableContexts.find(({ ownerEditorId, type }) => type === "PERSONAL" && ownerEditorId === access.editorId) ??
+    writableContexts[0] ??
     current;
   const scopeContextOptions = current.type === "COUPLE"
-    ? await getCoupleScopeContexts(access, current.id)
+    ? await getCoupleScopeContexts(access)
     : [current];
   const contextIds = current.type === "COUPLE"
     ? scopeContextOptions.map(({ id }) => id)

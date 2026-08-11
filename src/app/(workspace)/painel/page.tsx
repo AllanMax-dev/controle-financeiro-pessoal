@@ -137,14 +137,14 @@ export default async function DashboardPage({
       <section className="page-heading dashboard-heading">
         <div>
           <p className="eyebrow">Visão geral · Este mês</p>
-          <h1>{currentContext.type === "COUPLE" ? "Dashboard do Casal" : "Dashboard Pessoal"}</h1>
-          <p>{currentContext.name} · valores realizados atualizam saldos; pendências ficam separadas.</p>
+          <h1>{currentContext.type === "COUPLE" ? "Dashboard do Casal" : `Dashboard ${currentContext.name}`}</h1>
+          <p>{currentContext.type === "COUPLE" ? "Casal é a soma de Allan e Mayara. Nenhum valor é cadastrado diretamente como Casal." : `${currentContext.name} filtrado para análise individual.`}</p>
         </div>
         <div className="page-actions">
           <form className="month-picker" method="get">
             <input name="contextId" type="hidden" value={currentContext.id} />
             <label>
-              <span>Mes</span>
+              <span>Mês</span>
               <input name="month" type="month" defaultValue={selectedMonth} />
             </label>
             <button className="secondary-button" type="submit">
@@ -160,6 +160,41 @@ export default async function DashboardPage({
             Nova transferência
           </Link>
         </div>
+      </section>
+
+      <section className="person-snapshot-grid" aria-label="Resumo por pessoa">
+        {summary.personSummaries.map((person) => (
+          <article
+            className={`person-snapshot-card${person.label === "Casal" ? " person-snapshot-card-couple" : ""}`}
+            key={person.key}
+          >
+            <div className="person-snapshot-heading">
+              <span>{person.label}</span>
+              <small>{person.label === "Casal" ? "Allan + Mayara" : "Pessoa"}</small>
+            </div>
+            <strong className={person.result.isNegative() ? "value-expense" : "value-income"}>
+              {formatCurrency(person.result)}
+            </strong>
+            <dl>
+              <div>
+                <dt>Gastos</dt>
+                <dd>{formatCurrency(person.expense)}</dd>
+              </div>
+              <div>
+                <dt>Recebimentos</dt>
+                <dd>{formatCurrency(person.income)}</dd>
+              </div>
+              <div>
+                <dt>Disponível</dt>
+                <dd>{formatCurrency(person.availableBalance)}</dd>
+              </div>
+              <div>
+                <dt>Investido</dt>
+                <dd>{formatCurrency(person.investmentBalance)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
       </section>
 
       <section className="dashboard-overview-grid" aria-label="Resumo financeiro">
