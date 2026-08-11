@@ -32,37 +32,6 @@ export async function createAccessLink(displayName: string) {
       },
     });
 
-    await transaction.financialContext.upsert({
-      where: {
-        workspaceId_name: {
-          workspaceId: workspace.id,
-          name: "Casal",
-        },
-      },
-      update: { active: true },
-      create: {
-        workspaceId: workspace.id,
-        name: "Casal",
-        type: "COUPLE",
-      },
-    });
-
-    await transaction.financialContext.upsert({
-      where: {
-        workspaceId_name: {
-          workspaceId: workspace.id,
-          name: editor.displayName,
-        },
-      },
-      update: { active: true, ownerEditorId: editor.id },
-      create: {
-        workspaceId: workspace.id,
-        ownerEditorId: editor.id,
-        name: editor.displayName,
-        type: "PERSONAL",
-      },
-    });
-
     await transaction.accessGrant.updateMany({
       where: { editorId: editor.id, active: true },
       data: { active: false },

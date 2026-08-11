@@ -6,315 +6,134 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Icon, type IconName } from "@/components/ui/icons";
-import type { FinancialContextOption } from "@/modules/financial-contexts/application/financial-contexts";
 
-const navigationGroups = [
-  {
-    label: null,
-    items: [
-      { href: "/painel", icon: "dashboard", label: "Dashboard" },
-      { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
-      { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
-      { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
-      { href: "/recebimentos", icon: "income", label: "Recebimentos" },
-      { href: "/dividas", icon: "debt", label: "Dívidas" },
-      { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
-      { href: "/bancos", icon: "bank", label: "Bancos" },
-      { href: "/investimentos", icon: "investment", label: "Investimentos" },
-    ],
-  },
-] as const satisfies ReadonlyArray<{
-  label: string | null;
-  items: ReadonlyArray<{ href: string; icon: IconName; label: string }>;
-}>;
+const navigationItems = [
+  { href: "/painel", icon: "dashboard", label: "Dashboard" },
+  { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
+  { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
+  { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
+  { href: "/recebimentos", icon: "income", label: "Recebimentos" },
+  { href: "/dividas", icon: "debt", label: "Dívidas" },
+  { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
+  { href: "/bancos", icon: "bank", label: "Bancos" },
+  { href: "/investimentos", icon: "investment", label: "Investimentos" },
+  { href: "/categorias", icon: "category", label: "Categorias" },
+  { href: "/transferencias", icon: "transfer", label: "Transferências" },
+] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
-function isActivePath(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function hrefWithMonth(href: string, month: string | null): Route {
+  return month ? `${href}?month=${encodeURIComponent(month)}` as Route : href as Route;
 }
 
-function hrefWithContext(href: string, contextId: string, month?: string | null): Route {
-  const params = new URLSearchParams({ contextId });
-  if (month) {
-    params.set("month", month);
-  }
-  return `${href}?${params.toString()}` as Route;
-}
-
-function NavigationLinks({
-  contextId,
-  onNavigate,
-  month,
-}: {
-  contextId: string;
-  month?: string | null;
-  onNavigate?: () => void;
-}) {
+function NavigationLinks({ month, onNavigate }: { month: string | null; onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <div className="workspace-nav-groups">
-      {navigationGroups.map((group, index) => (
-        <div className="workspace-nav-group" key={group.label ?? `primary-${index}`}>
-          {group.label ? <p className="workspace-nav-group-title">{group.label}</p> : null}
-          <ul className="workspace-nav-list">
-            {group.items.map((item) => {
-              const active = isActivePath(pathname, item.href);
+    <ul className="workspace-nav-list">
+      {navigationItems.map((item) => {
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-              return (
-                <li key={item.href}>
-                  <Link
-                    aria-current={active ? "page" : undefined}
-                    className={active ? "active" : undefined}
-                    href={hrefWithContext(item.href, contextId, month)}
-                    onClick={onNavigate}
-                  >
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </div>
+        return (
+          <li key={item.href}>
+            <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={hrefWithMonth(item.href, month)} onClick={onNavigate}>
+              <Icon name={item.icon} />
+              <span>{item.label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
-function BrandBlock({ contextId, month, workspaceName }: { contextId: string; month?: string | null; workspaceName: string }) {
+function Brand({ month, workspaceName }: { month: string | null; workspaceName: string }) {
   return (
-    <Link className="brand workspace-brand" href={hrefWithContext("/painel", contextId, month)}>
-      <span className="brand-mark" aria-hidden="true">
-        CF
-      </span>
+    <Link className="workspace-brand" href={hrefWithMonth("/painel", month)}>
+      <span className="brand-mark">AM</span>
       <span>
         <strong>{workspaceName}</strong>
-        <small>Allan, Mayara e Casal</small>
+        <small>Allan · Mayara · Casal</small>
       </span>
     </Link>
   );
 }
 
-function ContextSwitcher({
-  contexts,
-  currentContextId,
-  onNavigate,
-}: {
-  contexts: FinancialContextOption[];
-  currentContextId: string;
-  onNavigate?: () => void;
-}) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  return (
-    <div className="context-switcher" aria-label="Filtro de visão">
-      <p>Visão</p>
-      {contexts.map((context) => {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("contextId", context.id);
-        const active = context.id === currentContextId;
-
-        return (
-          <Link
-            aria-current={active ? "true" : undefined}
-            className={active ? "active" : undefined}
-            href={`${pathname}?${params.toString()}` as Route}
-            key={context.id}
-            onClick={onNavigate}
-          >
-            {context.name}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
 export function WorkspaceNavigation({
-  contexts,
-  defaultContextId,
   editorName,
   workspaceName,
 }: {
-  contexts: FinancialContextOption[];
-  defaultContextId: string;
   editorName: string;
   workspaceName: string;
 }) {
-  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const currentMonth = searchParams.get("month");
   const drawerId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const drawerRef = useRef<HTMLElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
-  const currentMonth = searchParams.get("month");
-  const requestedContextId = searchParams.get("contextId");
-  const currentContextId = contexts.some(({ id }) => id === requestedContextId)
-    ? requestedContextId!
-    : defaultContextId;
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const previouslyFocused = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : triggerButtonRef.current;
-    const previousOverflow = document.body.style.overflow;
-    const focusableSelector = [
-      "a[href]",
-      "button:not([disabled])",
-      "input:not([disabled])",
-      "select:not([disabled])",
-      "textarea:not([disabled])",
-      "[tabindex]:not([tabindex='-1'])",
-    ].join(", ");
-
-    document.body.style.overflow = "hidden";
-
-    function getFocusableElements() {
-      return Array.from(drawerRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
-        .filter((element) => element.offsetParent !== null || element === closeButtonRef.current);
-    }
-
-    function focusFirstElement() {
-      const [firstElement] = getFocusableElements();
-      (firstElement ?? drawerRef.current)?.focus();
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpen(false);
-        return;
+        triggerButtonRef.current?.focus();
       }
+    };
 
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusableElements = getFocusableElements();
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (!firstElement || !lastElement) {
-        event.preventDefault();
-        drawerRef.current?.focus();
-        return;
-      }
-
-      if (!drawerRef.current?.contains(document.activeElement)) {
-        event.preventDefault();
-        firstElement.focus();
-        return;
-      }
-
-      if (event.shiftKey && document.activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-        return;
-      }
-
-      if (!event.shiftKey && document.activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    }
-
-    const animationFrame = window.requestAnimationFrame(focusFirstElement);
+    closeButtonRef.current?.focus();
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      window.cancelAnimationFrame(animationFrame);
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
-      previouslyFocused?.focus();
     };
   }, [open]);
 
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 861px)");
-
-    function closeDrawerOnDesktop(event: MediaQueryListEvent) {
-      if (event.matches) {
-        setOpen(false);
-      }
-    }
-
-    query.addEventListener("change", closeDrawerOnDesktop);
-
-    return () => {
-      query.removeEventListener("change", closeDrawerOnDesktop);
-    };
-  }, []);
   return (
     <>
       <aside className="workspace-sidebar">
-        <BrandBlock contextId={currentContextId} month={currentMonth} workspaceName={workspaceName} />
-        <ContextSwitcher contexts={contexts} currentContextId={currentContextId} />
-
-        <nav className="workspace-nav workspace-nav-desktop" aria-label="Navegação principal">
-          <NavigationLinks contextId={currentContextId} month={currentMonth} />
-        </nav>
-
-        <div className="workspace-editor-card" title="Pessoa identificada pelo link privado">
-          <Icon name="user" />
-          <span>
-            <small>Editando como</small>
-            <strong>{editorName}</strong>
-          </span>
+        <Brand month={currentMonth} workspaceName={workspaceName} />
+        <div className="operator-card">
+          <span>Operando como</span>
+          <strong>{editorName}</strong>
         </div>
+        <nav aria-label="Navegação principal">
+          <NavigationLinks month={currentMonth} />
+        </nav>
       </aside>
 
       <header className="workspace-mobile-topbar">
-        <BrandBlock contextId={currentContextId} month={currentMonth} workspaceName={workspaceName} />
-        <button
-          aria-controls={drawerId}
-          aria-expanded={open}
-          aria-label="Abrir menu de navegação"
-          className="mobile-menu-button"
-          ref={triggerButtonRef}
-          type="button"
-          onClick={() => setOpen(true)}
-        >
+        <button aria-controls={drawerId} aria-expanded={open} aria-label="Abrir menu" onClick={() => setOpen(true)} ref={triggerButtonRef} type="button">
           <Icon name="menu" />
         </button>
+        <Brand month={currentMonth} workspaceName={workspaceName} />
       </header>
 
-      <div className={`mobile-drawer-layer${open ? " open" : ""}`} hidden={!open}>
-        <button
-          aria-label="Fechar menu"
-          className="mobile-drawer-backdrop"
-          type="button"
-          onClick={() => setOpen(false)}
-        />
-        <aside aria-label="Menu de navegação" aria-modal="true" className="mobile-drawer" id={drawerId} ref={drawerRef} role="dialog" tabIndex={-1}>
-          <div className="mobile-drawer-header">
-            <div>
-              <strong>{workspaceName}</strong>
-              <span>{editorName}</span>
+      {open ? (
+        <div className="drawer-layer">
+          <button aria-label="Fechar menu" className="drawer-backdrop" onClick={() => setOpen(false)} type="button" />
+          <aside aria-label="Menu de navegação" aria-modal="true" className="mobile-drawer" id={drawerId} role="dialog">
+            <div className="drawer-head">
+              <Brand month={currentMonth} workspaceName={workspaceName} />
+              <button aria-label="Fechar menu" onClick={() => setOpen(false)} ref={closeButtonRef} type="button">
+                <Icon name="close" />
+              </button>
             </div>
-            <button
-              aria-label="Fechar menu"
-              className="icon-button"
-              ref={closeButtonRef}
-              type="button"
-              onClick={() => setOpen(false)}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <nav aria-label="Navegação principal">
-            <ContextSwitcher
-              contexts={contexts}
-              currentContextId={currentContextId}
-              onNavigate={() => setOpen(false)}
-            />
-            <NavigationLinks contextId={currentContextId} month={currentMonth} onNavigate={() => setOpen(false)} />
-          </nav>
-        </aside>
-      </div>
+            <div className="operator-card">
+              <span>Operando como</span>
+              <strong>{editorName}</strong>
+            </div>
+            <nav aria-label="Navegação principal">
+              <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} />
+            </nav>
+          </aside>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -10,76 +10,28 @@ const workspace = await database.workspace.upsert({
   where: { slug: environment.WORKSPACE_SLUG },
   update: { name: environment.WORKSPACE_NAME },
   create: {
-    slug: environment.WORKSPACE_SLUG,
     name: environment.WORKSPACE_NAME,
+    slug: environment.WORKSPACE_SLUG,
   },
 });
 
-const editors = await Promise.all(
+await Promise.all(
   ["Allan", "Mayara"].map((displayName) =>
     database.editor.upsert({
       where: {
         workspaceId_displayName: {
-          workspaceId: workspace.id,
           displayName,
+          workspaceId: workspace.id,
         },
       },
       update: { active: true },
       create: {
-        workspaceId: workspace.id,
         displayName,
+        workspaceId: workspace.id,
       },
     }),
   ),
 );
 
-const coupleContext = await database.financialContext.upsert({
-  where: {
-    workspaceId_name: {
-      workspaceId: workspace.id,
-      name: "Casal",
-    },
-  },
-  update: { active: true },
-  create: {
-    workspaceId: workspace.id,
-    name: "Casal",
-    type: "COUPLE",
-  },
-});
-
-for (const editor of editors) {
-  await database.financialContext.upsert({
-    where: {
-      workspaceId_name: {
-        workspaceId: workspace.id,
-        name: editor.displayName,
-      },
-    },
-    update: { active: true, ownerEditorId: editor.id },
-    create: {
-      workspaceId: workspace.id,
-      ownerEditorId: editor.id,
-      name: editor.displayName,
-      type: "PERSONAL",
-    },
-  });
-
-  await database.financialContextMember.upsert({
-    where: {
-      financialContextId_editorId: {
-        editorId: editor.id,
-        financialContextId: coupleContext.id,
-      },
-    },
-    update: {},
-    create: {
-      editorId: editor.id,
-      financialContextId: coupleContext.id,
-      workspaceId: workspace.id,
-    },
-  });
-}
-
-console.log(`Espaço compartilhado preparado: ${environment.WORKSPACE_NAME}`);
+console.log(`Acesso preservado para ${environment.WORKSPACE_NAME}. Nenhum dado financeiro foi criado.`);
 await database.$disconnect();
