@@ -682,7 +682,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
 export function DebtsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Nova dívida" listTitle="Parcelas do mês" month={month} subtitle="Parcelas determinísticas" title="Dívidas">
+      <WorkspacePage formTitle="Nova dívida" listTitle="Dívidas cadastradas" month={month} subtitle="Dívidas parceladas" title="Dívidas">
         <form action={createDebtAction} className="finance-form">
           <ReturnFields month={month} returnTo="/dividas" />
           <PersonSelect people={options.people} />
@@ -703,55 +703,85 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <button className="finance-primary" type="submit">Criar dívida</button>
         </form>
       </WorkspacePage>
-      <ul className="finance-list detached-list">
-        {overview.debts.map((debt) => (
-          <li key={debt.id}>
-            <div className="finance-item-main">
-              <span>
-                <strong>{debt.description}</strong>
-                <small>{debt.personEditor.displayName} - {debt.installmentCount} parcelas - primeira em {formatDate(debt.firstDueDate)}</small>
-              </span>
-              <b>{formatCurrency(debt.totalAmount)}</b>
-            </div>
-            <ItemActions>
-              <EditDetails>
-                <form action={updateDebtAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/dividas" />
-                  <input name="debtId" type="hidden" value={debt.id} />
-                  <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
-                  <TextInput defaultValue={debt.description} label="Descricao" name="description" />
-                  <MoneyInput defaultValue={moneyInputValue(debt.totalAmount)} label="Valor total" name="totalAmount" />
-                  <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data da compra" name="startDate" type="date" />
-                  <TextInput defaultValue={toDateInputValue(debt.firstDueDate)} label="Primeiro vencimento" name="firstDueDate" type="date" />
-                  <TextInput defaultValue={debt.installmentCount} label="Numero de parcelas" name="installmentCount" type="number" />
-                  <label className="finance-field">
-                    <span>Frequencia</span>
-                    <select defaultValue={debt.frequency} name="frequency">
-                      <option value="MONTHLY">Mensal</option>
-                      <option value="FORTNIGHTLY">Quinzenal</option>
-                    </select>
-                  </label>
-                  <CategorySelect categories={options.categories} defaultValue={debt.categoryId} kind="EXPENSE" />
-                  <NotesField defaultValue={debt.notes} />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo="/dividas" />
-            </ItemActions>
-          </li>
-        ))}
-      </ul>
-      <ul className="finance-list detached-list">
-        {overview.debtInstallments.map((installment) => (
-          <li key={installment.id}>
-            <span>
-              <strong>{installment.debt.description}</strong>
-              <small>vence {formatDate(installment.dueDate)}</small>
-              <small>{installment.personEditor.displayName} · parcela {installment.number}</small>
-            </span>
-            <b>{formatCurrency(installment.amount)}</b>
-          </li>
-        ))}
+      <ul className="finance-list detached-list debt-list">
+        {overview.debts.map((debt) => {
+          const paidCount = debt.installments.filter((installment) => installment.status === "PAID").length;
+
+          return (
+            <li key={debt.id}>
+              <details className="debt-details">
+                <summary>
+                  <div className="finance-item-main">
+                    <span>
+                      <strong>{debt.description}</strong>
+                      <small>{debt.personEditor.displayName} - {paidCount}/{debt.installmentCount} parcelas pagas - primeira em {formatDate(debt.firstDueDate)}</small>
+                    </span>
+                    <b>{formatCurrency(debt.totalAmount)}</b>
+                  </div>
+                </summary>
+                <div className="debt-detail-body">
+                  <dl className="debt-metadata">
+                    <div>
+                      <dt>Compra</dt>
+                      <dd>{formatDate(debt.startDate)}</dd>
+                    </div>
+                    <div>
+                      <dt>Vencimento inicial</dt>
+                      <dd>{formatDate(debt.firstDueDate)}</dd>
+                    </div>
+                    <div>
+                      <dt>Frequencia</dt>
+                      <dd>{debt.frequency === "FORTNIGHTLY" ? "Quinzenal" : "Mensal"}</dd>
+                    </div>
+                    <div>
+                      <dt>Categoria</dt>
+                      <dd>{debt.category?.name ?? "Sem categoria"}</dd>
+                    </div>
+                  </dl>
+                  <ul className="installment-list">
+                    {debt.installments.map((installment) => (
+                      <li key={installment.id}>
+                        <span>
+                          <strong>Parcela {installment.number}</strong>
+                          <small>Vence {formatDate(installment.dueDate)}</small>
+                        </span>
+                        <b>{formatCurrency(installment.amount)}</b>
+                        <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+                          {installment.status === "PAID" ? "Pago" : installment.status === "CANCELED" ? "Cancelado" : "Pendente"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <ItemActions>
+                    <EditDetails>
+                      <form action={updateDebtAction} className="finance-edit-form">
+                        <ReturnFields month={month} returnTo="/dividas" />
+                        <input name="debtId" type="hidden" value={debt.id} />
+                        <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
+                        <TextInput defaultValue={debt.description} label="Descricao" name="description" />
+                        <MoneyInput defaultValue={moneyInputValue(debt.totalAmount)} label="Valor total" name="totalAmount" />
+                        <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data da compra" name="startDate" type="date" />
+                        <TextInput defaultValue={toDateInputValue(debt.firstDueDate)} label="Primeiro vencimento" name="firstDueDate" type="date" />
+                        <TextInput defaultValue={debt.installmentCount} label="Numero de parcelas" name="installmentCount" type="number" />
+                        <label className="finance-field">
+                          <span>Frequencia</span>
+                          <select defaultValue={debt.frequency} name="frequency">
+                            <option value="MONTHLY">Mensal</option>
+                            <option value="FORTNIGHTLY">Quinzenal</option>
+                          </select>
+                        </label>
+                        <CategorySelect categories={options.categories} defaultValue={debt.categoryId} kind="EXPENSE" />
+                        <NotesField defaultValue={debt.notes} />
+                        <button className="finance-secondary" type="submit">Salvar</button>
+                      </form>
+                    </EditDetails>
+                    <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo="/dividas" />
+                  </ItemActions>
+                </div>
+              </details>
+            </li>
+          );
+        })}
       </ul>
     </>
   );

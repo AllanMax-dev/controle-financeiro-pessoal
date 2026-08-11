@@ -573,6 +573,96 @@ textarea:focus-visible {
   background: var(--surface);
 }
 
+.debt-list > li {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.debt-details {
+  width: 100%;
+}
+
+.debt-details summary {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 70px;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.debt-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.debt-details summary::after {
+  content: "Detalhes";
+  margin-left: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.debt-details[open] summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.debt-detail-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.debt-metadata {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.debt-metadata div {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-muted);
+}
+
+.debt-metadata dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.debt-metadata dd {
+  margin: 4px 0 0;
+  font-weight: 850;
+}
+
+.installment-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.installment-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
 .finance-item-main {
   display: flex;
   align-items: center;
@@ -626,6 +716,12 @@ textarea:focus-visible {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
   background: color-mix(in srgb, var(--primary) 10%, var(--surface));
   color: var(--primary);
+}
+
+.finance-status[data-status="CANCELED"] {
+  border-color: var(--border);
+  background: var(--surface-muted);
+  color: var(--muted);
 }
 
 .inline-confirm-form {
@@ -851,6 +947,11 @@ progress::-webkit-progress-value {
   }
 
   .finance-edit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-metadata,
+  .installment-list li {
     grid-template-columns: 1fr;
   }
 
