@@ -19,6 +19,7 @@ const navigationItems = [
   { href: "/investimentos", icon: "investment", label: "Investimentos" },
   { href: "/categorias", icon: "category", label: "Categorias" },
   { href: "/transferencias", icon: "transfer", label: "Transferências" },
+  { href: "/como-usar", icon: "help", label: "Como usar" },
 ] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
 function hrefWithMonth(href: string, month: string | null): Route {

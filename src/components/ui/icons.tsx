@@ -119,6 +119,13 @@ const iconPaths = {
       <path d="M7 12H5" />
     </>
   ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9.8 9.5a2.4 2.4 0 0 1 4.6.9c0 1.9-2.4 2.1-2.4 4" />
+      <path d="M12 17.5h.01" />
+    </>
+  ),
   investment: (
     <>
       <path d="M4 18h16" />

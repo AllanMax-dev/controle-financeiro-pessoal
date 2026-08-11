@@ -582,6 +582,72 @@ progress::-webkit-progress-value {
   font-weight: 850;
 }
 
+.guide-hero,
+.guide-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.guide-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.guide-hero span {
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guide-hero strong {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  line-height: 1.08;
+}
+
+.guide-hero p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.guide-section {
+  padding: 16px;
+}
+
+.guide-section h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.guide-section ol,
+.guide-section ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.guide-checklist {
+  margin-top: 16px;
+}
+
 @media (max-width: 920px) {
   .workspace-shell {
     display: block;
@@ -608,7 +674,9 @@ progress::-webkit-progress-value {
   .snapshot-grid,
   .finance-dashboard-grid,
   .finance-workspace,
-  .card-grid {
+  .card-grid,
+  .guide-hero,
+  .guide-grid {
     grid-template-columns: 1fr;
   }
 
