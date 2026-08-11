@@ -722,7 +722,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                     </select>
                   </label>
                   <CategorySelect categories={options.categories} defaultValue={salary.categoryId} kind="INCOME" />
-                  <AccountSelect accounts={options.accounts} defaultValue={salary.accountId} />
+                  <AccountSelect accounts={options.accounts} defaultValue={salary.accountId} optional={false} />
                   <NotesField defaultValue={salary.notes} />
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
