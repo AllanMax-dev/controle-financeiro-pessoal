@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 
 import { getDatabase } from "@/lib/db";
 import {
+  addDays,
   buildPersonTotal,
   clampDayInMonth,
   monthBounds,
@@ -328,45 +329,80 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   const coupleTotal = sumPersonTotals(totalsByPerson.map(({ total }) => total));
   const activeView = view === "casal" || !people.some(({ id }) => id === view) ? "casal" : view;
   const visiblePersonIds = activeView === "casal" ? people.map(({ id }) => id) : [activeView];
+  const personIsVisible = (personEditorId: string) => visiblePersonIds.includes(personEditorId);
+  const cardsWithInvoices = cards.map((card) => {
+    const invoice = invoices.find(({ cardId }) => cardId === card.id);
+    const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
 
-  return {
-    accounts,
-    activeView,
-    cardInstallments,
-    cardPurchases,
-    cards: cards.map((card) => {
-      const invoice = invoices.find(({ cardId }) => cardId === card.id);
-      const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
+    return {
+      ...card,
+      committed,
+      invoiceId: invoice?.id ?? null,
+      invoiceAmount: invoice?.amount ?? money(0),
+      invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
+      invoicePaidAmount: invoice?.paidAmount ?? money(0),
+      invoiceStatus: invoice?.status ?? "OPEN",
+      limitAvailable: money(card.limit.minus(committed)),
+    };
+  });
+  const goalsWithTotals = goals.map((goal) => ({
+    ...goal,
+    currentAmount: goalTotals.get(goal.id) ?? money(0),
+  }));
+  const salaryOccurrences = salaries.flatMap((salary) => {
+    const firstDueDate = clampDayInMonth(start, salary.paymentDay);
+    const dueDates = (salary.frequency === "FORTNIGHTLY" ? [firstDueDate, addDays(firstDueDate, 14)] : [firstDueDate]).filter(
+      (dueDate) => dueDate >= salary.startMonth && dueDate < end && (!salary.archivedAt || dueDate <= salary.archivedAt),
+    );
+
+    return dueDates.map((dueDate, index) => {
+      const salaryTransaction = transactions.find(
+        (transaction) =>
+          transaction.salaryId === salary.id &&
+          transaction.type === "INCOME" &&
+          transaction.competenceDate.getTime() === dueDate.getTime(),
+      );
 
       return {
-        ...card,
-        committed,
-        invoiceId: invoice?.id ?? null,
-        invoiceAmount: invoice?.amount ?? money(0),
-        invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
-        invoicePaidAmount: invoice?.paidAmount ?? money(0),
-        invoiceStatus: invoice?.status ?? "OPEN",
-        limitAvailable: money(card.limit.minus(committed)),
+        amount: salary.amount,
+        description: salary.description,
+        dueDate,
+        id: `${salary.id}-${dueDate.toISOString().slice(0, 10)}-${index + 1}`,
+        installmentNumber: index + 1,
+        personEditor: salary.personEditor,
+        personEditorId: salary.personEditorId,
+        salaryId: salary.id,
+        status: salaryTransaction?.status === "SETTLED" ? "SETTLED" : "PENDING",
+        transactionId: salaryTransaction?.id ?? null,
       };
-    }),
+    });
+  });
+
+  return {
+    accounts: accounts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    activeView,
+    cardInstallments: cardInstallments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cardPurchases: cardPurchases.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cards: cardsWithInvoices.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     categories,
     coupleTotal,
-    balanceAdjustments,
-    debts,
-    debtInstallments,
-    fixedExpenses,
-    goalMovements: visibleGoalMovements,
-    goals: goals.map((goal) => ({
-      ...goal,
-      currentAmount: goalTotals.get(goal.id) ?? money(0),
-    })),
-    investments,
-    invoicePayments,
+    balanceAdjustments: balanceAdjustments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    debts: debts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    debtInstallments: debtInstallments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    fixedExpenses: fixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    goals: goalsWithTotals.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    investments: investments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    invoicePayments: invoicePayments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     month,
     people,
-    salaries,
-    transactions: transactions.filter(({ personEditorId }) => visiblePersonIds.includes(personEditorId)),
-    transfers,
+    salaries: salaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    salaryOccurrences: salaryOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    transactions: transactions.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    transfers: transfers.filter(
+      ({ destinationPersonEditorId, sourcePersonEditorId }) =>
+        personIsVisible(sourcePersonEditorId) || personIsVisible(destinationPersonEditorId),
+    ),
     totalsByPerson,
   };
 }

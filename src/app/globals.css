@@ -20,22 +20,22 @@
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --background: #101816;
-  --surface: #17221f;
-  --surface-soft: #21312d;
-  --surface-muted: #1c2925;
-  --ink: #edf5f1;
-  --muted: #a8b8b1;
-  --border: #2b3d37;
-  --strong-border: #405850;
-  --primary: #6fb7a2;
-  --primary-strong: #8ccbb9;
-  --primary-soft: #1f3d35;
-  --income: #7bc899;
-  --expense: #d58478;
-  --violet: #9aa8ea;
-  --shadow: 0 16px 38px rgb(0 0 0 / 24%);
-  --shadow-soft: 0 8px 22px rgb(0 0 0 / 18%);
+  --background: #202723;
+  --surface: #29312d;
+  --surface-soft: #323b36;
+  --surface-muted: #252d29;
+  --ink: #e2e9e5;
+  --muted: #b9c6bf;
+  --border: #3a4640;
+  --strong-border: #4b5b53;
+  --primary: #88aa9f;
+  --primary-strong: #9ab8ae;
+  --primary-soft: #35463f;
+  --income: #94b9a0;
+  --expense: #c28d85;
+  --violet: #a2aac8;
+  --shadow: 0 16px 38px rgb(8 13 11 / 18%);
+  --shadow-soft: 0 8px 22px rgb(8 13 11 / 12%);
 }
 
 * {
@@ -601,6 +601,35 @@ textarea:focus-visible {
   height: 24px;
   flex: 0 0 auto;
   border-radius: 999px;
+}
+
+.finance-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.finance-status[data-status="SETTLED"] {
+  border-color: color-mix(in srgb, var(--income) 35%, var(--border));
+  background: color-mix(in srgb, var(--income) 12%, var(--surface));
+  color: var(--income);
+}
+
+.finance-status[data-status="PENDING"] {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+}
+
+.inline-confirm-form {
+  display: inline-flex;
 }
 
 .finance-list-actions {

@@ -15,6 +15,7 @@ import {
   createSavingsGoalAction,
   createTransactionAction,
   createTransferAction,
+  confirmSalaryReceiptAction,
   deleteAccountAction,
   deleteBalanceAdjustmentAction,
   deleteCategoryAction,
@@ -216,7 +217,37 @@ export function PersonTabs({ month, overview }: { month: string; overview: Overv
 }
 
 export function DashboardPageContent({ month, overview }: { month: string; overview: Overview }) {
-  const cards = [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson];
+  const cards =
+    overview.activeView === "casal"
+      ? [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson]
+      : overview.totalsByPerson.filter((person) => person.id === overview.activeView);
+  const chartCards = overview.activeView === "casal" ? overview.totalsByPerson : cards;
+  const dueItems = [
+    ...overview.salaryOccurrences.map((salary) => ({
+      amount: salary.amount,
+      dueDate: salary.dueDate,
+      id: `salary-${salary.id}`,
+      name: salary.description,
+      person: salary.personEditor.displayName,
+      status: salary.status === "SETTLED" ? "Confirmado" : "Pendente",
+    })),
+    ...overview.fixedExpenses.map((expense) => ({
+      amount: expense.amount,
+      dueDate: null,
+      id: `fixed-${expense.id}`,
+      name: expense.description,
+      person: expense.personEditor.displayName,
+      status: "Pendente",
+    })),
+    ...overview.debtInstallments.map((installment) => ({
+      amount: installment.amount,
+      dueDate: installment.dueDate,
+      id: `debt-${installment.id}`,
+      name: installment.debt.description,
+      person: installment.personEditor.displayName,
+      status: `parcela ${installment.number}`,
+    })),
+  ].slice(0, 6);
 
   return (
     <>
@@ -253,7 +284,7 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
         <article className="finance-panel">
           <h2>Evolução do saldo</h2>
           <div className="balance-chart" aria-label="Gráfico visual de saldo">
-            {cards.slice(1).map((card) => (
+            {chartCards.map((card) => (
               <span key={card.id} style={{ height: `${Math.max(8, Math.min(96, Number(card.total.available) / 100))}%` }}>
                 {card.name}
               </span>
@@ -263,11 +294,11 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
         <article className="finance-panel">
           <h2>Próximos vencimentos</h2>
           <ul className="finance-list">
-            {[...overview.fixedExpenses, ...overview.debtInstallments].slice(0, 6).map((item) => (
+            {dueItems.map((item) => (
               <li key={item.id}>
                 <span>
-                  <strong>{"description" in item ? item.description : item.debt.description}</strong>
-                  <small>{item.personEditor.displayName}</small>
+                  <strong>{item.name}</strong>
+                  <small>{item.person} - {item.status}{item.dueDate ? ` - ${formatDate(item.dueDate)}` : ""}</small>
                 </span>
                 <b>{formatCurrency(item.amount)}</b>
               </li>
@@ -444,6 +475,7 @@ export function TransactionPageContent({ kind, month, options, overview, title }
       <ul className="finance-list detached-list">
         {overview.transactions
           .filter((transaction) => transaction.type === (kind === "INCOME" ? "INCOME" : "EXPENSE"))
+          .filter((transaction) => !(kind === "INCOME" && transaction.salaryId))
           .map((transaction) => (
             <li key={transaction.id}>
               <div className="finance-item-main">
@@ -555,6 +587,37 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
   return (
     <>
       <TransactionPageContent kind="INCOME" month={month} options={options} overview={overview} title="Recebimentos" />
+      {overview.salaryOccurrences.length > 0 ? (
+        <section className="compact-card">
+          <h2>Salarios do mes</h2>
+          <ul className="finance-list">
+            {overview.salaryOccurrences.map((salary) => (
+              <li key={salary.id}>
+                <div className="finance-item-main">
+                  <span>
+                    <strong>{salary.description}</strong>
+                    <small>{salary.personEditor.displayName} - vence {formatDate(salary.dueDate)} - parcela {salary.installmentNumber}</small>
+                  </span>
+                  <b>{formatCurrency(salary.amount)}</b>
+                </div>
+                <div className="finance-list-actions">
+                  <span className="finance-status" data-status={salary.status}>
+                    {salary.status === "SETTLED" ? "Confirmado" : "Pendente"}
+                  </span>
+                  {salary.status === "PENDING" ? (
+                    <form action={confirmSalaryReceiptAction} className="inline-confirm-form">
+                      <ReturnFields month={month} returnTo="/recebimentos" />
+                      <input name="salaryId" type="hidden" value={salary.salaryId} />
+                      <input name="dueDate" type="hidden" value={toDateInputValue(salary.dueDate)} />
+                      <button className="finance-secondary" type="submit">Confirmar</button>
+                    </form>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <form action={createSalaryAction} className="finance-form compact-card">
         <ReturnFields month={month} returnTo="/recebimentos" />
         <h2>Salário recorrente</h2>
@@ -625,7 +688,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <PersonSelect people={options.people} />
           <TextInput label="Descrição" name="description" />
           <MoneyInput label="Valor total" name="totalAmount" />
-          <TextInput label="Data inicial" name="startDate" type="date" />
+          <TextInput label="Data da compra" name="startDate" type="date" />
           <TextInput label="Primeiro vencimento" name="firstDueDate" type="date" />
           <TextInput label="Número de parcelas" name="installmentCount" type="number" />
           <label className="finance-field">
@@ -646,7 +709,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
             <div className="finance-item-main">
               <span>
                 <strong>{debt.description}</strong>
-                <small>{debt.personEditor.displayName} - {debt.installmentCount} parcelas</small>
+                <small>{debt.personEditor.displayName} - {debt.installmentCount} parcelas - primeira em {formatDate(debt.firstDueDate)}</small>
               </span>
               <b>{formatCurrency(debt.totalAmount)}</b>
             </div>
@@ -658,7 +721,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
                   <TextInput defaultValue={debt.description} label="Descricao" name="description" />
                   <MoneyInput defaultValue={moneyInputValue(debt.totalAmount)} label="Valor total" name="totalAmount" />
-                  <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data inicial" name="startDate" type="date" />
+                  <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data da compra" name="startDate" type="date" />
                   <TextInput defaultValue={toDateInputValue(debt.firstDueDate)} label="Primeiro vencimento" name="firstDueDate" type="date" />
                   <TextInput defaultValue={debt.installmentCount} label="Numero de parcelas" name="installmentCount" type="number" />
                   <label className="finance-field">
@@ -683,6 +746,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <li key={installment.id}>
             <span>
               <strong>{installment.debt.description}</strong>
+              <small>vence {formatDate(installment.dueDate)}</small>
               <small>{installment.personEditor.displayName} · parcela {installment.number}</small>
             </span>
             <b>{formatCurrency(installment.amount)}</b>

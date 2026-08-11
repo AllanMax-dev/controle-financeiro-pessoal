@@ -826,6 +826,94 @@ export async function deleteSalaryAction(formData: FormData) {
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
 }
 
+export async function confirmSalaryReceiptAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const salaryId = text(formData, "salaryId");
+  const dueDate = dateFromInput(text(formData, "dueDate"));
+  const salary = await getDatabase().salary.findFirstOrThrow({
+    where: { active: true, id: salaryId, workspaceId: access.workspaceId },
+    select: {
+      accountId: true,
+      amount: true,
+      categoryId: true,
+      description: true,
+      id: true,
+      notes: true,
+      personEditorId: true,
+      startMonth: true,
+    },
+  });
+
+  if (dueDate < salary.startMonth) {
+    throw new Error("Vencimento anterior ao inicio do salario.");
+  }
+
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.transaction.findFirst({
+      where: {
+        competenceDate: dueDate,
+        salaryId: salary.id,
+        status: { not: "CANCELED" },
+        type: "INCOME",
+        workspaceId: access.workspaceId,
+      },
+      select: { id: true },
+    });
+    const transactionRecord = current
+      ? await transaction.transaction.update({
+          where: { id: current.id },
+          data: {
+            accountId: salary.accountId,
+            affectsBalance: true,
+            amount: salary.amount,
+            categoryId: salary.categoryId,
+            competenceDate: dueDate,
+            description: salary.description,
+            dueDate,
+            notes: salary.notes,
+            personEditorId: salary.personEditorId,
+            settledAt: dueDate,
+            status: "SETTLED",
+            updatedByEditorId: access.editorId,
+            version: { increment: 1 },
+          },
+          select: { id: true },
+        })
+      : await transaction.transaction.create({
+          data: {
+            accountId: salary.accountId,
+            affectsBalance: true,
+            amount: salary.amount,
+            categoryId: salary.categoryId,
+            competenceDate: dueDate,
+            createdByEditorId: access.editorId,
+            description: salary.description,
+            dueDate,
+            notes: salary.notes,
+            personEditorId: salary.personEditorId,
+            salaryId: salary.id,
+            settledAt: dueDate,
+            status: "SETTLED",
+            type: "INCOME",
+            workspaceId: access.workspaceId,
+          },
+          select: { id: true },
+        });
+
+    await transaction.auditLog.create({
+      data: {
+        action: current ? "update" : "create",
+        editorId: access.editorId,
+        entityId: transactionRecord.id,
+        entityType: "Transaction",
+        workspaceId: access.workspaceId,
+      },
+    });
+  });
+
+  refreshAndRedirect(returnTo(formData, "/recebimentos"));
+}
+
 export async function updateDebtAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "debtId");
