@@ -22,6 +22,13 @@ const navigationItems = [
   { href: "/como-usar", icon: "help", label: "Como usar" },
 ] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
+const bottomNavigationItems = [
+  { href: "/painel", icon: "dashboard", label: "Início" },
+  { href: "/gastos-variaveis", icon: "expense", label: "Gastos" },
+  { href: "/recebimentos", icon: "income", label: "Receitas" },
+  { href: "/cartoes", icon: "card", label: "Cartões" },
+] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
+
 function hrefWithFilters(href: string, month: string | null, view: string | null): Route {
   const params = new URLSearchParams();
 
@@ -56,6 +63,29 @@ function NavigationLinks({ month, onNavigate, view }: { month: string | null; on
         );
       })}
     </ul>
+  );
+}
+
+function BottomNavigation({ month, onMore, view }: { month: string | null; onMore: () => void; view: string | null }) {
+  const pathname = usePathname();
+
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Navegação rápida">
+      {bottomNavigationItems.map((item) => {
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+        return (
+          <Link aria-current={active ? "page" : undefined} href={hrefWithFilters(item.href, month, view)} key={item.href}>
+            <Icon name={item.icon} />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+      <button aria-label="Abrir mais opções" onClick={onMore} type="button">
+        <Icon name="menu" />
+        <span>Mais</span>
+      </button>
+    </nav>
   );
 }
 
@@ -111,12 +141,16 @@ export function WorkspaceNavigation({
   workspaceName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentMonth = searchParams.get("month");
   const currentView = searchParams.get("view");
   const drawerId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const activeItem = navigationItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  const pageTitle = activeItem?.label ?? "Dashboard";
+  const showCreateAction = !["/painel", "/como-usar"].some((href) => pathname === href || pathname.startsWith(`${href}/`));
 
   useEffect(() => {
     if (!open) {
@@ -158,9 +192,17 @@ export function WorkspaceNavigation({
         <button aria-controls={drawerId} aria-expanded={open} aria-label="Abrir menu" onClick={() => setOpen(true)} ref={triggerButtonRef} type="button">
           <Icon name="menu" />
         </button>
-        <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
-        <ThemeToggle />
+        <strong className="mobile-page-title">{pageTitle}</strong>
+        {showCreateAction ? (
+          <a aria-label={`Adicionar em ${pageTitle}`} className="mobile-add-action" href="#finance-create">
+            <Icon name="add" />
+          </a>
+        ) : (
+          <span aria-hidden="true" className="mobile-topbar-spacer" />
+        )}
       </header>
+
+      <BottomNavigation month={currentMonth} onMore={() => setOpen(true)} view={currentView} />
 
       {open ? (
         <div className="drawer-layer">

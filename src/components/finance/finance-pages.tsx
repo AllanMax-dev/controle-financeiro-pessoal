@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
@@ -49,6 +48,9 @@ import {
   updateTransactionAction,
   updateTransferAction,
 } from "@/modules/finance/application/finance-actions";
+import { FinanceDashboardChart } from "@/components/finance/dashboard-chart";
+import { MonthNavigator } from "@/components/finance/month-navigator";
+import { PersonSegment } from "@/components/finance/person-segment";
 import type { getFinanceOptions, getFinanceOverview } from "@/modules/finance/application/finance-queries";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
 
@@ -179,10 +181,17 @@ function EditDetails({ children }: { children: ReactNode }) {
 
 function DeleteForm({ action, idName, idValue, month, returnTo }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string }) {
   return (
-    <form action={action}>
+    <form action={action} className="delete-form">
       <ReturnFields month={month} returnTo={returnTo} />
       <input name={idName} type="hidden" value={idValue} />
-      <button className="finance-danger" type="submit">Excluir</button>
+      <details className="destructive-confirm">
+        <summary>Excluir</summary>
+        <div>
+          <strong>Excluir este item?</strong>
+          <small>Esta ação não poderá ser desfeita.</small>
+          <button className="finance-danger" type="submit">Excluir de vez</button>
+        </div>
+      </details>
     </form>
   );
 }
@@ -194,29 +203,13 @@ export function PageHeader({ month, subtitle, title }: { month: string; subtitle
         <p>{subtitle}</p>
         <h1>{title}</h1>
       </div>
-      <form className="finance-month-form" method="get">
-        <label>
-          <span>Mês</span>
-          <input defaultValue={month} name="month" type="month" />
-        </label>
-        <button type="submit">Aplicar</button>
-      </form>
+      <MonthNavigator month={month} />
     </section>
   );
 }
 
 export function PersonTabs({ month, overview }: { month: string; overview: Overview }) {
-  const tabs = [{ id: "casal", name: "Casal" }, ...overview.people.map((person) => ({ id: person.id, name: person.name }))];
-
-  return (
-    <nav className="person-tabs" aria-label="Filtro financeiro">
-      {tabs.map((tab) => (
-        <Link aria-current={overview.activeView === tab.id ? "page" : undefined} href={`?month=${month}&view=${tab.id}`} key={tab.id}>
-          {tab.name}
-        </Link>
-      ))}
-    </nav>
-  );
+  return <PersonSegment activeView={overview.activeView} month={month} people={overview.people.map((person) => ({ id: person.id, name: person.name }))} />;
 }
 
 export function DashboardPageContent({ month, overview }: { month: string; overview: Overview }) {
@@ -265,6 +258,12 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
         status: "Fatura",
       })),
   ].sort((left, right) => left.dueDate.getTime() - right.dueDate.getTime()).slice(0, 6);
+  const chartData = chartCards.map((card) => ({
+    gastos: Number(card.total.expenses.toString()),
+    name: card.name,
+    recebimentos: Number(card.total.income.toString()),
+    saldo: Number(card.total.available.toString()),
+  }));
 
   return (
     <>
@@ -303,14 +302,8 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
       </section>
       <section className="finance-dashboard-grid">
         <article className="finance-panel">
-          <h2>Evolução do saldo</h2>
-          <div className="balance-chart" aria-label="Gráfico visual de saldo">
-            {chartCards.map((card) => (
-              <span key={card.id} style={{ height: `${Math.max(8, Math.min(96, Number(card.total.available) / 100))}%` }}>
-                {card.name}
-              </span>
-            ))}
-          </div>
+          <h2>Panorama do mês</h2>
+          <FinanceDashboardChart data={chartData} />
         </article>
         <article className="finance-panel">
           <h2>Próximos vencimentos</h2>
@@ -350,10 +343,13 @@ function WorkspacePage({ children, formTitle, month, subtitle, title }: { childr
     <>
       <PageHeader month={month} subtitle={subtitle} title={title} />
       <section className="finance-workspace finance-workspace-form-only">
-        <article className="finance-panel">
-          <h2>{formTitle}</h2>
-          {children}
-        </article>
+        <details className="finance-panel finance-create-sheet" id="finance-create">
+          <summary>
+            <span>{formTitle}</span>
+            <strong>Adicionar</strong>
+          </summary>
+          <div className="finance-create-body">{children}</div>
+        </details>
       </section>
     </>
   );
