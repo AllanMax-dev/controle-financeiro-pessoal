@@ -1,10 +1,11 @@
 import { getDatabase } from "@/lib/db";
+import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
+import { getCreditCardInstallmentExpenses } from "@/modules/credit-cards/application/get-credit-card-expenses";
 import {
   financialContextWhere,
   transferContextWhere,
   type FinancialContextFilter,
 } from "@/modules/financial-contexts/application/financial-contexts";
-import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 import { calculatePeriodResult } from "@/modules/transactions/domain/financial-summary";
@@ -31,13 +32,19 @@ export async function getMonthlyReport(
   const { end, month, start } = reportMonthInterval(monthValue, referenceDate);
   const database = getDatabase();
   await synchronizeDueFixedExpenses(workspaceId, referenceDate, scope);
-  const [{ accounts, totalBalance }, transactions, transfers] = await Promise.all([
+  const [{ accounts, totalBalance }, transactions, creditCardExpenses, transfers] = await Promise.all([
     getAccountBalances(workspaceId, false, scope),
     database.transaction.findMany({
-      where: { workspaceId, ...financialContextWhere(scope), competenceDate: { gte: start, lt: end } },
+      where: {
+        workspaceId,
+        ...financialContextWhere(scope),
+        competenceDate: { gte: start, lt: end },
+        creditCardInvoiceId: null,
+      },
       include: { account: true, category: true },
       orderBy: [{ competenceDate: "asc" }, { createdAt: "asc" }],
     }),
+    getCreditCardInstallmentExpenses(workspaceId, scope, start, end),
     database.transfer.findMany({
       where: {
         workspaceId,
@@ -48,8 +55,9 @@ export async function getMonthlyReport(
       orderBy: [{ transferDate: "asc" }, { createdAt: "asc" }],
     }),
   ]);
-  const operationalTransactions = transactions.filter(
-    ({ account }) => account.type !== "INVESTMENT",
+  const analyticTransactions = [...transactions, ...creditCardExpenses];
+  const operationalTransactions = analyticTransactions.filter(
+    ({ account }) => account?.type !== "INVESTMENT",
   );
   const periodResult = calculatePeriodResult(operationalTransactions);
   const pendingIncome = sumMoney(

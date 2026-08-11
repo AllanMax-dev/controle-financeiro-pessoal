@@ -122,6 +122,13 @@ export function originLabelForContext(scope: FinancialDataScope, contextId: stri
   return context?.ownerName ?? context?.name ?? "Origem";
 }
 
+function toContextOption({ ownerEditor, ...context }: FinancialContextOption & { ownerEditor?: { displayName: string } | null }) {
+  return {
+    ...context,
+    ownerName: ownerEditor?.displayName ?? null,
+  };
+}
+
 export async function getAccessibleFinancialContexts(
   access: CurrentAccessScope,
 ): Promise<FinancialContextOption[]> {
@@ -130,8 +137,8 @@ export async function getAccessibleFinancialContexts(
       active: true,
       workspaceId: access.workspaceId,
       OR: [
-        { type: "COUPLE" },
         { ownerEditorId: access.editorId, type: "PERSONAL" },
+        { members: { some: { editorId: access.editorId } }, type: "COUPLE" },
       ],
     },
     select: {
@@ -143,19 +150,62 @@ export async function getAccessibleFinancialContexts(
     },
   });
 
-  return sortContextsForEditor(access, contexts.map(({ ownerEditor, ...context }) => ({
-    ...context,
-    ownerName: ownerEditor?.displayName ?? null,
-  })));
+  return sortContextsForEditor(access, contexts.map(toContextOption));
 }
 
-export async function resolveFinancialContext(
+export async function getWritableFinancialContexts(
   access: CurrentAccessScope,
-  requestedContextId?: string,
-): Promise<ResolvedFinancialContext> {
-  const contexts = await getAccessibleFinancialContexts(access);
-  const workspaceContexts = await getDatabase().financialContext.findMany({
-    where: { active: true, workspaceId: access.workspaceId },
+): Promise<FinancialContextOption[]> {
+  const contexts = await getDatabase().financialContext.findMany({
+    where: {
+      active: true,
+      ownerEditorId: access.editorId,
+      type: "PERSONAL",
+      workspaceId: access.workspaceId,
+    },
+    select: {
+      id: true,
+      name: true,
+      ownerEditor: { select: { displayName: true } },
+      ownerEditorId: true,
+      type: true,
+    },
+  });
+
+  return sortContextsForEditor(access, contexts.map(toContextOption));
+}
+
+export async function getWritableFinancialContextIds(access: CurrentAccessScope): Promise<string[]> {
+  return (await getWritableFinancialContexts(access)).map(({ id }) => id);
+}
+
+export async function canWriteFinancialContext(
+  access: CurrentAccessScope,
+  contextId: string,
+): Promise<boolean> {
+  return (await getWritableFinancialContextIds(access)).includes(contextId);
+}
+
+function uniqueContextOptions(contexts: FinancialContextOption[]) {
+  return [...new Map(contexts.map((context) => [context.id, context])).values()];
+}
+
+async function getCoupleScopeContexts(access: CurrentAccessScope, coupleContextId: string) {
+  const members = await getDatabase().financialContextMember.findMany({
+    where: { financialContextId: coupleContextId, workspaceId: access.workspaceId },
+    select: { editorId: true },
+  });
+  const memberEditorIds = members.map(({ editorId }) => editorId);
+
+  const contexts = await getDatabase().financialContext.findMany({
+    where: {
+      active: true,
+      workspaceId: access.workspaceId,
+      OR: [
+        { id: coupleContextId },
+        { ownerEditorId: { in: memberEditorIds }, type: "PERSONAL" },
+      ],
+    },
     select: {
       id: true,
       name: true,
@@ -165,10 +215,15 @@ export async function resolveFinancialContext(
     },
     orderBy: [{ type: "asc" }, { name: "asc" }],
   });
-  const workspaceContextOptions = workspaceContexts.map(({ ownerEditor, ...context }) => ({
-    ...context,
-    ownerName: ownerEditor?.displayName ?? null,
-  }));
+
+  return contexts.map(toContextOption);
+}
+
+export async function resolveFinancialContext(
+  access: CurrentAccessScope,
+  requestedContextId?: string,
+): Promise<ResolvedFinancialContext> {
+  const contexts = await getAccessibleFinancialContexts(access);
 
   if (contexts.length === 0) {
     notFound();
@@ -180,21 +235,26 @@ export async function resolveFinancialContext(
     contexts.find(({ type }) => type === "COUPLE") ??
     contexts[0]!;
 
+  const writableContexts = await getWritableFinancialContexts(access);
   const writeContext =
-    contexts.find(({ ownerEditorId, type }) => type === "PERSONAL" && ownerEditorId === access.editorId) ??
+    writableContexts.find(({ ownerEditorId, type }) => type === "PERSONAL" && ownerEditorId === access.editorId) ??
     current;
+  const scopeContextOptions = current.type === "COUPLE"
+    ? await getCoupleScopeContexts(access, current.id)
+    : [current];
   const contextIds = current.type === "COUPLE"
-    ? workspaceContextOptions
-        .filter(({ type }) => type === "PERSONAL" || type === "COUPLE")
-        .map(({ id }) => id)
+    ? scopeContextOptions.map(({ id }) => id)
     : [current.id];
+  const contextsById = Object.fromEntries(
+    uniqueContextOptions([...scopeContextOptions, ...contexts, ...writableContexts]).map((context) => [context.id, context]),
+  );
 
   return {
     contexts,
     current,
     scope: {
       contextIds: uniq(contextIds),
-      contextsById: Object.fromEntries(workspaceContextOptions.map((context) => [context.id, context])),
+      contextsById,
       current,
       mode: current.type,
       writeContext,
@@ -221,6 +281,10 @@ export async function resolveWritableFinancialContext(
   requestedContextId: string,
 ) {
   const { current, scope } = await resolveFinancialContext(access, requestedContextId);
+
+  if (current.type === "COUPLE" && scope.writeContext.type !== "PERSONAL") {
+    throw new Error("financial_context_write_unavailable");
+  }
 
   return current.type === "COUPLE" ? scope.writeContext : current;
 }

@@ -6,6 +6,7 @@ import {
   type FinancialContextFilter,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
+import { getCreditCardInstallmentExpenses } from "@/modules/credit-cards/application/get-credit-card-expenses";
 import {
   buildBudgetComparison,
   buildExpenseDistribution,
@@ -39,6 +40,7 @@ export async function getDashboardSummary(
       totalBalance,
     },
     transactions,
+    creditCardExpenses,
     recentTransactions,
     budgets,
     salaries,
@@ -52,6 +54,7 @@ export async function getDashboardSummary(
         workspaceId,
         ...financialContextWhere(scope),
         competenceDate: { gte: firstMonth.start, lt: currentMonth.end },
+        creditCardInvoiceId: null,
       },
       select: {
         account: { select: { type: true } },
@@ -65,6 +68,7 @@ export async function getDashboardSummary(
         type: true,
       },
     }),
+    getCreditCardInstallmentExpenses(workspaceId, scope, firstMonth.start, currentMonth.end),
     database.transaction.findMany({
       where: { workspaceId, ...financialContextWhere(scope) },
       include: { account: true, category: true },
@@ -85,6 +89,7 @@ export async function getDashboardSummary(
         competenceDate: { gte: currentMonth.start, lt: currentMonth.end },
         account: { type: { not: "INVESTMENT" } },
         fixedExpenseId: null,
+        creditCardInvoiceId: null,
         status: "PENDING",
         type: "EXPENSE",
         workspaceId,
@@ -124,12 +129,13 @@ export async function getDashboardSummary(
       },
     }),
   ]);
-  const periodTransactions = transactions.filter(
+  const analyticTransactions = [...transactions, ...creditCardExpenses];
+  const periodTransactions = analyticTransactions.filter(
     ({ competenceDate }) =>
       competenceDate >= currentMonth.start && competenceDate < currentMonth.end,
   );
   const operationalPeriodTransactions = periodTransactions.filter(
-    ({ account }) => account.type !== "INVESTMENT",
+    ({ account }) => account?.type !== "INVESTMENT",
   );
 
   const periodResult = calculatePeriodResult(operationalPeriodTransactions);
@@ -176,7 +182,7 @@ export async function getDashboardSummary(
     investmentBalance,
     manualPendingExpenses,
     manualPendingIncome,
-    monthlyEvolution: buildMonthlyEvolution(transactions, monthBuckets),
+    monthlyEvolution: buildMonthlyEvolution(analyticTransactions, monthBuckets),
     pendingExpense,
     pendingIncome,
     periodResult,

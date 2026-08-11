@@ -47,15 +47,21 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function hrefWithContext(href: string, contextId: string): Route {
-  return `${href}?contextId=${encodeURIComponent(contextId)}` as Route;
+function hrefWithContext(href: string, contextId: string, month?: string | null): Route {
+  const params = new URLSearchParams({ contextId });
+  if (month) {
+    params.set("month", month);
+  }
+  return `${href}?${params.toString()}` as Route;
 }
 
 function NavigationLinks({
   contextId,
   onNavigate,
+  month,
 }: {
   contextId: string;
+  month?: string | null;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -74,7 +80,7 @@ function NavigationLinks({
                   <Link
                     aria-current={active ? "page" : undefined}
                     className={active ? "active" : undefined}
-                    href={hrefWithContext(item.href, contextId)}
+                    href={hrefWithContext(item.href, contextId, month)}
                     onClick={onNavigate}
                   >
                     <Icon name={item.icon} />
@@ -90,9 +96,9 @@ function NavigationLinks({
   );
 }
 
-function BrandBlock({ contextId, workspaceName }: { contextId: string; workspaceName: string }) {
+function BrandBlock({ contextId, month, workspaceName }: { contextId: string; month?: string | null; workspaceName: string }) {
   return (
-    <Link className="brand workspace-brand" href={hrefWithContext("/painel", contextId)}>
+    <Link className="brand workspace-brand" href={hrefWithContext("/painel", contextId, month)}>
       <span className="brand-mark" aria-hidden="true">
         CF
       </span>
@@ -156,6 +162,7 @@ export function WorkspaceNavigation({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const currentMonth = searchParams.get("month");
   const requestedContextId = searchParams.get("contextId");
   const currentContextId = contexts.some(({ id }) => id === requestedContextId)
     ? requestedContextId!
@@ -258,11 +265,11 @@ export function WorkspaceNavigation({
   return (
     <>
       <aside className="workspace-sidebar">
-        <BrandBlock contextId={currentContextId} workspaceName={workspaceName} />
+        <BrandBlock contextId={currentContextId} month={currentMonth} workspaceName={workspaceName} />
         <ContextSwitcher contexts={contexts} currentContextId={currentContextId} />
 
         <nav className="workspace-nav workspace-nav-desktop" aria-label="Navegação principal">
-          <NavigationLinks contextId={currentContextId} />
+          <NavigationLinks contextId={currentContextId} month={currentMonth} />
         </nav>
 
         <div className="workspace-editor-card" title="Pessoa identificada pelo link privado">
@@ -275,7 +282,7 @@ export function WorkspaceNavigation({
       </aside>
 
       <header className="workspace-mobile-topbar">
-        <BrandBlock contextId={currentContextId} workspaceName={workspaceName} />
+        <BrandBlock contextId={currentContextId} month={currentMonth} workspaceName={workspaceName} />
         <button
           aria-controls={drawerId}
           aria-expanded={open}
@@ -318,7 +325,7 @@ export function WorkspaceNavigation({
               currentContextId={currentContextId}
               onNavigate={() => setOpen(false)}
             />
-            <NavigationLinks contextId={currentContextId} onNavigate={() => setOpen(false)} />
+            <NavigationLinks contextId={currentContextId} month={currentMonth} onNavigate={() => setOpen(false)} />
           </nav>
         </aside>
       </div>

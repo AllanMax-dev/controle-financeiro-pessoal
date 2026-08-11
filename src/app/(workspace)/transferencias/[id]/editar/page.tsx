@@ -4,12 +4,12 @@ import { TransferForm } from "@/components/transfer-form";
 import { getDatabase } from "@/lib/db";
 import { toDateInputValue } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import { getWritableFinancialContextIds } from "@/modules/financial-contexts/application/financial-contexts";
 import { updateTransferAction } from "@/modules/transfers/application/transfer-actions";
 
 export default async function EditTransferPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id } = await params;
   const database = getDatabase();
   const transfer = await database.transfer.findFirst({

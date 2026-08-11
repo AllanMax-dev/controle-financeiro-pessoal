@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  CreditCardInvoicePaymentForm,
   CreditCardForm,
   CreditCardPurchaseForm,
 } from "@/components/credit-card-forms";
@@ -10,6 +11,7 @@ import { getDatabase } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
+  payCreditCardInvoiceAction,
   createCreditCardAction,
   createCreditCardPurchaseAction,
 } from "@/modules/credit-cards/application/credit-card-actions";
@@ -21,6 +23,7 @@ import {
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { dateInputInTimeZone } from "@/modules/shared/domain/calendar";
+import { money } from "@/modules/shared/domain/money";
 
 export default async function CreditCardsPage({
   searchParams,
@@ -59,6 +62,7 @@ export default async function CreditCardsPage({
       orderBy: { name: "asc" },
     }),
   ]);
+  const writableCards = overview.cards.filter(({ active, contextId }) => active && contextId === writeContext.id);
 
   return (
     <>
@@ -81,6 +85,16 @@ export default async function CreditCardsPage({
           <strong>{formatCurrency(overview.totalLimit)}</strong>
           <small>Separado do saldo disponível</small>
         </article>
+        <article className="metric-card">
+          <span>Limite disponivel</span>
+          <strong>{formatCurrency(overview.totalAvailableLimit)}</strong>
+          <small>Ja desconta faturas abertas</small>
+        </article>
+        <article className="metric-card">
+          <span>Em aberto</span>
+          <strong>{formatCurrency(overview.totalOutstanding)}</strong>
+          <small>Compromissos atuais e futuros</small>
+        </article>
       </section>
 
       <section className="finance-workspace-grid">
@@ -90,10 +104,10 @@ export default async function CreditCardsPage({
             action={createCreditCardAction}
             contextId={writeContext.id}
           />
-          {overview.cards.length > 0 ? (
+          {writableCards.length > 0 ? (
             <CreditCardPurchaseForm
               action={createCreditCardPurchaseAction}
-              cards={overview.cards.filter(({ active }) => active)}
+              cards={writableCards}
               categories={categories}
               today={today}
             />
@@ -175,6 +189,15 @@ export default async function CreditCardsPage({
                   ) : (
                     <div className="compact-empty">Nenhuma compra nesta fatura.</div>
                   )}
+                  {card.currentInvoice && card.contextId === writeContext.id && money(card.currentInvoice.amount).minus(card.currentInvoice.paidAmount).isPositive() ? (
+                    <CreditCardInvoicePaymentForm
+                      accounts={accounts}
+                      action={payCreditCardInvoiceAction}
+                      defaultAmount={money(card.currentInvoice.amount).minus(card.currentInvoice.paidAmount).toFixed(2).replace(".", ",")}
+                      invoiceId={card.currentInvoice.id}
+                      today={today}
+                    />
+                  ) : null}
                 </article>
               ))}
             </div>

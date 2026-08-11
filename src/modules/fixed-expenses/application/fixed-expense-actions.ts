@@ -8,7 +8,7 @@ import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   assertFinancialContextAccess,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { synchronizeDueFixedExpenses } from "@/modules/fixed-expenses/application/synchronize-due-fixed-expenses";
@@ -292,7 +292,7 @@ export async function payFixedExpenseAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   try {
@@ -389,7 +389,7 @@ export async function archiveFixedExpenseAction(formData: FormData): Promise<voi
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   const fixedExpense = await database.fixedExpense.findFirst({

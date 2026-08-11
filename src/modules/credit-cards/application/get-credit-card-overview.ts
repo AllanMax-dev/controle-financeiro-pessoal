@@ -17,9 +17,9 @@ export async function getCreditCardOverview(
     where: { workspaceId, ...financialContextWhere(scope) },
     include: {
       invoices: {
-        where: { month: currentInvoiceMonth },
+        where: { status: { not: "CANCELED" } },
         include: { installments: { include: { purchase: { include: { category: true } } } } },
-        take: 1,
+        orderBy: { month: "asc" },
       },
       financialContext: { select: { name: true } },
       paymentAccount: { select: { id: true, name: true } },
@@ -27,13 +27,27 @@ export async function getCreditCardOverview(
     orderBy: [{ active: "desc" }, { name: "asc" }],
   });
 
+  const unpaidInvoices = cards.flatMap(({ invoices }) =>
+    invoices.filter(({ status }) => status !== "PAID"),
+  );
+  const totalOutstanding = sumMoney(
+    unpaidInvoices.map((invoice) => money(invoice.amount).minus(invoice.paidAmount)),
+  );
+  const totalLimit = sumMoney(cards.map((card) => card.limit));
+  const totalAvailableLimit = money(totalLimit.minus(totalOutstanding));
   return {
     cards: cards.map((card) => {
-      const invoice = card.invoices[0] ?? null;
+      const invoice = card.invoices.find(({ month }) => month.getTime() === currentInvoiceMonth.getTime()) ?? null;
       const invoiceAmount = invoice?.amount ?? money(0);
       const limit = money(card.limit);
+      const outstandingAmount = sumMoney(
+        card.invoices
+          .filter(({ status }) => status !== "PAID")
+          .map((currentInvoice) => money(currentInvoice.amount).minus(currentInvoice.paidAmount)),
+      );
+      const availableLimit = money(limit.minus(outstandingAmount));
       const usagePercent = limit.isPositive()
-        ? Math.min(invoiceAmount.div(limit).mul(100).toNumber(), 100)
+        ? Math.min(outstandingAmount.div(limit).mul(100).toNumber(), 100)
         : 0;
       const installments = invoice?.installments ?? [];
 
@@ -42,12 +56,15 @@ export async function getCreditCardOverview(
         currentInvoice: invoice,
         invoiceAmount,
         invoiceInstallments: installments,
-        availableLimit: money(limit.minus(invoiceAmount)),
+        availableLimit: availableLimit.isNegative() ? money(0) : availableLimit,
+        outstandingAmount,
         usagePercent,
       };
     }),
     currentInvoiceMonth,
-    totalCurrentInvoice: sumMoney(cards.map((card) => card.invoices[0]?.amount ?? 0)),
-    totalLimit: sumMoney(cards.map((card) => card.limit)),
+    totalAvailableLimit: totalAvailableLimit.isNegative() ? money(0) : totalAvailableLimit,
+    totalCurrentInvoice: sumMoney(cards.map((card) => card.invoices.find(({ month }) => month.getTime() === currentInvoiceMonth.getTime())?.amount ?? 0)),
+    totalLimit,
+    totalOutstanding,
   };
 }

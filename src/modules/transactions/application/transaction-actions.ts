@@ -9,7 +9,7 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   assertFinancialContextAccess,
   contextHref,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -366,7 +366,7 @@ export async function cancelTransactionAction(formData: FormData): Promise<void>
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {

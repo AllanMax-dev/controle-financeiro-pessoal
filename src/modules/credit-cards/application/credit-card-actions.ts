@@ -13,7 +13,7 @@ import {
 } from "@/modules/credit-cards/domain/credit-card-schedule";
 import {
   contextHref,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -24,6 +24,7 @@ import {
   identifierSchema,
   positiveMoneyInputSchema,
 } from "@/modules/shared/application/form-schemas";
+import { money } from "@/modules/shared/domain/money";
 
 const optionalIdentifierSchema = z.preprocess(
   (value) => (value === "" || value === null ? null : value),
@@ -43,8 +44,16 @@ const creditCardSchema = z.object({
   dueDay: z.coerce.number().int().min(1).max(31),
   institution: optionalTextSchema(100),
   limit: positiveMoneyInputSchema,
+
   name: z.string().trim().min(2, "Informe o nome do cartão.").max(100),
   paymentAccountId: optionalIdentifierSchema,
+});
+
+const creditCardInvoicePaymentSchema = z.object({
+  accountId: identifierSchema,
+  amount: positiveMoneyInputSchema,
+  invoiceId: identifierSchema,
+  paymentDate: dateInputSchema,
 });
 
 const creditCardPurchaseSchema = z.object({
@@ -134,6 +143,116 @@ export async function createCreditCardAction(
   return { error: null, success: "Cartão criado." };
 }
 
+
+export async function payCreditCardInvoiceAction(
+  _state: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = creditCardInvoicePaymentSchema.safeParse({
+    accountId: formData.get("accountId"),
+    amount: formData.get("amount"),
+    invoiceId: formData.get("invoiceId"),
+    paymentDate: formData.get("paymentDate"),
+  });
+
+  if (!parsed.success) {
+    return { error: firstValidationMessage(parsed.error) };
+  }
+
+  const access = await requireCurrentAccess();
+  const writableContextIds = await getWritableFinancialContextIds(access);
+  const database = getDatabase();
+  const invoice = await database.creditCardInvoice.findFirst({
+    where: {
+      contextId: { in: writableContextIds },
+      id: parsed.data.invoiceId,
+      status: { not: "CANCELED" },
+      workspaceId: access.workspaceId,
+    },
+    include: { creditCard: { select: { name: true } } },
+  });
+
+  if (!invoice) {
+    return { error: "A fatura selecionada nao esta disponivel." };
+  }
+
+  const remainingAmount = money(money(invoice.amount).minus(invoice.paidAmount));
+  if (!remainingAmount.isPositive()) {
+    return { error: "Esta fatura ja esta paga." };
+  }
+
+  const paymentAmount = money(parsed.data.amount);
+  if (paymentAmount.greaterThan(remainingAmount)) {
+    return { error: "O pagamento nao pode ser maior que o saldo em aberto da fatura." };
+  }
+
+  const account = await database.financialAccount.findFirst({
+    where: {
+      active: true,
+      contextId: invoice.contextId,
+      id: parsed.data.accountId,
+      type: { not: "INVESTMENT" },
+      workspaceId: access.workspaceId,
+    },
+    select: { id: true },
+  });
+
+  if (!account) {
+    return { error: "A conta de pagamento nao esta disponivel neste contexto." };
+  }
+
+  const nextPaidAmount = money(money(invoice.paidAmount).plus(paymentAmount));
+  const paidInFull = nextPaidAmount.greaterThanOrEqualTo(invoice.amount);
+
+  try {
+    await database.$transaction(async (transaction) => {
+      const payment = await transaction.transaction.create({
+        data: {
+          workspaceId: access.workspaceId,
+          contextId: invoice.contextId,
+          accountId: account.id,
+          categoryId: null,
+          type: "EXPENSE",
+          status: "SETTLED",
+          description: `Pagamento fatura ${invoice.creditCard.name}`,
+          amount: paymentAmount.toFixed(2),
+          competenceDate: parsed.data.paymentDate,
+          dueDate: parsed.data.paymentDate,
+          settledAt: parsed.data.paymentDate,
+          affectsBalance: true,
+          creditCardInvoiceId: invoice.id,
+        },
+      });
+
+      await transaction.creditCardInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          paidAmount: nextPaidAmount.toFixed(2),
+          paidAt: paidInFull ? parsed.data.paymentDate : invoice.paidAt,
+          status: paidInFull ? "PAID" : invoice.status,
+          version: { increment: 1 },
+        },
+      });
+
+      await transaction.auditLog.create({
+        data: {
+          workspaceId: access.workspaceId,
+          contextId: invoice.contextId,
+          actorEditorId: access.editorId,
+          action: "credit_card_invoice.paid",
+          entityType: "CreditCardInvoice",
+          entityId: invoice.id,
+          metadata: { amount: paymentAmount.toFixed(2), paymentTransactionId: payment.id },
+        },
+      });
+    });
+  } catch {
+    return { error: "Nao foi possivel pagar a fatura." };
+  }
+
+  revalidateCreditCardPaths();
+  return { error: null, success: "Fatura paga." };
+}
 export async function createCreditCardPurchaseAction(
   _state: ActionState,
   formData: FormData,
@@ -153,7 +272,7 @@ export async function createCreditCardPurchaseAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
   const [card, category] = await Promise.all([
     database.creditCard.findFirst({

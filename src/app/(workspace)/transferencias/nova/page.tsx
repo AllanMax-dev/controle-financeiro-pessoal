@@ -24,7 +24,7 @@ export default async function NewTransferPage({
   );
   const today = dateInputInTimeZone(new Date(), access.workspaceTimezone);
   const accounts = await getDatabase().financialAccount.findMany({
-    where: { workspaceId: access.workspaceId, contextId: { in: contextState.scope.contextIds }, active: true },
+    where: { workspaceId: access.workspaceId, contextId: contextState.scope.writeContext.id, active: true },
     select: { financialContext: { select: { name: true } }, id: true, name: true },
     orderBy: [{ contextId: "asc" }, { name: "asc" }],
   });

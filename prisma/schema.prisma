@@ -60,6 +60,10 @@ enum FinancialContextType {
   COUPLE
 }
 
+enum FinancialContextMemberRole {
+  MEMBER
+}
+
 enum CreditCardInvoiceStatus {
   OPEN
   CLOSED
@@ -94,6 +98,7 @@ model Workspace {
   updatedAt    DateTime           @updatedAt @db.Timestamptz(3)
   editors      Editor[]
   financialContexts FinancialContext[]
+  financialContextMembers FinancialContextMember[]
   accounts     FinancialAccount[]
   categories   Category[]
   transactions Transaction[]
@@ -128,6 +133,7 @@ model Editor {
   ownedAccounts FinancialAccount[] @relation("AccountOwner")
   balanceAdjustments AccountBalanceAdjustment[]
   financialContexts FinancialContext[] @relation("PersonalFinancialContextOwner")
+  financialContextMemberships FinancialContextMember[]
   savingsGoalMovements SavingsGoalMovement[]
 
   @@unique([workspaceId, displayName])
@@ -161,11 +167,28 @@ model FinancialContext {
   creditCardPurchases CreditCardPurchase[]
   creditCardPurchaseInstallments CreditCardPurchaseInstallment[]
   savingsGoals SavingsGoal[]
+  members     FinancialContextMember[]
   savingsGoalMovements SavingsGoalMovement[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId, active, type])
   @@index([workspaceId, ownerEditorId])
+}
+
+model FinancialContextMember {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  workspaceId        String                     @db.Uuid
+  financialContextId String                     @db.Uuid
+  editorId           String                     @db.Uuid
+  role               FinancialContextMemberRole @default(MEMBER)
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
+  workspace          Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialContext   FinancialContext           @relation(fields: [financialContextId], references: [id], onDelete: Cascade)
+  editor             Editor                     @relation(fields: [editorId], references: [id], onDelete: Cascade)
+
+  @@unique([financialContextId, editorId])
+  @@index([workspaceId, editorId])
+  @@index([workspaceId, financialContextId])
 }
 
 model AccessGrant {
@@ -276,6 +299,7 @@ model Transaction {
   salaryId       String?            @db.Uuid
   salaryMonth    DateTime?          @db.Date
   salaryInstallment Int?
+  creditCardInvoiceId String?        @db.Uuid
   version        Int               @default(1)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
@@ -286,6 +310,7 @@ model Transaction {
   debtInstallment DebtInstallment?
   fixedExpense   FixedExpense?     @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
   salary         Salary?           @relation(fields: [salaryId], references: [id], onDelete: SetNull)
+  creditCardInvoice CreditCardInvoice? @relation(fields: [creditCardInvoiceId], references: [id], onDelete: SetNull)
 
   @@unique([fixedExpenseId, recurrenceMonth])
   @@unique([salaryId, salaryMonth, salaryInstallment])
@@ -294,6 +319,7 @@ model Transaction {
   @@index([workspaceId, status, dueDate])
   @@index([accountId, competenceDate])
   @@index([categoryId])
+  @@index([creditCardInvoiceId])
 }
 
 model Transfer {
@@ -555,6 +581,7 @@ model CreditCardInvoice {
   financialContext FinancialContext        @relation(fields: [contextId], references: [id], onDelete: Restrict)
   creditCard       CreditCard              @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
   installments     CreditCardPurchaseInstallment[]
+  paymentTransactions Transaction[]
 
   @@unique([creditCardId, month])
   @@index([workspaceId, contextId, month])

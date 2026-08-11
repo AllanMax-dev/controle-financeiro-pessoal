@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { FixedExpenseForm } from "@/components/fixed-expense-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import { getWritableFinancialContextIds } from "@/modules/financial-contexts/application/financial-contexts";
 import { updateFixedExpenseAction } from "@/modules/fixed-expenses/application/fixed-expense-actions";
 
 export default async function EditFixedExpensePage({
@@ -12,7 +12,7 @@ export default async function EditFixedExpensePage({
   params: Promise<{ id: string }>;
 }) {
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id } = await params;
   const database = getDatabase();
   const fixedExpense = await database.fixedExpense.findFirst({

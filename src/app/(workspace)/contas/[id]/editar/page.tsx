@@ -4,11 +4,11 @@ import { AccountForm } from "@/components/account-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { updateAccountAction } from "@/modules/accounts/application/account-actions";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import { getWritableFinancialContextIds } from "@/modules/financial-contexts/application/financial-contexts";
 
 export default async function EditAccountPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id } = await params;
   const database = getDatabase();
   const account = await database.financialAccount.findFirst({

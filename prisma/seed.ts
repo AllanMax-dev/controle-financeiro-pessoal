@@ -33,7 +33,7 @@ const editors = await Promise.all(
   ),
 );
 
-await database.financialContext.upsert({
+const coupleContext = await database.financialContext.upsert({
   where: {
     workspaceId_name: {
       workspaceId: workspace.id,
@@ -62,6 +62,21 @@ for (const editor of editors) {
       ownerEditorId: editor.id,
       name: editor.displayName,
       type: "PERSONAL",
+    },
+  });
+
+  await database.financialContextMember.upsert({
+    where: {
+      financialContextId_editorId: {
+        editorId: editor.id,
+        financialContextId: coupleContext.id,
+      },
+    },
+    update: {},
+    create: {
+      editorId: editor.id,
+      financialContextId: coupleContext.id,
+      workspaceId: workspace.id,
     },
   });
 }

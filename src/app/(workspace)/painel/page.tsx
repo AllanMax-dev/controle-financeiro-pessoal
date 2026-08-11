@@ -19,12 +19,24 @@ import {
   type FinancialContextSearchParams,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { getSavingsGoalOverview } from "@/modules/savings-goals/application/get-savings-goal-overview";
-import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
+import { calendarDateInTimeZone, monthInputInTimeZone } from "@/modules/shared/domain/calendar";
+
+type DashboardSearchParams = FinancialContextSearchParams & { month?: string | string[] };
+
+function selectedMonthFromSearchParams(searchParams: DashboardSearchParams) {
+  const month = Array.isArray(searchParams.month) ? searchParams.month[0] : searchParams.month;
+
+  return month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : undefined;
+}
+
+function monthReferenceDate(month: string) {
+  return new Date(`${month}-01T00:00:00.000Z`);
+}
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<FinancialContextSearchParams>;
+  searchParams: Promise<DashboardSearchParams>;
 }) {
   const access = await requireCurrentAccess();
   const rawSearchParams = await searchParams;
@@ -35,10 +47,13 @@ export default async function DashboardPage({
   const currentContext = contextState.current;
   const currentHref = (pathname: string) => contextHref(pathname, currentContext.id);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
+  const defaultMonth = monthInputInTimeZone(new Date(), access.workspaceTimezone);
+  const selectedMonth = selectedMonthFromSearchParams(rawSearchParams) ?? defaultMonth;
+  const referenceDate = monthReferenceDate(selectedMonth);
   const [summary, debtOverview, creditCardOverview, savingsGoalOverview] = await Promise.all([
-    getDashboardSummary(access.workspaceId, today, contextState.scope),
-    getDebtOverview(access.workspaceId, today, contextState.scope),
-    getCreditCardOverview(access.workspaceId, contextState.scope, today),
+    getDashboardSummary(access.workspaceId, referenceDate, contextState.scope),
+    getDebtOverview(access.workspaceId, referenceDate, contextState.scope),
+    getCreditCardOverview(access.workspaceId, contextState.scope, referenceDate),
     getSavingsGoalOverview(access.workspaceId, contextState.scope),
   ]);
   const remainingCommitments = summary.pendingExpense.plus(debtOverview.pendingThisMonth);
@@ -126,6 +141,16 @@ export default async function DashboardPage({
           <p>{currentContext.name} · valores realizados atualizam saldos; pendências ficam separadas.</p>
         </div>
         <div className="page-actions">
+          <form className="month-picker" method="get">
+            <input name="contextId" type="hidden" value={currentContext.id} />
+            <label>
+              <span>Mes</span>
+              <input name="month" type="month" defaultValue={selectedMonth} />
+            </label>
+            <button className="secondary-button" type="submit">
+              Aplicar
+            </button>
+          </form>
           <Link className="primary-button" href={currentHref("/lancamentos/novo")}>
             <Icon name="add" />
             Novo lançamento
@@ -298,7 +323,7 @@ export default async function DashboardPage({
       </section>
 
 
-      <section className="dashboard-operational-grid" aria-label="Cart?es e cofrinhos">
+      <section className="dashboard-operational-grid" aria-label="Cartoes e cofrinhos">
         <article className="panel-card dashboard-action-panel">
           <div className="panel-heading">
             <div>

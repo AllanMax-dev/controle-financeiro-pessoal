@@ -4,11 +4,11 @@ import { CategoryForm } from "@/components/category-form";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { updateCategoryAction } from "@/modules/categories/application/category-actions";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import { getWritableFinancialContextIds } from "@/modules/financial-contexts/application/financial-contexts";
 
 export default async function EditCategoryPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id } = await params;
   const category = await getDatabase().category.findFirst({
     where: { contextId: { in: accessibleContextIds }, id, workspaceId: access.workspaceId },

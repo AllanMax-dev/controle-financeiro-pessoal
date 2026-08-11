@@ -10,7 +10,7 @@ import { calculateCurrentAccountBalance } from "@/modules/accounts/application/c
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   assertFinancialContextAccess,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -326,7 +326,7 @@ export async function deleteArchivedAccountAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   try {
@@ -435,7 +435,7 @@ export async function toggleAccountActiveAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id, version, active } = parsed.data;
   const database = getDatabase();
 
@@ -586,7 +586,7 @@ export async function adjustAccountBalanceAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   try {

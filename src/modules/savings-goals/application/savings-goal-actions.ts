@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
+import { getAccountBalances } from "@/modules/accounts/application/get-account-balances";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   contextHref,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -146,7 +147,7 @@ export async function createSavingsGoalMovementAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
   const goal = await database.savingsGoal.findFirst({
     where: {
@@ -161,6 +162,8 @@ export async function createSavingsGoalMovementAction(
   if (!goal) {
     return { error: "O cofrinho selecionado não está disponível." };
   }
+
+  const movementAmount = money(parsed.data.amount);
 
   if (parsed.data.accountId) {
     const account = await database.financialAccount.findFirst({
@@ -179,11 +182,43 @@ export async function createSavingsGoalMovementAction(
     }
   }
 
+  if (parsed.data.type === "DEPOSIT" && parsed.data.accountId) {
+    const [accountBalances, reservedGoals] = await Promise.all([
+      getAccountBalances(access.workspaceId, false, goal.contextId),
+      database.savingsGoal.findMany({
+        where: {
+          accountId: parsed.data.accountId,
+          contextId: goal.contextId,
+          status: { not: "ARCHIVED" },
+          workspaceId: access.workspaceId,
+        },
+        include: { movements: true },
+      }),
+    ]);
+    const accountBalance = accountBalances.accounts.find(({ id }) => id === parsed.data.accountId)?.balance ?? money(0);
+    const reservedAmount = sumMoney(
+      reservedGoals.map((reservedGoal) => {
+        const deposits = sumMoney(
+          reservedGoal.movements.filter(({ type }) => type === "DEPOSIT").map(({ amount }) => amount),
+        );
+        const withdrawals = sumMoney(
+          reservedGoal.movements.filter(({ type }) => type === "WITHDRAWAL").map(({ amount }) => amount),
+        );
+
+        return deposits.minus(withdrawals);
+      }),
+    );
+    const freeBalance = money(accountBalance.minus(reservedAmount));
+
+    if (movementAmount.greaterThan(freeBalance)) {
+      return { error: "A reserva nao pode ser maior que o saldo livre da conta." };
+    }
+  }
+
   const currentAmount = money(
     sumMoney(goal.movements.filter(({ type }) => type === "DEPOSIT").map(({ amount }) => amount))
       .minus(sumMoney(goal.movements.filter(({ type }) => type === "WITHDRAWAL").map(({ amount }) => amount))),
   );
-  const movementAmount = money(parsed.data.amount);
 
   if (parsed.data.type === "WITHDRAWAL" && movementAmount.greaterThan(currentAmount)) {
     return { error: "A retirada não pode ser maior que o valor atual do cofrinho." };

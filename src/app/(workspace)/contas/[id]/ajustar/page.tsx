@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/format";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import { adjustAccountBalanceAction } from "@/modules/accounts/application/account-actions";
 import { calculateCurrentAccountBalance } from "@/modules/accounts/application/calculate-account-balance";
-import { getAccessibleFinancialContexts } from "@/modules/financial-contexts/application/financial-contexts";
+import { getWritableFinancialContextIds } from "@/modules/financial-contexts/application/financial-contexts";
 
 function centsFromDecimal(value: Decimal) {
   return value.times(100).toFixed(0);
@@ -19,7 +19,7 @@ export default async function AdjustAccountBalancePage({
   params: Promise<{ id: string }>;
 }) {
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id } = await params;
   const database = getDatabase();
   const account = await database.financialAccount.findFirst({

@@ -16,6 +16,18 @@ export type DashboardTransactionInput = {
   type: "INCOME" | "EXPENSE";
 };
 
+function normalizeCategoryName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+}
+
+function expenseCategoryKey(category: { name: string } | null | undefined): string {
+  return `EXPENSE:${normalizeCategoryName(category?.name ?? "Sem categoria")}`;
+}
+
 function isOperationalTransaction(transaction: DashboardTransactionInput): boolean {
   return transaction.account?.type !== "INVESTMENT";
 }
@@ -136,7 +148,7 @@ export function buildExpenseDistribution(transactions: DashboardTransactionInput
       continue;
     }
 
-    const key = transaction.category?.id ?? "uncategorized";
+    const key = expenseCategoryKey(transaction.category);
     const current = expenseByCategory.get(key) ?? {
       color: transaction.category?.color ?? "#9aa59d",
       name: transaction.category?.name ?? "Sem categoria",
@@ -166,12 +178,15 @@ export function buildBudgetComparison(
   >();
 
   for (const budget of budgets) {
-    rows.set(budget.category.id, {
+    const key = expenseCategoryKey(budget.category);
+    const current = rows.get(key) ?? {
       color: budget.category.color ?? "#256b4b",
       name: budget.category.name,
-      planned: money(budget.amount),
+      planned: money(0),
       realized: money(0),
-    });
+    };
+    current.planned = money(current.planned.plus(budget.amount));
+    rows.set(key, current);
   }
 
   for (const transaction of transactions) {
@@ -183,7 +198,7 @@ export function buildBudgetComparison(
       continue;
     }
 
-    const key = transaction.category?.id ?? "uncategorized";
+    const key = expenseCategoryKey(transaction.category);
     const current = rows.get(key) ?? {
       color: transaction.category?.color ?? "#9aa59d",
       name: transaction.category?.name ?? "Sem categoria",

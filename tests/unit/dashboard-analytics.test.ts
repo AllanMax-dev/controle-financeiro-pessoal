@@ -89,7 +89,7 @@ describe("dashboard analytics", () => {
     expect(comparison.categories).toEqual([
       {
         color: "#256b4b",
-        id: "food",
+        id: "EXPENSE:mercado",
         name: "Mercado",
         planned: 500,
         realized: 125.1,
@@ -97,7 +97,7 @@ describe("dashboard analytics", () => {
       },
       {
         color: "#9aa59d",
-        id: "uncategorized",
+        id: "EXPENSE:sem categoria",
         name: "Sem categoria",
         planned: 0,
         realized: 80,
@@ -135,7 +135,7 @@ describe("dashboard analytics", () => {
       result: -120,
     });
     expect(buildBudgetComparison([], transactions).totalRealized.toFixed(2)).toBe("120.00");
-    expect(buildBudgetComparison([], transactions).categories.map(({ id }) => id)).toEqual(["food"]);
+    expect(buildBudgetComparison([], transactions).categories.map(({ id }) => id)).toEqual(["EXPENSE:mercado"]);
   });
 
   it("calculates pending transfer effects on available money without double counting", () => {

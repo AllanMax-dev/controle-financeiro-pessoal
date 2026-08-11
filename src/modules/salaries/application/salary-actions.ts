@@ -7,7 +7,7 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import { createSalarySchedule } from "@/modules/salaries/domain/salary-schedule";
@@ -181,7 +181,7 @@ export async function receiveSalaryAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   try {
@@ -299,7 +299,7 @@ export async function archiveSalaryAction(formData: FormData): Promise<void> {
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {

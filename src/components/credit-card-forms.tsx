@@ -142,3 +142,55 @@ export function CreditCardPurchaseForm({
     </form>
   );
 }
+
+export function CreditCardInvoicePaymentForm({
+  accounts,
+  action,
+  defaultAmount,
+  invoiceId,
+  today,
+}: {
+  accounts: { id: string; name: string }[];
+  action: CardAction;
+  defaultAmount: string;
+  invoiceId: string;
+  today: string;
+}) {
+  const [state, formAction] = useActionState(action, INITIAL_ACTION_STATE);
+
+  return (
+    <form action={formAction} className="entity-form compact-finance-form">
+      <input name="invoiceId" type="hidden" value={invoiceId} />
+      <div className="form-section-title field-wide">
+        <h2>Pagar fatura</h2>
+        <p>O pagamento reduz o saldo da conta sem duplicar a despesa do mes.</p>
+      </div>
+      <label className="field">
+        <span>Conta</span>
+        <select name="accountId" defaultValue="" required>
+          <option value="" disabled>
+            Selecione
+          </option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Valor</span>
+        <input name="amount" inputMode="decimal" defaultValue={defaultAmount} required />
+      </label>
+      <label className="field">
+        <span>Data</span>
+        <input name="paymentDate" type="date" defaultValue={today} required />
+      </label>
+      {state.error ? <p className="form-error">{state.error}</p> : null}
+      {state.success ? <p className="inline-success">{state.success}</p> : null}
+      <div className="form-actions field-wide">
+        <FormSubmitButton label="Pagar fatura" />
+      </div>
+    </form>
+  );
+}

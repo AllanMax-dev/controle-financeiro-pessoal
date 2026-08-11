@@ -8,7 +8,7 @@ import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   assertFinancialContextAccess,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveWritableFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -191,7 +191,7 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const { id, version, active } = parsed.data;
   const database = getDatabase();
 

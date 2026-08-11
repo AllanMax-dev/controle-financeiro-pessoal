@@ -7,8 +7,7 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
-  financialContextIds,
-  getAccessibleFinancialContexts,
+  getWritableFinancialContextIds,
   resolveFinancialContext,
 } from "@/modules/financial-contexts/application/financial-contexts";
 import type { ActionState } from "@/modules/shared/application/action-state";
@@ -156,8 +155,8 @@ export async function createTransferAction(
   }
 
   const access = await requireCurrentAccess();
-  const contextState = await resolveFinancialContext(access, parsed.data.contextId);
-  const accessibleContextIds = financialContextIds(contextState.scope) ?? [];
+  await resolveFinancialContext(access, parsed.data.contextId);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const validAccounts = await accountsAreValid(
     access.workspaceId,
     accessibleContextIds,
@@ -225,7 +224,7 @@ export async function updateTransferAction(
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
   const existing = await database.transfer.findFirst({
     where: {
@@ -326,7 +325,7 @@ export async function cancelTransferAction(formData: FormData): Promise<void> {
   }
 
   const access = await requireCurrentAccess();
-  const accessibleContextIds = (await getAccessibleFinancialContexts(access)).map(({ id }) => id);
+  const accessibleContextIds = await getWritableFinancialContextIds(access);
   const database = getDatabase();
 
   await database.$transaction(async (transaction) => {
