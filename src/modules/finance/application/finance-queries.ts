@@ -217,7 +217,10 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       orderBy: [{ dueMonth: "asc" }, { createdAt: "asc" }],
     }),
     database.creditCardPurchase.findMany({
-      where: { purchaseDate: { gte: start, lt: end }, workspaceId },
+      where: {
+        installments: { some: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId } },
+        workspaceId,
+      },
       include: {
         card: true,
         category: true,
