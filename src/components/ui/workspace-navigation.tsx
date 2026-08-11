@@ -59,6 +59,38 @@ function Brand({ month, workspaceName }: { month: string | null; workspaceName: 
   );
 }
 
+function ThemeToggle() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+
+    return window.localStorage.getItem("finance-theme") === "dark" ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  const nextTheme = theme === "dark" ? "light" : "dark";
+
+  return (
+    <button
+      aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo noturno"}
+      className="theme-toggle"
+      onClick={() => {
+        window.localStorage.setItem("finance-theme", nextTheme);
+        setTheme(nextTheme);
+      }}
+      suppressHydrationWarning
+      type="button"
+    >
+      <Icon name={theme === "dark" ? "sun" : "moon"} />
+      <span>{theme === "dark" ? "Modo claro" : "Modo noturno"}</span>
+    </button>
+  );
+}
+
 export function WorkspaceNavigation({
   editorName,
   workspaceName,
@@ -103,6 +135,7 @@ export function WorkspaceNavigation({
           <span>Operando como</span>
           <strong>{editorName}</strong>
         </div>
+        <ThemeToggle />
         <nav aria-label="Navegação principal">
           <NavigationLinks month={currentMonth} />
         </nav>
@@ -113,6 +146,7 @@ export function WorkspaceNavigation({
           <Icon name="menu" />
         </button>
         <Brand month={currentMonth} workspaceName={workspaceName} />
+        <ThemeToggle />
       </header>
 
       {open ? (
@@ -129,6 +163,7 @@ export function WorkspaceNavigation({
               <span>Operando como</span>
               <strong>{editorName}</strong>
             </div>
+            <ThemeToggle />
             <nav aria-label="Navegação principal">
               <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} />
             </nav>

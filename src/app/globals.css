@@ -1,20 +1,41 @@
 :root {
-  --background: #f7f2ed;
-  --surface: #fffdf9;
-  --surface-soft: #fff1e6;
-  --surface-muted: #fff7f0;
-  --ink: #261b16;
-  --muted: #75675f;
-  --border: #eaded5;
-  --strong-border: #d8c7bc;
-  --primary: #d73a12;
-  --primary-strong: #b92f0e;
-  --primary-soft: #ffe1d2;
-  --income: #1d7f4a;
-  --expense: #c83212;
-  --violet: #6f4dd7;
-  --shadow: 0 16px 38px rgb(93 48 24 / 10%);
-  --shadow-soft: 0 8px 22px rgb(93 48 24 / 7%);
+  color-scheme: light;
+  --background: #f4f7f4;
+  --surface: #fffefa;
+  --surface-soft: #e5f0ea;
+  --surface-muted: #eef5f1;
+  --ink: #17211d;
+  --muted: #66736d;
+  --border: #d9e4de;
+  --strong-border: #b8cac0;
+  --primary: #357a68;
+  --primary-strong: #246456;
+  --primary-soft: #d8ece4;
+  --income: #2f855a;
+  --expense: #b2554a;
+  --violet: #5f6fb2;
+  --shadow: 0 16px 38px rgb(38 70 58 / 10%);
+  --shadow-soft: 0 8px 22px rgb(38 70 58 / 7%);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #101816;
+  --surface: #17221f;
+  --surface-soft: #21312d;
+  --surface-muted: #1c2925;
+  --ink: #edf5f1;
+  --muted: #a8b8b1;
+  --border: #2b3d37;
+  --strong-border: #405850;
+  --primary: #6fb7a2;
+  --primary-strong: #8ccbb9;
+  --primary-soft: #1f3d35;
+  --income: #7bc899;
+  --expense: #d58478;
+  --violet: #9aa8ea;
+  --shadow: 0 16px 38px rgb(0 0 0 / 24%);
+  --shadow-soft: 0 8px 22px rgb(0 0 0 / 18%);
 }
 
 * {
@@ -59,7 +80,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgb(215 58 18 / 28%);
+  outline: 3px solid color-mix(in srgb, var(--primary) 30%, transparent);
   outline-offset: 3px;
 }
 
@@ -108,14 +129,14 @@ textarea:focus-visible {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 10px;
-  background: #fff7f0;
+  background: var(--primary-soft);
   color: var(--primary);
   font-weight: 900;
 }
 
 .workspace-shell {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -124,11 +145,14 @@ textarea:focus-visible {
   top: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   height: 100vh;
-  padding: 22px 16px;
-  background: var(--primary);
+  min-height: 0;
+  padding: 16px 12px;
+  overflow-y: auto;
+  background: var(--primary-strong);
   color: white;
+  scrollbar-width: thin;
 }
 
 .workspace-brand {
@@ -167,7 +191,7 @@ textarea:focus-visible {
 
 .workspace-nav-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -176,12 +200,13 @@ textarea:focus-visible {
 .workspace-nav-list a {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 46px;
-  padding: 11px 12px;
-  border-radius: 10px;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 9px;
   color: rgb(255 247 240 / 88%);
-  font-weight: 780;
+  font-size: 0.92rem;
+  font-weight: 760;
   text-decoration: none;
 }
 
@@ -208,7 +233,7 @@ textarea:focus-visible {
   gap: 12px;
   min-height: calc(64px + env(safe-area-inset-top));
   padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-  background: var(--primary);
+  background: var(--primary-strong);
   color: white;
 }
 
@@ -222,6 +247,11 @@ textarea:focus-visible {
   border-radius: 10px;
   background: rgb(255 255 255 / 16%);
   color: white;
+}
+
+.workspace-mobile-topbar .workspace-brand {
+  min-width: 0;
+  flex: 1;
 }
 
 .drawer-layer {
@@ -246,9 +276,31 @@ textarea:focus-visible {
   width: min(88vw, 340px);
   padding: calc(14px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
   overflow-y: auto;
-  background: var(--primary);
+  background: var(--primary-strong);
   color: white;
   box-shadow: 18px 0 40px rgb(38 27 22 / 24%);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 12%);
+  color: white;
+  font-weight: 780;
+}
+
+.workspace-mobile-topbar .theme-toggle {
+  margin-left: auto;
+}
+
+.workspace-mobile-topbar .theme-toggle span {
+  display: none;
 }
 
 .drawer-head {
@@ -312,7 +364,7 @@ textarea:focus-visible {
   min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: white;
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -345,8 +397,21 @@ textarea:focus-visible {
 
 .finance-secondary {
   border: 1px solid var(--strong-border);
-  background: white;
+  background: var(--surface);
   color: var(--ink);
+}
+
+.finance-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--expense) 38%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--expense) 12%, var(--surface));
+  color: var(--expense);
+  font-weight: 850;
 }
 
 .person-tabs {
@@ -500,11 +565,21 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface);
+}
+
+.finance-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: min(100%, 280px);
+  flex: 1 1 320px;
 }
 
 .finance-list span,
@@ -519,6 +594,68 @@ textarea:focus-visible {
 
 .finance-list b {
   white-space: nowrap;
+}
+
+.finance-list i {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.finance-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 220px;
+}
+
+.finance-edit-details {
+  position: relative;
+}
+
+.finance-edit-details summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--strong-border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 850;
+  list-style: none;
+}
+
+.finance-edit-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.finance-edit-details[open] {
+  width: 100%;
+}
+
+.finance-edit-details[open] summary {
+  margin-bottom: 10px;
+}
+
+.finance-edit-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-muted);
+}
+
+.finance-edit-form button,
+.finance-edit-form .finance-field-wide {
+  grid-column: 1 / -1;
 }
 
 .card-grid {
@@ -684,6 +821,14 @@ progress::-webkit-progress-value {
     grid-template-columns: 1fr;
   }
 
+  .finance-edit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-list-actions {
+    justify-content: flex-start;
+  }
+
   .inline-category-form {
     grid-template-columns: 1fr 52px;
   }
@@ -697,6 +842,11 @@ progress::-webkit-progress-value {
   .finance-list li {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .finance-item-main,
+  .finance-list-actions {
+    width: 100%;
   }
 
   .snapshot-card dl {

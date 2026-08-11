@@ -151,15 +151,20 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     transactions,
     fixedExpenses,
     salaries,
+    debts,
     debtInstallments,
     cards,
     cardInstallments,
+    cardPurchases,
     allOpenCardInstallments,
     invoices,
+    invoicePayments,
     goals,
-    goalMovements,
+    goalMovementTotals,
+    visibleGoalMovements,
     investments,
     transfers,
+    balanceAdjustments,
   ] = await Promise.all([
     getPeople(workspaceId),
     getAccountBalances(workspaceId),
@@ -190,6 +195,14 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: { personEditor: true },
       orderBy: [{ paymentDay: "asc" }, { description: "asc" }],
     }),
+    database.debt.findMany({
+      where: {
+        active: true,
+        workspaceId,
+      },
+      include: { category: true, personEditor: true },
+      orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
+    }),
     database.debtInstallment.findMany({
       where: { dueDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
       include: { debt: true, personEditor: true },
@@ -205,6 +218,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: { card: true, personEditor: true, purchase: true },
       orderBy: [{ dueMonth: "asc" }, { createdAt: "asc" }],
     }),
+    database.creditCardPurchase.findMany({
+      where: { purchaseDate: { gte: start, lt: end }, workspaceId },
+      include: { card: true, category: true, personEditor: true },
+      orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
+      take: 40,
+    }),
     database.creditCardInstallment.findMany({
       where: { invoice: { is: { status: { not: "PAID" } } }, status: "OPEN", workspaceId },
       select: { amount: true, cardId: true },
@@ -214,6 +233,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: { card: true, personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { dueDate: "asc" }],
     }),
+    database.creditCardInvoicePayment.findMany({
+      where: { paidAt: { gte: start, lt: end }, workspaceId },
+      include: { account: true, invoice: { include: { card: true } }, personEditor: true },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+      take: 40,
+    }),
     database.savingsGoal.findMany({
       where: { workspaceId },
       include: { personEditor: true },
@@ -222,6 +247,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     database.savingsGoalMovement.findMany({
       where: { workspaceId },
       select: { amount: true, goalId: true, type: true },
+    }),
+    database.savingsGoalMovement.findMany({
+      where: { movementDate: { gte: start, lt: end }, workspaceId },
+      include: { account: true, goal: true, personEditor: true },
+      orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }],
+      take: 40,
     }),
     database.investment.findMany({
       where: { active: true, workspaceId },
@@ -234,10 +265,16 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       orderBy: [{ transferDate: "desc" }],
       take: 20,
     }),
+    database.balanceAdjustment.findMany({
+      where: { effectiveAt: { gte: start, lt: end }, workspaceId },
+      include: { account: true, personEditor: true },
+      orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
+      take: 20,
+    }),
   ]);
   const goalTotals = new Map<string, Decimal>();
 
-  for (const movement of goalMovements) {
+  for (const movement of goalMovementTotals) {
     const current = goalTotals.get(movement.goalId) ?? money(0);
     goalTotals.set(
       movement.goalId,
@@ -296,6 +333,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     accounts,
     activeView,
     cardInstallments,
+    cardPurchases,
     cards: cards.map((card) => {
       const invoice = invoices.find(({ cardId }) => cardId === card.id);
       const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
@@ -313,13 +351,17 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     categories,
     coupleTotal,
+    balanceAdjustments,
+    debts,
     debtInstallments,
     fixedExpenses,
+    goalMovements: visibleGoalMovements,
     goals: goals.map((goal) => ({
       ...goal,
       currentAmount: goalTotals.get(goal.id) ?? money(0),
     })),
     investments,
+    invoicePayments,
     month,
     people,
     salaries,

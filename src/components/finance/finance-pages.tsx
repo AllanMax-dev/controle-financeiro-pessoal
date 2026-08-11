@@ -2,8 +2,6 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
-  archiveFixedExpenseAction,
-  archiveSalaryAction,
   createAccountAction,
   createBalanceAdjustmentAction,
   createCategoryAction,
@@ -17,15 +15,51 @@ import {
   createSavingsGoalAction,
   createTransactionAction,
   createTransferAction,
+  deleteAccountAction,
+  deleteBalanceAdjustmentAction,
+  deleteCategoryAction,
+  deleteCreditCardAction,
+  deleteCreditCardInvoicePaymentAction,
+  deleteCreditCardPurchaseAction,
+  deleteDebtAction,
+  deleteFixedExpenseAction,
+  deleteInvestmentAction,
+  deleteSalaryAction,
+  deleteSavingsGoalAction,
+  deleteSavingsGoalMovementAction,
+  deleteTransactionAction,
+  deleteTransferAction,
   payCreditCardInvoiceAction,
+  updateAccountAction,
+  updateBalanceAdjustmentAction,
+  updateCategoryAction,
+  updateCreditCardAction,
+  updateCreditCardInvoicePaymentAction,
+  updateCreditCardPurchaseAction,
+  updateDebtAction,
+  updateFixedExpenseAction,
+  updateInvestmentAction,
+  updateSalaryAction,
+  updateSavingsGoalAction,
+  updateSavingsGoalMovementAction,
+  updateTransactionAction,
+  updateTransferAction,
 } from "@/modules/finance/application/finance-actions";
 import type { getFinanceOptions, getFinanceOverview } from "@/modules/finance/application/finance-queries";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
 
 type Overview = Awaited<ReturnType<typeof getFinanceOverview>>;
 type Options = Awaited<ReturnType<typeof getFinanceOptions>>;
 
-const personColors = ["#6f4dd7", "#d73a12", "#1d7f4a"];
+const personColors = ["#5f6fb2", "#357a68", "#2f855a"];
+
+function moneyInputValue(value: { toFixed: (places: number) => string }) {
+  return value.toFixed(2).replace(".", ",");
+}
+
+function monthInputValue(value: Date) {
+  return toDateInputValue(value).slice(0, 7);
+}
 
 function ReturnFields({ month, returnTo }: { month: string; returnTo: string }) {
   return (
@@ -36,11 +70,11 @@ function ReturnFields({ month, returnTo }: { month: string; returnTo: string }) 
   );
 }
 
-function PersonSelect({ people }: { people: Options["people"] }) {
+function PersonSelect({ defaultValue, people }: { defaultValue?: string; people: Options["people"] }) {
   return (
     <label className="finance-field">
       <span>Pessoa</span>
-      <select name="personEditorId" required>
+      <select defaultValue={defaultValue} name="personEditorId" required>
         {people.map((person) => (
           <option key={person.id} value={person.id}>
             {person.name}
@@ -51,11 +85,11 @@ function PersonSelect({ people }: { people: Options["people"] }) {
   );
 }
 
-function AccountSelect({ accounts, label = "Conta", name = "accountId", optional = true }: { accounts: Options["accounts"]; label?: string; name?: string; optional?: boolean }) {
+function AccountSelect({ accounts, defaultValue, label = "Conta", name = "accountId", optional = true }: { accounts: Options["accounts"]; defaultValue?: string | null; label?: string; name?: string; optional?: boolean }) {
   return (
     <label className="finance-field">
       <span>{label}</span>
-      <select name={name} required={!optional}>
+      <select defaultValue={defaultValue ?? ""} name={name} required={!optional}>
         {optional ? <option value="">Sem conta</option> : null}
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
@@ -67,11 +101,11 @@ function AccountSelect({ accounts, label = "Conta", name = "accountId", optional
   );
 }
 
-function CategorySelect({ categories, kind }: { categories: Options["categories"]; kind: "EXPENSE" | "INCOME" }) {
+function CategorySelect({ categories, defaultValue, kind }: { categories: Options["categories"]; defaultValue?: string | null; kind: "EXPENSE" | "INCOME" }) {
   return (
     <label className="finance-field">
       <span>Categoria</span>
-      <select name="categoryId">
+      <select defaultValue={defaultValue ?? ""} name="categoryId">
         <option value="">Sem categoria</option>
         {categories
           .filter((category) => category.kind === kind)
@@ -85,29 +119,29 @@ function CategorySelect({ categories, kind }: { categories: Options["categories"
   );
 }
 
-function TextInput({ label, name, placeholder, required = true, type = "text" }: { label: string; name: string; placeholder?: string; required?: boolean; type?: string }) {
+function TextInput({ defaultValue, label, name, placeholder, required = true, type = "text" }: { defaultValue?: string | number | null; label: string; name: string; placeholder?: string; required?: boolean; type?: string }) {
   return (
     <label className="finance-field">
       <span>{label}</span>
-      <input name={name} placeholder={placeholder} required={required} type={type} />
+      <input defaultValue={defaultValue ?? undefined} name={name} placeholder={placeholder} required={required} type={type} />
     </label>
   );
 }
 
-function MoneyInput({ label, name = "amount" }: { label: string; name?: string }) {
+function MoneyInput({ defaultValue, label, name = "amount" }: { defaultValue?: string; label: string; name?: string }) {
   return (
     <label className="finance-field">
       <span>{label}</span>
-      <input inputMode="decimal" name={name} placeholder="0,00" required type="text" />
+      <input defaultValue={defaultValue} inputMode="decimal" name={name} placeholder="0,00" required type="text" />
     </label>
   );
 }
 
-function NotesField() {
+function NotesField({ defaultValue }: { defaultValue?: string | null } = {}) {
   return (
     <label className="finance-field finance-field-wide">
       <span>Observação</span>
-      <textarea maxLength={1000} name="notes" rows={3} />
+      <textarea defaultValue={defaultValue ?? undefined} maxLength={1000} name="notes" rows={3} />
     </label>
   );
 }
@@ -118,8 +152,33 @@ function CategoryInlineForm({ kind, month, returnTo }: { kind: "EXPENSE" | "INCO
       <ReturnFields month={month} returnTo={returnTo} />
       <input name="kind" type="hidden" value={kind} />
       <input name="name" placeholder="+ Nova categoria" required type="text" />
-      <input aria-label="Cor" defaultValue={kind === "INCOME" ? "#1d7f4a" : "#d73a12"} name="color" type="color" />
+      <input aria-label="Cor" defaultValue={kind === "INCOME" ? "#2f855a" : "#b2554a"} name="color" type="color" />
       <button type="submit">Adicionar</button>
+    </form>
+  );
+}
+
+type FormAction = (formData: FormData) => void | Promise<void>;
+
+function ItemActions({ children }: { children: ReactNode }) {
+  return <div className="finance-list-actions">{children}</div>;
+}
+
+function EditDetails({ children }: { children: ReactNode }) {
+  return (
+    <details className="finance-edit-details">
+      <summary>Editar</summary>
+      {children}
+    </details>
+  );
+}
+
+function DeleteForm({ action, idName, idValue, month, returnTo }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string }) {
+  return (
+    <form action={action}>
+      <ReturnFields month={month} returnTo={returnTo} />
+      <input name={idName} type="hidden" value={idValue} />
+      <button className="finance-danger" type="submit">Excluir</button>
     </form>
   );
 }
@@ -272,18 +331,46 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
             </select>
           </label>
           <MoneyInput label="Saldo inicial" name="initialBalance" />
-          <TextInput label="Cor" name="color" required={false} type="color" />
+          <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
           <button className="finance-primary" type="submit">Criar conta</button>
         </form>
       </WorkspacePage>
       <ul className="finance-list detached-list">
         {overview.accounts.map((account) => (
           <li key={account.id}>
-            <span>
+            <div className="finance-item-main">
+              <span>
               <strong>{account.name}</strong>
               <small>{account.personEditor.displayName} · {account.institution ?? "Sem instituição"}</small>
-            </span>
-            <b>{formatCurrency(account.balance)}</b>
+              </span>
+              <b>{formatCurrency(account.balance)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateAccountAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/bancos" />
+                  <input name="accountId" type="hidden" value={account.id} />
+                  <PersonSelect defaultValue={account.personEditorId} people={options.people} />
+                  <TextInput defaultValue={account.institution} label="Instituição" name="institution" required={false} />
+                  <TextInput defaultValue={account.name} label="Nome" name="name" />
+                  <label className="finance-field">
+                    <span>Tipo</span>
+                    <select defaultValue={account.type} name="type" required>
+                      <option value="CHECKING">Conta corrente</option>
+                      <option value="DIGITAL">Conta digital</option>
+                      <option value="SAVINGS">Poupança</option>
+                      <option value="CASH">Dinheiro</option>
+                      <option value="INVESTMENT">Investimento</option>
+                      <option value="OTHER">Outra</option>
+                    </select>
+                  </label>
+                  <MoneyInput defaultValue={moneyInputValue(account.initialBalance)} label="Saldo inicial" name="initialBalance" />
+                  <TextInput defaultValue={account.color} label="Cor" name="color" required={false} type="color" />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -295,6 +382,34 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
         <NotesField />
         <button className="finance-secondary" type="submit">Ajustar saldo atual</button>
       </form>
+      {overview.balanceAdjustments.length > 0 ? (
+        <ul className="finance-list detached-list">
+          {overview.balanceAdjustments.map((adjustment) => (
+            <li key={adjustment.id}>
+              <div className="finance-item-main">
+                <span>
+                  <strong>{adjustment.account.name}</strong>
+                  <small>{adjustment.personEditor.displayName} - ajuste em {formatDate(adjustment.effectiveAt)}</small>
+                </span>
+                <b>{formatCurrency(adjustment.targetBalance)}</b>
+              </div>
+              <ItemActions>
+                <EditDetails>
+                  <form action={updateBalanceAdjustmentAction} className="finance-edit-form">
+                    <ReturnFields month={month} returnTo="/bancos" />
+                    <input name="adjustmentId" type="hidden" value={adjustment.id} />
+                    <MoneyInput defaultValue={moneyInputValue(adjustment.targetBalance)} label="Saldo real" name="targetBalance" />
+                    <TextInput defaultValue={toDateInputValue(adjustment.effectiveAt)} label="Data" name="effectiveAt" type="date" />
+                    <NotesField defaultValue={adjustment.notes} />
+                    <button className="finance-secondary" type="submit">Salvar</button>
+                  </form>
+                </EditDetails>
+                <DeleteForm action={deleteBalanceAdjustmentAction} idName="adjustmentId" idValue={adjustment.id} month={month} returnTo="/bancos" />
+              </ItemActions>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </>
   );
 }
@@ -331,11 +446,38 @@ export function TransactionPageContent({ kind, month, options, overview, title }
           .filter((transaction) => transaction.type === (kind === "INCOME" ? "INCOME" : "EXPENSE"))
           .map((transaction) => (
             <li key={transaction.id}>
-              <span>
+              <div className="finance-item-main">
+                <span>
                 <strong>{transaction.description}</strong>
                 <small>{transaction.personEditor.displayName} · {transaction.category?.name ?? "Sem categoria"}</small>
-              </span>
-              <b>{formatCurrency(transaction.amount)}</b>
+                </span>
+                <b>{formatCurrency(transaction.amount)}</b>
+              </div>
+              <ItemActions>
+                <EditDetails>
+                  <form action={updateTransactionAction} className="finance-edit-form">
+                    <ReturnFields month={month} returnTo={returnPath} />
+                    <input name="transactionId" type="hidden" value={transaction.id} />
+                    <input name="type" type="hidden" value={kind} />
+                    <PersonSelect defaultValue={transaction.personEditorId} people={options.people} />
+                    <TextInput defaultValue={transaction.description} label="Descricao" name="description" />
+                    <MoneyInput defaultValue={moneyInputValue(transaction.amount)} label="Valor" />
+                    <TextInput defaultValue={toDateInputValue(transaction.competenceDate)} label="Data" name="date" type="date" />
+                    <CategorySelect categories={options.categories} defaultValue={transaction.categoryId} kind={kind} />
+                    <AccountSelect accounts={options.accounts} defaultValue={transaction.accountId} optional={false} />
+                    <label className="finance-field">
+                      <span>Status</span>
+                      <select defaultValue={transaction.status} name="status">
+                        <option value="SETTLED">Realizado</option>
+                        <option value="PENDING">Pendente</option>
+                      </select>
+                    </label>
+                    <NotesField defaultValue={transaction.notes} />
+                    <button className="finance-secondary" type="submit">Salvar</button>
+                  </form>
+                </EditDetails>
+                <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={transaction.id} month={month} returnTo={returnPath} />
+              </ItemActions>
             </li>
           ))}
       </ul>
@@ -370,16 +512,38 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
       <ul className="finance-list detached-list">
         {overview.fixedExpenses.map((expense) => (
           <li key={expense.id}>
-            <span>
+            <div className="finance-item-main">
+              <span>
               <strong>{expense.description}</strong>
               <small>{expense.personEditor.displayName} · vence dia {expense.dueDay}</small>
-            </span>
-            <b>{formatCurrency(expense.amount)}</b>
-            <form action={archiveFixedExpenseAction}>
-              <ReturnFields month={month} returnTo="/despesas-fixas" />
-              <input name="fixedExpenseId" type="hidden" value={expense.id} />
-              <button className="finance-secondary" type="submit">Encerrar</button>
-            </form>
+              </span>
+              <b>{formatCurrency(expense.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateFixedExpenseAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/despesas-fixas" />
+                  <input name="fixedExpenseId" type="hidden" value={expense.id} />
+                  <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
+                  <TextInput defaultValue={expense.description} label="Descricao" name="description" />
+                  <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
+                  <TextInput defaultValue={monthInputValue(expense.startMonth)} label="Mes inicial" name="startMonth" type="month" />
+                  <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
+                  <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
+                  <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
+                  <label className="finance-field">
+                    <span>Status padrao</span>
+                    <select defaultValue={expense.status} name="status">
+                      <option value="PENDING">Pendente</option>
+                      <option value="SETTLED">Realizado</option>
+                    </select>
+                  </label>
+                  <NotesField defaultValue={expense.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -413,16 +577,38 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
       <ul className="finance-list detached-list">
         {overview.salaries.map((salary) => (
           <li key={salary.id}>
-            <span>
+            <div className="finance-item-main">
+              <span>
               <strong>{salary.description}</strong>
               <small>{salary.personEditor.displayName} · dia {salary.paymentDay}</small>
-            </span>
-            <b>{formatCurrency(salary.amount)}</b>
-            <form action={archiveSalaryAction}>
-              <ReturnFields month={month} returnTo="/recebimentos" />
-              <input name="salaryId" type="hidden" value={salary.id} />
-              <button className="finance-secondary" type="submit">Encerrar</button>
-            </form>
+              </span>
+              <b>{formatCurrency(salary.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateSalaryAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/recebimentos" />
+                  <input name="salaryId" type="hidden" value={salary.id} />
+                  <PersonSelect defaultValue={salary.personEditorId} people={options.people} />
+                  <TextInput defaultValue={salary.description} label="Descricao" name="description" />
+                  <MoneyInput defaultValue={moneyInputValue(salary.amount)} label="Valor" />
+                  <TextInput defaultValue={monthInputValue(salary.startMonth)} label="Mes inicial" name="startMonth" type="month" />
+                  <TextInput defaultValue={salary.paymentDay} label="Dia de pagamento" name="paymentDay" type="number" />
+                  <label className="finance-field">
+                    <span>Frequencia</span>
+                    <select defaultValue={salary.frequency} name="frequency">
+                      <option value="MONTHLY">Mensal</option>
+                      <option value="FORTNIGHTLY">Quinzenal</option>
+                    </select>
+                  </label>
+                  <CategorySelect categories={options.categories} defaultValue={salary.categoryId} kind="INCOME" />
+                  <AccountSelect accounts={options.accounts} defaultValue={salary.accountId} />
+                  <NotesField defaultValue={salary.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteSalaryAction} idName="salaryId" idValue={salary.id} month={month} returnTo="/recebimentos" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -455,6 +641,44 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
         </form>
       </WorkspacePage>
       <ul className="finance-list detached-list">
+        {overview.debts.map((debt) => (
+          <li key={debt.id}>
+            <div className="finance-item-main">
+              <span>
+                <strong>{debt.description}</strong>
+                <small>{debt.personEditor.displayName} - {debt.installmentCount} parcelas</small>
+              </span>
+              <b>{formatCurrency(debt.totalAmount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateDebtAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/dividas" />
+                  <input name="debtId" type="hidden" value={debt.id} />
+                  <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
+                  <TextInput defaultValue={debt.description} label="Descricao" name="description" />
+                  <MoneyInput defaultValue={moneyInputValue(debt.totalAmount)} label="Valor total" name="totalAmount" />
+                  <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data inicial" name="startDate" type="date" />
+                  <TextInput defaultValue={toDateInputValue(debt.firstDueDate)} label="Primeiro vencimento" name="firstDueDate" type="date" />
+                  <TextInput defaultValue={debt.installmentCount} label="Numero de parcelas" name="installmentCount" type="number" />
+                  <label className="finance-field">
+                    <span>Frequencia</span>
+                    <select defaultValue={debt.frequency} name="frequency">
+                      <option value="MONTHLY">Mensal</option>
+                      <option value="FORTNIGHTLY">Quinzenal</option>
+                    </select>
+                  </label>
+                  <CategorySelect categories={options.categories} defaultValue={debt.categoryId} kind="EXPENSE" />
+                  <NotesField defaultValue={debt.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo="/dividas" />
+            </ItemActions>
+          </li>
+        ))}
+      </ul>
+      <ul className="finance-list detached-list">
         {overview.debtInstallments.map((installment) => (
           <li key={installment.id}>
             <span>
@@ -482,7 +706,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
           <TextInput label="Fechamento" name="closingDay" type="number" />
           <TextInput label="Vencimento" name="dueDay" type="number" />
           <AccountSelect accounts={options.accounts} label="Conta de pagamento" name="paymentAccountId" />
-          <TextInput label="Cor" name="color" required={false} type="color" />
+          <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
           <button className="finance-primary" type="submit">Criar cartão</button>
         </form>
       </WorkspacePage>
@@ -503,6 +727,24 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                 <button className="finance-secondary" type="submit">Pagar fatura</button>
               </form>
             ) : null}
+            <ItemActions>
+              <EditDetails>
+                <form action={updateCreditCardAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/cartoes" />
+                  <input name="cardId" type="hidden" value={card.id} />
+                  <PersonSelect defaultValue={card.personEditorId} people={options.people} />
+                  <TextInput defaultValue={card.name} label="Nome" name="name" />
+                  <TextInput defaultValue={card.institution} label="Instituicao" name="institution" required={false} />
+                  <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
+                  <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
+                  <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
+                  <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
+                  <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -527,6 +769,72 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
         <NotesField />
         <button className="finance-secondary" type="submit">Registrar compra</button>
       </form>
+      <ul className="finance-list detached-list">
+        {overview.cardPurchases.map((purchase) => (
+          <li key={purchase.id}>
+            <div className="finance-item-main">
+              <span>
+                <strong>{purchase.description}</strong>
+                <small>{purchase.personEditor.displayName} - {purchase.card.name} - {formatDate(purchase.purchaseDate)}</small>
+              </span>
+              <b>{formatCurrency(purchase.totalAmount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/cartoes" />
+                  <input name="purchaseId" type="hidden" value={purchase.id} />
+                  <label className="finance-field">
+                    <span>Cartao</span>
+                    <select defaultValue={purchase.cardId} name="cardId" required>
+                      {options.cards.map((card) => (
+                        <option key={card.id} value={card.id}>
+                          {card.personEditor.displayName} - {card.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
+                  <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
+                  <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
+                  <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data" name="purchaseDate" type="date" />
+                  <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
+                  <NotesField defaultValue={purchase.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
+            </ItemActions>
+          </li>
+        ))}
+      </ul>
+      <ul className="finance-list detached-list">
+        {overview.invoicePayments.map((payment) => (
+          <li key={payment.id}>
+            <div className="finance-item-main">
+              <span>
+                <strong>Pagamento - {payment.invoice.card.name}</strong>
+                <small>{payment.personEditor.displayName} - {payment.account.name} - {formatDate(payment.paidAt)}</small>
+              </span>
+              <b>{formatCurrency(payment.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/cartoes" />
+                  <input name="paymentId" type="hidden" value={payment.id} />
+                  <MoneyInput defaultValue={moneyInputValue(payment.amount)} label="Valor" />
+                  <TextInput defaultValue={toDateInputValue(payment.paidAt)} label="Data" name="paidAt" type="date" />
+                  <AccountSelect accounts={options.accounts} defaultValue={payment.accountId} label="Conta" name="accountId" optional={false} />
+                  <NotesField defaultValue={payment.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={payment.id} month={month} returnTo="/cartoes" />
+            </ItemActions>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
@@ -553,6 +861,25 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
             <strong>{goal.name}</strong>
             <small>{formatCurrency(goal.currentAmount)} de {formatCurrency(goal.targetAmount)}</small>
             <progress max={Number(goal.targetAmount)} value={Number(goal.currentAmount)} />
+            <ItemActions>
+              <EditDetails>
+                <form action={updateSavingsGoalAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/cofrinhos" />
+                  <input name="goalId" type="hidden" value={goal.id} />
+                  <PersonSelect defaultValue={goal.personEditorId} people={options.people} />
+                  <TextInput defaultValue={goal.name} label="Nome" name="name" />
+                  <MoneyInput defaultValue={moneyInputValue(goal.targetAmount)} label="Meta" name="targetAmount" />
+                  <TextInput defaultValue={goal.deadline ? toDateInputValue(goal.deadline) : null} label="Prazo" name="deadline" required={false} type="date" />
+                  <AccountSelect accounts={options.accounts} defaultValue={goal.accountId} label="Conta vinculada" />
+                  <label className="finance-field finance-field-wide">
+                    <span>Descricao</span>
+                    <textarea defaultValue={goal.description ?? undefined} name="description" rows={3} />
+                  </label>
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteSavingsGoalAction} idName="goalId" idValue={goal.id} month={month} returnTo="/cofrinhos" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -581,6 +908,39 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
         <NotesField />
         <button className="finance-secondary" type="submit">Salvar movimento</button>
       </form>
+      <ul className="finance-list detached-list">
+        {overview.goalMovements.map((movement) => (
+          <li key={movement.id}>
+            <div className="finance-item-main">
+              <span>
+                <strong>{movement.goal.name}</strong>
+                <small>{movement.personEditor.displayName} - {movement.type === "DEPOSIT" ? "Reserva" : "Retirada"} - {formatDate(movement.movementDate)}</small>
+              </span>
+              <b>{formatCurrency(movement.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateSavingsGoalMovementAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/cofrinhos" />
+                  <input name="movementId" type="hidden" value={movement.id} />
+                  <label className="finance-field">
+                    <span>Tipo</span>
+                    <select defaultValue={movement.type} name="type">
+                      <option value="DEPOSIT">Reservar</option>
+                      <option value="WITHDRAWAL">Retirar</option>
+                    </select>
+                  </label>
+                  <MoneyInput defaultValue={moneyInputValue(movement.amount)} label="Valor" />
+                  <TextInput defaultValue={toDateInputValue(movement.movementDate)} label="Data" name="movementDate" type="date" />
+                  <NotesField defaultValue={movement.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteSavingsGoalMovementAction} idName="movementId" idValue={movement.id} month={month} returnTo="/cofrinhos" />
+            </ItemActions>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
@@ -604,11 +964,30 @@ export function InvestmentsPageContent({ month, options, overview }: { month: st
       <ul className="finance-list detached-list">
         {overview.investments.map((investment) => (
           <li key={investment.id}>
-            <span>
+            <div className="finance-item-main">
+              <span>
               <strong>{investment.name}</strong>
               <small>{investment.personEditor.displayName} · {investment.institution ?? "Sem instituição"}</small>
-            </span>
-            <b>{formatCurrency(investment.amount)}</b>
+              </span>
+              <b>{formatCurrency(investment.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateInvestmentAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/investimentos" />
+                  <input name="investmentId" type="hidden" value={investment.id} />
+                  <PersonSelect defaultValue={investment.personEditorId} people={options.people} />
+                  <TextInput defaultValue={investment.name} label="Nome" name="name" />
+                  <TextInput defaultValue={investment.institution} label="Instituicao" name="institution" required={false} />
+                  <MoneyInput defaultValue={moneyInputValue(investment.amount)} label="Valor atual" />
+                  <TextInput defaultValue={toDateInputValue(investment.referenceDate)} label="Data de referencia" name="referenceDate" type="date" />
+                  <AccountSelect accounts={options.accounts} defaultValue={investment.accountId} label="Conta vinculada" />
+                  <NotesField defaultValue={investment.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteInvestmentAction} idName="investmentId" idValue={investment.id} month={month} returnTo="/investimentos" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -633,11 +1012,28 @@ export function TransfersPageContent({ month, options, overview }: { month: stri
       <ul className="finance-list detached-list">
         {overview.transfers.map((transfer) => (
           <li key={transfer.id}>
-            <span>
+            <div className="finance-item-main">
+              <span>
               <strong>{transfer.sourceAccount.name} → {transfer.destinationAccount.name}</strong>
               <small>{formatDate(transfer.transferDate)}</small>
-            </span>
-            <b>{formatCurrency(transfer.amount)}</b>
+              </span>
+              <b>{formatCurrency(transfer.amount)}</b>
+            </div>
+            <ItemActions>
+              <EditDetails>
+                <form action={updateTransferAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo="/transferencias" />
+                  <input name="transferId" type="hidden" value={transfer.id} />
+                  <AccountSelect accounts={options.accounts} defaultValue={transfer.sourceAccountId} label="Origem" name="sourceAccountId" optional={false} />
+                  <AccountSelect accounts={options.accounts} defaultValue={transfer.destinationAccountId} label="Destino" name="destinationAccountId" optional={false} />
+                  <MoneyInput defaultValue={moneyInputValue(transfer.amount)} label="Valor" />
+                  <TextInput defaultValue={toDateInputValue(transfer.transferDate)} label="Data" name="transferDate" type="date" />
+                  <NotesField defaultValue={transfer.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteTransferAction} idName="transferId" idValue={transfer.id} month={month} returnTo="/transferencias" />
+            </ItemActions>
           </li>
         ))}
       </ul>
@@ -660,11 +1056,32 @@ export function CategoriesPageContent({ month, options }: { month: string; optio
           <ul className="finance-list">
             {options.categories.map((category) => (
               <li key={category.id}>
-                <span>
-                  <strong>{category.name}</strong>
-                  <small>{category.kind === "INCOME" ? "Receita" : "Despesa"}</small>
-                </span>
-                <i style={{ background: category.color ?? "#d73a12" }} />
+                <div className="finance-item-main">
+                  <span>
+                    <strong>{category.name}</strong>
+                    <small>{category.kind === "INCOME" ? "Receita" : "Despesa"}</small>
+                  </span>
+                  <i style={{ background: category.color ?? "#357a68" }} />
+                </div>
+                <ItemActions>
+                  <EditDetails>
+                    <form action={updateCategoryAction} className="finance-edit-form">
+                      <ReturnFields month={month} returnTo="/categorias" />
+                      <input name="categoryId" type="hidden" value={category.id} />
+                      <TextInput defaultValue={category.name} label="Nome" name="name" />
+                      <label className="finance-field">
+                        <span>Tipo</span>
+                        <select defaultValue={category.kind} name="kind">
+                          <option value="EXPENSE">Despesa</option>
+                          <option value="INCOME">Receita</option>
+                        </select>
+                      </label>
+                      <TextInput defaultValue={category.color} label="Cor" name="color" required={false} type="color" />
+                      <button className="finance-secondary" type="submit">Salvar</button>
+                    </form>
+                  </EditDetails>
+                  <DeleteForm action={deleteCategoryAction} idName="categoryId" idValue={category.id} month={month} returnTo="/categorias" />
+                </ItemActions>
               </li>
             ))}
           </ul>
