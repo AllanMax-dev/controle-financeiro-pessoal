@@ -799,6 +799,25 @@ textarea:focus-visible {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 42%);
 }
 
+.purchase-section {
+  margin-top: 16px;
+}
+
+.purchase-section > h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 750;
+}
+
 .finance-create-sheet {
   padding: 0;
   overflow: hidden;
@@ -899,17 +918,20 @@ textarea:focus-visible {
   box-shadow: var(--shadow-xs);
 }
 
-.debt-list > li {
+.debt-list > li,
+.purchase-list > li {
   display: block;
   padding: 0;
   overflow: hidden;
 }
 
-.debt-details {
+.debt-details,
+.purchase-details {
   width: 100%;
 }
 
-.debt-details summary {
+.debt-details summary,
+.purchase-details summary {
   display: flex;
   align-items: center;
   width: 100%;
@@ -919,11 +941,13 @@ textarea:focus-visible {
   list-style: none;
 }
 
-.debt-details summary::-webkit-details-marker {
+.debt-details summary::-webkit-details-marker,
+.purchase-details summary::-webkit-details-marker {
   display: none;
 }
 
-.debt-details summary::after {
+.debt-details summary::after,
+.purchase-details summary::after {
   content: "Detalhes";
   margin-left: auto;
   padding: 7px 10px;
@@ -934,12 +958,14 @@ textarea:focus-visible {
   font-weight: 850;
 }
 
-.debt-details[open] summary {
+.debt-details[open] summary,
+.purchase-details[open] summary {
   border-bottom: 1px solid var(--border);
   background: var(--surface-muted);
 }
 
-.debt-detail-body {
+.debt-detail-body,
+.purchase-detail-body {
   display: grid;
   gap: 14px;
   padding: 14px;

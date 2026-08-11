@@ -880,6 +880,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
           <button className="finance-primary" type="submit">Criar cartão</button>
         </form>
       </WorkspacePage>
+      <PersonTabs month={month} overview={overview} />
       <ul className="card-grid">
         {overview.cards.map((card) => (
           <li key={card.id}>
@@ -939,45 +940,90 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
         <NotesField />
         <button className="finance-secondary" type="submit">Registrar compra</button>
       </form>
-      <ul className="finance-list detached-list">
-        {overview.cardPurchases.map((purchase) => (
-          <li key={purchase.id}>
-            <div className="finance-item-main">
-              <span>
-                <strong>{purchase.description}</strong>
-                <small>{purchase.personEditor.displayName} - {purchase.card.name} - {formatDate(purchase.purchaseDate)}</small>
-              </span>
-              <b>{formatCurrency(purchase.totalAmount)}</b>
-            </div>
-            <ItemActions>
-              <EditDetails>
-                <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/cartoes" />
-                  <input name="purchaseId" type="hidden" value={purchase.id} />
-                  <label className="finance-field">
-                    <span>Cartao</span>
-                    <select defaultValue={purchase.cardId} name="cardId" required>
-                      {options.cards.map((card) => (
-                        <option key={card.id} value={card.id}>
-                          {card.personEditor.displayName} - {card.name}
-                        </option>
+      <section className="purchase-section">
+        <h2>Compras feitas</h2>
+        {overview.cardPurchases.length === 0 ? (
+          <p className="empty-state">Nenhuma compra de cartão neste mês.</p>
+        ) : (
+          <ul className="finance-list detached-list purchase-list">
+            {overview.cardPurchases.map((purchase) => (
+              <li key={purchase.id}>
+                <details className="purchase-details">
+                  <summary>
+                    <div className="finance-item-main">
+                      <span>
+                        <strong>{purchase.description}</strong>
+                        <small>{purchase.personEditor.displayName} - {purchase.card.name} - {formatDate(purchase.purchaseDate)}</small>
+                      </span>
+                      <b>{formatCurrency(purchase.totalAmount)}</b>
+                    </div>
+                  </summary>
+                  <div className="purchase-detail-body">
+                    <dl className="debt-metadata">
+                      <div>
+                        <dt>Cartão</dt>
+                        <dd>{purchase.card.name}</dd>
+                      </div>
+                      <div>
+                        <dt>Pessoa</dt>
+                        <dd>{purchase.personEditor.displayName}</dd>
+                      </div>
+                      <div>
+                        <dt>Categoria</dt>
+                        <dd>{purchase.category?.name ?? "Sem categoria"}</dd>
+                      </div>
+                      <div>
+                        <dt>Parcelas</dt>
+                        <dd>{purchase.installmentCount}x</dd>
+                      </div>
+                    </dl>
+                    <ul className="installment-list">
+                      {purchase.installments.map((installment) => (
+                        <li key={installment.id}>
+                          <span>
+                            <strong>Parcela {installment.number}</strong>
+                            <small>Fatura {formatDate(installment.dueMonth)}</small>
+                          </span>
+                          <b>{formatCurrency(installment.amount)}</b>
+                          <span className="finance-status" data-status={installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+                            {installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                          </span>
+                        </li>
                       ))}
-                    </select>
-                  </label>
-                  <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
-                  <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
-                  <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
-                  <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data" name="purchaseDate" type="date" />
-                  <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
-                  <NotesField defaultValue={purchase.notes} />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
-            </ItemActions>
-          </li>
-        ))}
-      </ul>
+                    </ul>
+                    <ItemActions>
+                      <EditDetails>
+                        <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
+                          <ReturnFields month={month} returnTo="/cartoes" />
+                          <input name="purchaseId" type="hidden" value={purchase.id} />
+                          <label className="finance-field">
+                            <span>Cartao</span>
+                            <select defaultValue={purchase.cardId} name="cardId" required>
+                              {options.cards.map((card) => (
+                                <option key={card.id} value={card.id}>
+                                  {card.personEditor.displayName} - {card.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
+                          <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
+                          <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
+                          <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data" name="purchaseDate" type="date" />
+                          <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
+                          <NotesField defaultValue={purchase.notes} />
+                          <button className="finance-secondary" type="submit">Salvar</button>
+                        </form>
+                      </EditDetails>
+                      <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
+                    </ItemActions>
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <ul className="finance-list detached-list">
         {overview.invoicePayments.map((payment) => (
           <li key={payment.id}>
