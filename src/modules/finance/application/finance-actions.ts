@@ -823,6 +823,18 @@ export async function deleteTransactionAction(formData: FormData) {
   const id = text(formData, "transactionId");
 
   await getDatabase().$transaction(async (transaction) => {
+    const transactionRecord = await transaction.transaction.findFirst({
+      where: { id, workspaceId: access.workspaceId },
+      select: { debtInstallmentId: true },
+    });
+
+    if (transactionRecord?.debtInstallmentId) {
+      await transaction.debtInstallment.updateMany({
+        where: { id: transactionRecord.debtInstallmentId, workspaceId: access.workspaceId },
+        data: { paidAt: null, status: "PENDING" },
+      });
+    }
+
     await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Transaction", workspaceId: access.workspaceId } });
     await transaction.transaction.deleteMany({ where: { id, workspaceId: access.workspaceId } });
   });
@@ -869,16 +881,17 @@ export async function deleteFixedExpenseAction(formData: FormData) {
   const id = text(formData, "fixedExpenseId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const occurrence = await transaction.transaction.findFirst({
+    const transactions = await transaction.transaction.findMany({
       where: { fixedExpenseId: id, workspaceId: access.workspaceId },
       select: { id: true },
     });
-
-    if (occurrence) {
-      throw new Error("Gasto fixo com historico deve ser encerrado, nao excluido.");
-    }
+    const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
 
     await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "FixedExpense", workspaceId: access.workspaceId } });
+    if (transactionIds.length > 0) {
+      await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
+    }
+    await transaction.transaction.deleteMany({ where: { fixedExpenseId: id, workspaceId: access.workspaceId } });
     await transaction.fixedExpense.deleteMany({ where: { id, workspaceId: access.workspaceId } });
   });
 
@@ -924,16 +937,17 @@ export async function deleteSalaryAction(formData: FormData) {
   const id = text(formData, "salaryId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const receipt = await transaction.transaction.findFirst({
+    const transactions = await transaction.transaction.findMany({
       where: { salaryId: id, workspaceId: access.workspaceId },
       select: { id: true },
     });
-
-    if (receipt) {
-      throw new Error("Salario com recebimento confirmado deve ser encerrado, nao excluido.");
-    }
+    const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
 
     await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Salary", workspaceId: access.workspaceId } });
+    if (transactionIds.length > 0) {
+      await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
+    }
+    await transaction.transaction.deleteMany({ where: { salaryId: id, workspaceId: access.workspaceId } });
     await transaction.salary.deleteMany({ where: { id, workspaceId: access.workspaceId } });
   });
 
@@ -1188,6 +1202,30 @@ export async function payDebtInstallmentAction(formData: FormData) {
   refreshAndRedirect(returnTo(formData, "/dividas"));
 }
 
+export async function deleteDebtInstallmentPaymentAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const installmentId = text(formData, "installmentId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    const installment = await transaction.debtInstallment.findFirstOrThrow({
+      where: { id: installmentId, workspaceId: access.workspaceId },
+      include: { transaction: { select: { id: true } } },
+    });
+
+    if (installment.transaction) {
+      await transaction.auditLog.deleteMany({ where: { entityId: installment.transaction.id, entityType: "Transaction", workspaceId: access.workspaceId } });
+      await transaction.transaction.deleteMany({ where: { id: installment.transaction.id, workspaceId: access.workspaceId } });
+    }
+
+    await transaction.debtInstallment.update({
+      where: { id: installment.id },
+      data: { paidAt: null, status: "PENDING" },
+    });
+  });
+
+  refreshAndRedirect(returnTo(formData, "/dividas"));
+}
+
 export async function updateDebtAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "debtId");
@@ -1201,24 +1239,6 @@ export async function updateDebtAction(formData: FormData) {
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
 
   await getDatabase().$transaction(async (transaction) => {
-    const currentDebt = await transaction.debt.findFirstOrThrow({
-      where: { id, workspaceId: access.workspaceId },
-      include: { installments: { select: { status: true } } },
-    });
-    const hasPaidInstallment = currentDebt.installments.some(({ status }) => status === "PAID");
-
-    if (
-      hasPaidInstallment &&
-      (!money(currentDebt.totalAmount).equals(totalAmount) ||
-        currentDebt.installmentCount !== installmentCount ||
-        currentDebt.firstDueDate.getTime() !== firstDueDate.getTime() ||
-        currentDebt.frequency !== frequency ||
-        currentDebt.startDate.getTime() !== dateFromInput(text(formData, "startDate")).getTime() ||
-        currentDebt.personEditorId !== personEditorId)
-    ) {
-      throw new Error("Divida com parcela paga nao pode ter valor, pessoa ou vencimentos reescritos.");
-    }
-
     const { count } = await transaction.debt.updateMany({
       where: { id, workspaceId: access.workspaceId },
       data: {
@@ -1240,19 +1260,35 @@ export async function updateDebtAction(formData: FormData) {
       throw new Error("Divida nao encontrada.");
     }
 
-    if (!hasPaidInstallment) {
-      await transaction.debtInstallment.deleteMany({ where: { debtId: id, workspaceId: access.workspaceId } });
-      await transaction.debtInstallment.createMany({
-        data: buildInstallmentPlan(totalAmount, installmentCount).map((installment, index) => ({
-          amount: installment.amount,
-          debtId: id,
-          dueDate: installmentDueDate(firstDueDate, index, frequency),
-          number: installment.number,
-          personEditorId,
-          workspaceId: access.workspaceId,
-        })),
+    const currentInstallments = await transaction.debtInstallment.findMany({
+      where: { debtId: id, workspaceId: access.workspaceId },
+      select: { id: true },
+    });
+    const installmentIds = currentInstallments.map((installment) => installment.id);
+
+    if (installmentIds.length > 0) {
+      const transactions = await transaction.transaction.findMany({
+        where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
+        select: { id: true },
       });
+      const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
+
+      if (transactionIds.length > 0) {
+        await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
+      }
+      await transaction.transaction.deleteMany({ where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId } });
     }
+    await transaction.debtInstallment.deleteMany({ where: { debtId: id, workspaceId: access.workspaceId } });
+    await transaction.debtInstallment.createMany({
+      data: buildInstallmentPlan(totalAmount, installmentCount).map((installment, index) => ({
+        amount: installment.amount,
+        debtId: id,
+        dueDate: installmentDueDate(firstDueDate, index, frequency),
+        number: installment.number,
+        personEditorId,
+        workspaceId: access.workspaceId,
+      })),
+    });
   });
 
   await audit(access.workspaceId, access.editorId, "Debt", id, "update");
@@ -1264,15 +1300,24 @@ export async function deleteDebtAction(formData: FormData) {
   const id = text(formData, "debtId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const paidInstallment = await transaction.debtInstallment.findFirst({
-      where: { debtId: id, status: "PAID", workspaceId: access.workspaceId },
+    const installments = await transaction.debtInstallment.findMany({
+      where: { debtId: id, workspaceId: access.workspaceId },
       select: { id: true },
     });
+    const installmentIds = installments.map((installment) => installment.id);
 
-    if (paidInstallment) {
-      throw new Error("Divida com pagamento deve preservar historico e nao pode ser excluida.");
+    if (installmentIds.length > 0) {
+      const transactions = await transaction.transaction.findMany({
+        where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
+        select: { id: true },
+      });
+      const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
+
+      if (transactionIds.length > 0) {
+        await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
+      }
+      await transaction.transaction.deleteMany({ where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId } });
     }
-
     await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Debt", workspaceId: access.workspaceId } });
     await transaction.debt.deleteMany({ where: { id, workspaceId: access.workspaceId } });
   });
@@ -1356,15 +1401,6 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
       select: { id: true, invoiceId: true },
     });
     oldInvoiceIds.push(...currentInstallments.map(({ invoiceId }) => invoiceId).filter((invoiceId): invoiceId is string => Boolean(invoiceId)));
-
-    const paidInvoice = await transaction.creditCardInvoice.findFirst({
-      where: { id: { in: oldInvoiceIds }, status: "PAID", workspaceId: access.workspaceId },
-      select: { id: true },
-    });
-
-    if (paidInvoice) {
-      throw new Error("Compra com fatura paga nao pode ser reescrita.");
-    }
 
     await transaction.transaction.deleteMany({
       where: { creditCardInstallmentId: { in: currentInstallments.map(({ id }) => id) }, workspaceId: access.workspaceId },

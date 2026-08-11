@@ -23,6 +23,7 @@ import {
   deleteCreditCardInvoicePaymentAction,
   deleteCreditCardPurchaseAction,
   deleteDebtAction,
+  deleteDebtInstallmentPaymentAction,
   deleteFixedExpenseAction,
   deleteInvestmentAction,
   deleteSalaryAction,
@@ -582,6 +583,9 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
                   <button className="finance-secondary" type="submit">Pagar</button>
                 </form>
               ) : null}
+              {expense.status === "SETTLED" && expense.transactionId ? (
+                <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={expense.transactionId} month={month} returnTo="/despesas-fixas" />
+              ) : null}
             </ItemActions>
           </li>
         ))}
@@ -659,6 +663,9 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                       <input name="dueDate" type="hidden" value={toDateInputValue(salary.dueDate)} />
                       <button className="finance-secondary" type="submit">Confirmar</button>
                     </form>
+                  ) : null}
+                  {salary.status === "SETTLED" && salary.transactionId ? (
+                    <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={salary.transactionId} month={month} returnTo="/recebimentos" />
                   ) : null}
                 </div>
               </li>
@@ -811,6 +818,9 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <NotesField />
                             <button className="finance-secondary" type="submit">Pagar parcela</button>
                           </form>
+                        ) : null}
+                        {installment.status === "PAID" && installment.transaction ? (
+                          <DeleteForm action={deleteDebtInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/dividas" />
                         ) : null}
                       </li>
                     ))}

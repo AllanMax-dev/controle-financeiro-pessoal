@@ -198,7 +198,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         active: true,
         workspaceId,
       },
-      include: { category: true, installments: { orderBy: { number: "asc" } }, personEditor: true },
+      include: { category: true, installments: { include: { transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
       orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
     }),
     database.debtInstallment.findMany({
