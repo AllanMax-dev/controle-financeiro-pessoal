@@ -30,7 +30,9 @@ import {
   deleteSavingsGoalMovementAction,
   deleteTransactionAction,
   deleteTransferAction,
+  payDebtInstallmentAction,
   payCreditCardInvoiceAction,
+  payFixedExpenseAction,
   updateAccountAction,
   updateBalanceAdjustmentAction,
   updateCategoryAction,
@@ -231,15 +233,19 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
       person: salary.personEditor.displayName,
       status: salary.status === "SETTLED" ? "Confirmado" : "Pendente",
     })),
-    ...overview.fixedExpenses.map((expense) => ({
+    ...overview.fixedExpenseOccurrences
+      .filter((expense) => expense.status === "PENDING")
+      .map((expense) => ({
       amount: expense.amount,
-      dueDate: null,
+      dueDate: expense.dueDate,
       id: `fixed-${expense.id}`,
       name: expense.description,
       person: expense.personEditor.displayName,
       status: "Pendente",
     })),
-    ...overview.debtInstallments.map((installment) => ({
+    ...overview.debtInstallments
+      .filter((installment) => installment.status === "PENDING")
+      .map((installment) => ({
       amount: installment.amount,
       dueDate: installment.dueDate,
       id: `debt-${installment.id}`,
@@ -247,7 +253,17 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
       person: installment.personEditor.displayName,
       status: `parcela ${installment.number}`,
     })),
-  ].slice(0, 6);
+    ...overview.cards
+      .filter((card) => card.invoiceStatus !== "PAID" && card.invoiceAmount.minus(card.invoicePaidAmount).greaterThan(0))
+      .map((card) => ({
+        amount: card.invoiceAmount.minus(card.invoicePaidAmount),
+        dueDate: card.invoiceDueDate,
+        id: `invoice-${card.id}`,
+        name: card.name,
+        person: card.personEditor.displayName,
+        status: "Fatura",
+      })),
+  ].sort((left, right) => left.dueDate.getTime() - right.dueDate.getTime()).slice(0, 6);
 
   return (
     <>
@@ -267,6 +283,10 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
               <div>
                 <dt>Recebimentos</dt>
                 <dd>{formatCurrency(card.total.income)}</dd>
+              </div>
+              <div>
+                <dt>A receber</dt>
+                <dd>{formatCurrency(card.total.receivable)}</dd>
               </div>
               <div>
                 <dt>Falta pagar</dt>
@@ -324,18 +344,14 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
   );
 }
 
-function WorkspacePage({ children, formTitle, listTitle, month, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; subtitle: string; title: string }) {
+function WorkspacePage({ children, formTitle, month, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; subtitle: string; title: string }) {
   return (
     <>
       <PageHeader month={month} subtitle={subtitle} title={title} />
-      <section className="finance-workspace">
+      <section className="finance-workspace finance-workspace-form-only">
         <article className="finance-panel">
           <h2>{formTitle}</h2>
           {children}
-        </article>
-        <article className="finance-panel finance-panel-list">
-          <h2>{listTitle}</h2>
-          <div id="finance-list-slot" />
         </article>
       </section>
     </>
@@ -542,8 +558,39 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         </form>
       </WorkspacePage>
       <ul className="finance-list detached-list">
-        {overview.fixedExpenses.map((expense) => (
+        {overview.fixedExpenseOccurrences.map((expense) => (
           <li key={expense.id}>
+            <div className="finance-item-main">
+              <span>
+              <strong>{expense.description}</strong>
+              <small>{expense.personEditor.displayName} - vence {formatDate(expense.dueDate)}</small>
+              </span>
+              <b>{formatCurrency(expense.amount)}</b>
+            </div>
+            <ItemActions>
+              <span className="finance-status" data-status={expense.status}>
+                {expense.status === "SETTLED" ? "Pago" : "Pendente"}
+              </span>
+              {expense.status === "PENDING" ? (
+                <form action={payFixedExpenseAction} className="inline-payment-form">
+                  <ReturnFields month={month} returnTo="/despesas-fixas" />
+                  <input name="fixedExpenseId" type="hidden" value={expense.fixedExpenseId} />
+                  <input name="dueDate" type="hidden" value={toDateInputValue(expense.dueDate)} />
+                  <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Pagamento" name="amount" />
+                  <TextInput defaultValue={toDateInputValue(expense.dueDate)} label="Data" name="paidAt" type="date" />
+                  <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} label="Conta" name="accountId" optional={false} />
+                  <button className="finance-secondary" type="submit">Pagar</button>
+                </form>
+              ) : null}
+            </ItemActions>
+          </li>
+        ))}
+      </ul>
+      <details className="compact-card">
+        <summary>Gerenciar recorrencias</summary>
+        <ul className="finance-list detached-list">
+          {overview.fixedExpenses.map((expense) => (
+            <li key={expense.id}>
             <div className="finance-item-main">
               <span>
               <strong>{expense.description}</strong>
@@ -577,8 +624,9 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
               <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
             </ItemActions>
           </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+      </details>
     </>
   );
 }
@@ -618,23 +666,25 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
           </ul>
         </section>
       ) : null}
-      <form action={createSalaryAction} className="finance-form compact-card">
+      <details className="compact-card">
+        <summary>Gerenciar salarios recorrentes</summary>
+      <form action={createSalaryAction} className="finance-form">
         <ReturnFields month={month} returnTo="/recebimentos" />
         <h2>Salário recorrente</h2>
         <PersonSelect people={options.people} />
         <TextInput label="Descrição" name="description" placeholder="Salário" />
-        <MoneyInput label="Valor" />
+        <MoneyInput label="Valor mensal liquido" />
         <TextInput label="Mês inicial" name="startMonth" type="month" />
         <TextInput label="Dia de pagamento" name="paymentDay" type="number" />
-        <label className="finance-field">
+        <label className="finance-field finance-field-wide">
           <span>Frequência</span>
           <select name="frequency">
             <option value="MONTHLY">Mensal</option>
-            <option value="FORTNIGHTLY">Quinzenal</option>
+            <option value="FORTNIGHTLY">Quinzenal, dividido entre o dia informado e o fim do mes</option>
           </select>
         </label>
         <CategorySelect categories={options.categories} kind="INCOME" />
-        <AccountSelect accounts={options.accounts} />
+        <AccountSelect accounts={options.accounts} optional={false} />
         <button className="finance-secondary" type="submit">Cadastrar salário</button>
       </form>
       <ul className="finance-list detached-list">
@@ -654,7 +704,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                   <input name="salaryId" type="hidden" value={salary.id} />
                   <PersonSelect defaultValue={salary.personEditorId} people={options.people} />
                   <TextInput defaultValue={salary.description} label="Descricao" name="description" />
-                  <MoneyInput defaultValue={moneyInputValue(salary.amount)} label="Valor" />
+                  <MoneyInput defaultValue={moneyInputValue(salary.amount)} label="Valor mensal liquido" />
                   <TextInput defaultValue={monthInputValue(salary.startMonth)} label="Mes inicial" name="startMonth" type="month" />
                   <TextInput defaultValue={salary.paymentDay} label="Dia de pagamento" name="paymentDay" type="number" />
                   <label className="finance-field">
@@ -675,6 +725,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
           </li>
         ))}
       </ul>
+      </details>
     </>
   );
 }
@@ -749,6 +800,17 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
                           {installment.status === "PAID" ? "Pago" : installment.status === "CANCELED" ? "Cancelado" : "Pendente"}
                         </span>
+                        {installment.status === "PENDING" ? (
+                          <form action={payDebtInstallmentAction} className="inline-payment-form installment-payment-form">
+                            <ReturnFields month={month} returnTo="/dividas" />
+                            <input name="installmentId" type="hidden" value={installment.id} />
+                            <MoneyInput defaultValue={moneyInputValue(installment.amount)} label="Pagamento" name="amount" />
+                            <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
+                            <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+                            <NotesField />
+                            <button className="finance-secondary" type="submit">Pagar parcela</button>
+                          </form>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

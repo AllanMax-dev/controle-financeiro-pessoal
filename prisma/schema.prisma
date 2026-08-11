@@ -226,6 +226,7 @@ model Transaction {
   categoryId     String?     @db.Uuid
   fixedExpenseId String?     @db.Uuid
   salaryId       String?     @db.Uuid
+  debtInstallmentId String?  @unique @db.Uuid
   creditCardInstallmentId String? @unique @db.Uuid
   description    String      @db.VarChar(160)
   type           TransactionType
@@ -247,8 +248,11 @@ model Transaction {
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   fixedExpense   FixedExpense? @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
   salary         Salary?     @relation(fields: [salaryId], references: [id], onDelete: SetNull)
+  debtInstallment DebtInstallment? @relation(fields: [debtInstallmentId], references: [id], onDelete: SetNull)
   creditCardInstallment CreditCardInstallment? @relation(fields: [creditCardInstallmentId], references: [id], onDelete: SetNull)
 
+  @@unique([fixedExpenseId, competenceDate])
+  @@unique([salaryId, competenceDate])
   @@index([workspaceId, personEditorId, competenceDate])
   @@index([workspaceId, type, status])
   @@index([workspaceId, accountId])
@@ -399,6 +403,7 @@ model DebtInstallment {
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   debt           Debt        @relation(fields: [debtId], references: [id], onDelete: Cascade)
   personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
+  transaction    Transaction?
 
   @@unique([debtId, number])
   @@index([workspaceId, personEditorId, dueDate])

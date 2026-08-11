@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildInstallmentPlan,
   buildPersonTotal,
+  buildSalaryOccurrencePlan,
   installmentDueDate,
   monthBounds,
+  resolveInvoiceMonth,
   sumPersonTotals,
 } from "../../src/modules/finance/domain/finance-calculations";
 
@@ -29,6 +31,25 @@ describe("finance calculations", () => {
     const plan = buildInstallmentPlan("90.00", 3);
 
     expect(plan.map((_, index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-08-10", "2026-08-24", "2026-09-07"]);
+  });
+
+  it("keeps monthly salary as one monthly occurrence", () => {
+    const plan = buildSalaryOccurrencePlan("4000.00", "MONTHLY", new Date("2026-08-01T00:00:00.000Z"), 15);
+
+    expect(plan.map((occurrence) => occurrence.amount.toFixed(2))).toEqual(["4000.00"]);
+    expect(plan.map((occurrence) => occurrence.dueDate.toISOString().slice(0, 10))).toEqual(["2026-08-15"]);
+  });
+
+  it("splits fortnightly salary within the same month without duplicating the monthly amount", () => {
+    const plan = buildSalaryOccurrencePlan("4000.00", "FORTNIGHTLY", new Date("2026-08-01T00:00:00.000Z"), 15);
+
+    expect(plan.map((occurrence) => occurrence.amount.toFixed(2))).toEqual(["2000.00", "2000.00"]);
+    expect(plan.map((occurrence) => occurrence.dueDate.toISOString().slice(0, 10))).toEqual(["2026-08-15", "2026-08-31"]);
+  });
+
+  it("resolves credit card invoice month from the closing day", () => {
+    expect(resolveInvoiceMonth(new Date("2026-08-03T00:00:00.000Z"), 5).toISOString().slice(0, 10)).toBe("2026-08-01");
+    expect(resolveInvoiceMonth(new Date("2026-08-07T00:00:00.000Z"), 5).toISOString().slice(0, 10)).toBe("2026-09-01");
   });
 
   it("aggregates personal totals into the couple view", () => {

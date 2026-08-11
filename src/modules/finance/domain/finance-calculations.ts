@@ -9,6 +9,7 @@ export type PersonTotalInput = {
   investments: Decimal.Value;
   paid: Decimal.Value;
   pending: Decimal.Value;
+  receivable?: Decimal.Value;
 };
 
 export function monthBounds(month: string) {
@@ -59,6 +60,42 @@ export function installmentDueDate(firstDueDate: Date, index: number, frequency:
   return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : addMonths(firstDueDate, index);
 }
 
+export function fixedExpenseDueDate(monthStart: Date, dueDay: number) {
+  return clampDayInMonth(monthStart, dueDay);
+}
+
+export function salaryOccurrenceDates(monthStart: Date, paymentDay: number, frequency: "MONTHLY" | "FORTNIGHTLY") {
+  const firstPayment = clampDayInMonth(monthStart, paymentDay);
+
+  if (frequency === "MONTHLY") {
+    return [firstPayment];
+  }
+
+  const secondPayment = clampDayInMonth(monthStart, 31);
+
+  return firstPayment.getTime() === secondPayment.getTime()
+    ? [firstPayment]
+    : [firstPayment, secondPayment].sort((left, right) => left.getTime() - right.getTime());
+}
+
+export function buildSalaryOccurrencePlan(total: Decimal.Value, frequency: "MONTHLY" | "FORTNIGHTLY", monthStart: Date, paymentDay: number) {
+  const dueDates = salaryOccurrenceDates(monthStart, paymentDay, frequency);
+  const amounts = allocateMoney(total, dueDates.length);
+
+  return dueDates.map((dueDate, index) => ({
+    amount: amounts[index]!,
+    dueDate,
+    installmentNumber: index + 1,
+  }));
+}
+
+export function resolveInvoiceMonth(purchaseDate: Date, closingDay: number) {
+  const purchaseMonth = new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), 1));
+  const closingDate = clampDayInMonth(purchaseMonth, closingDay);
+
+  return purchaseDate.getTime() <= closingDate.getTime() ? purchaseMonth : addMonths(purchaseMonth, 1);
+}
+
 export function buildInstallmentPlan(total: Decimal.Value, count: number) {
   return allocateMoney(total, count).map((amount, index) => ({
     amount,
@@ -73,6 +110,7 @@ export function buildPersonTotal(input: PersonTotalInput) {
   const investments = money(input.investments);
   const paid = money(input.paid);
   const pending = money(input.pending);
+  const receivable = money(input.receivable ?? 0);
 
   return {
     available,
@@ -82,6 +120,7 @@ export function buildPersonTotal(input: PersonTotalInput) {
     net: money(income.minus(expenses)),
     paid,
     pending,
+    receivable,
     wealth: money(available.plus(investments)),
   };
 }
@@ -94,5 +133,6 @@ export function sumPersonTotals(values: PersonTotalInput[]) {
     investments: sumMoney(values.map(({ investments }) => investments)),
     paid: sumMoney(values.map(({ paid }) => paid)),
     pending: sumMoney(values.map(({ pending }) => pending)),
+    receivable: sumMoney(values.map(({ receivable }) => receivable ?? 0)),
   });
 }

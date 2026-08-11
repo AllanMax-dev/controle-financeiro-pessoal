@@ -511,6 +511,10 @@ textarea:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.finance-workspace-form-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .finance-panel,
 .compact-card {
   padding: 16px;
@@ -520,6 +524,11 @@ textarea:focus-visible {
 .compact-card h2 {
   margin: 0 0 14px;
   font-size: 1.05rem;
+}
+
+.compact-card > summary {
+  cursor: pointer;
+  font-weight: 850;
 }
 
 .finance-form {
@@ -661,6 +670,10 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface);
+}
+
+.installment-payment-form {
+  grid-column: 1 / -1;
 }
 
 .finance-item-main {
