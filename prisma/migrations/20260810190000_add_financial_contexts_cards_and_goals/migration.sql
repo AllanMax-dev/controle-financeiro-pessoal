@@ -145,7 +145,7 @@ WHERE a."id" = s."accountId"
   AND s."contextId" IS NULL;
 
 WITH debt_single_editor AS (
-  SELECT d."id" AS "debtId", MIN(dis."editorId") AS "editorId", COUNT(DISTINCT dis."editorId") AS "editorCount"
+  SELECT d."id" AS "debtId", MIN(dis."editorId"::text)::uuid AS "editorId", COUNT(DISTINCT dis."editorId") AS "editorCount"
   FROM "Debt" d
   LEFT JOIN "DebtInstallment" di ON di."debtId" = d."id"
   LEFT JOIN "DebtInstallmentShare" dis ON dis."installmentId" = di."id"
