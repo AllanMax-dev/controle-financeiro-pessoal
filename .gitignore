@@ -20,6 +20,10 @@ dist/
 build/
 src/generated/
 
+# Local accidental project copies/artifacts
+/controle-financeiro-pessoal/
+hboard e menu responsivo*
+
 # TypeScript
 *.tsbuildinfo
 

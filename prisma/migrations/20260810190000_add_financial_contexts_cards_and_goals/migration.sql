@@ -54,12 +54,18 @@ ALTER TABLE "AuditLog" ADD COLUMN "contextId" UUID;
 
 -- Unambiguous legacy mapping: accounts already owned by an editor become personal; shared accounts become Casal.
 UPDATE "FinancialAccount" a
-SET "contextId" = COALESCE(personal."id", couple."id")
+SET "contextId" = COALESCE(
+  (
+    SELECT personal."id"
+    FROM "FinancialContext" personal
+    WHERE personal."workspaceId" = a."workspaceId"
+      AND personal."type" = 'PERSONAL'
+      AND personal."ownerEditorId" = a."ownerEditorId"
+    LIMIT 1
+  ),
+  couple."id"
+)
 FROM "FinancialContext" couple
-LEFT JOIN "FinancialContext" personal
-  ON personal."workspaceId" = couple."workspaceId"
- AND personal."type" = 'PERSONAL'
- AND personal."ownerEditorId" = a."ownerEditorId"
 WHERE couple."workspaceId" = a."workspaceId"
   AND couple."type" = 'COUPLE'
   AND a."contextId" IS NULL;
@@ -118,13 +124,19 @@ WITH debt_single_editor AS (
   GROUP BY d."id"
 )
 UPDATE "Debt" d
-SET "contextId" = COALESCE(personal."id", couple."id")
+SET "contextId" = COALESCE(
+  (
+    SELECT personal."id"
+    FROM "FinancialContext" personal
+    WHERE personal."workspaceId" = couple."workspaceId"
+      AND personal."type" = 'PERSONAL'
+      AND personal."ownerEditorId" = owners."editorId"
+      AND owners."editorCount" = 1
+    LIMIT 1
+  ),
+  couple."id"
+)
 FROM debt_single_editor owners, "FinancialContext" couple
-LEFT JOIN "FinancialContext" personal
-  ON personal."workspaceId" = couple."workspaceId"
- AND personal."type" = 'PERSONAL'
- AND personal."ownerEditorId" = owners."editorId"
- AND owners."editorCount" = 1
 WHERE owners."debtId" = d."id"
   AND couple."workspaceId" = d."workspaceId"
   AND couple."type" = 'COUPLE'
