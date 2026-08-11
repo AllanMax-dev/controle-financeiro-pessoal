@@ -754,6 +754,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <button className="finance-primary" type="submit">Criar dívida</button>
         </form>
       </WorkspacePage>
+      <PersonTabs month={month} overview={overview} />
       <ul className="finance-list detached-list debt-list">
         {overview.debts.map((debt) => {
           const paidCount = debt.installments.filter((installment) => installment.status === "PAID").length;

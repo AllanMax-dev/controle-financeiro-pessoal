@@ -22,11 +22,23 @@ const navigationItems = [
   { href: "/como-usar", icon: "help", label: "Como usar" },
 ] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
-function hrefWithMonth(href: string, month: string | null): Route {
-  return month ? `${href}?month=${encodeURIComponent(month)}` as Route : href as Route;
+function hrefWithFilters(href: string, month: string | null, view: string | null): Route {
+  const params = new URLSearchParams();
+
+  if (month) {
+    params.set("month", month);
+  }
+
+  if (view) {
+    params.set("view", view);
+  }
+
+  const query = params.toString();
+
+  return query ? `${href}?${query}` as Route : href as Route;
 }
 
-function NavigationLinks({ month, onNavigate }: { month: string | null; onNavigate?: () => void }) {
+function NavigationLinks({ month, onNavigate, view }: { month: string | null; onNavigate?: () => void; view: string | null }) {
   const pathname = usePathname();
 
   return (
@@ -36,7 +48,7 @@ function NavigationLinks({ month, onNavigate }: { month: string | null; onNaviga
 
         return (
           <li key={item.href}>
-            <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={hrefWithMonth(item.href, month)} onClick={onNavigate}>
+            <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={hrefWithFilters(item.href, month, view)} onClick={onNavigate}>
               <Icon name={item.icon} />
               <span>{item.label}</span>
             </Link>
@@ -47,9 +59,9 @@ function NavigationLinks({ month, onNavigate }: { month: string | null; onNaviga
   );
 }
 
-function Brand({ month, workspaceName }: { month: string | null; workspaceName: string }) {
+function Brand({ month, view, workspaceName }: { month: string | null; view: string | null; workspaceName: string }) {
   return (
-    <Link className="workspace-brand" href={hrefWithMonth("/painel", month)}>
+    <Link className="workspace-brand" href={hrefWithFilters("/painel", month, view)}>
       <span className="brand-mark">AM</span>
       <span>
         <strong>{workspaceName}</strong>
@@ -101,6 +113,7 @@ export function WorkspaceNavigation({
   const [open, setOpen] = useState(false);
   const searchParams = useSearchParams();
   const currentMonth = searchParams.get("month");
+  const currentView = searchParams.get("view");
   const drawerId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
@@ -130,14 +143,14 @@ export function WorkspaceNavigation({
   return (
     <>
       <aside className="workspace-sidebar">
-        <Brand month={currentMonth} workspaceName={workspaceName} />
+        <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
         <div className="operator-card">
           <span>Operando como</span>
           <strong>{editorName}</strong>
         </div>
         <ThemeToggle />
         <nav aria-label="Navegação principal">
-          <NavigationLinks month={currentMonth} />
+          <NavigationLinks month={currentMonth} view={currentView} />
         </nav>
       </aside>
 
@@ -145,7 +158,7 @@ export function WorkspaceNavigation({
         <button aria-controls={drawerId} aria-expanded={open} aria-label="Abrir menu" onClick={() => setOpen(true)} ref={triggerButtonRef} type="button">
           <Icon name="menu" />
         </button>
-        <Brand month={currentMonth} workspaceName={workspaceName} />
+        <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
         <ThemeToggle />
       </header>
 
@@ -154,7 +167,7 @@ export function WorkspaceNavigation({
           <button aria-label="Fechar menu" className="drawer-backdrop" onClick={() => setOpen(false)} type="button" />
           <aside aria-label="Menu de navegação" aria-modal="true" className="mobile-drawer" id={drawerId} role="dialog">
             <div className="drawer-head">
-              <Brand month={currentMonth} workspaceName={workspaceName} />
+              <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
               <button aria-label="Fechar menu" onClick={() => setOpen(false)} ref={closeButtonRef} type="button">
                 <Icon name="close" />
               </button>
@@ -165,7 +178,7 @@ export function WorkspaceNavigation({
             </div>
             <ThemeToggle />
             <nav aria-label="Navegação principal">
-              <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} />
+              <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} view={currentView} />
             </nav>
           </aside>
         </div>
