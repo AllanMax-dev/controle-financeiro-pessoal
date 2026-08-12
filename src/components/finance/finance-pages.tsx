@@ -833,6 +833,9 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
     total: sumMoney(fixedSummaryCards.map((summary) => summary.total)),
   };
   const visibleFixedSummaryCards = overview.activeView === "casal" ? [fixedCoupleSummary, ...fixedSummaryCards] : fixedSummaryCards;
+  const activeFixedSummary = overview.activeView === "casal"
+    ? fixedCoupleSummary
+    : fixedSummaryCards.find((summary) => summary.id === overview.activeView) ?? fixedCoupleSummary;
   const renderOccurrence = (expense: Overview["fixedExpenseOccurrences"][number]) => (
     <li key={expense.id}>
       <div className="finance-item-main">
@@ -978,8 +981,12 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           renderRecurringList(overview.fixedExpenses)
         )}
       </section>
-      <h2>Pagamentos do mês</h2>
-      {showPersonGroups ? (
+      <details className="compact-card">
+        <summary>
+          <span>Pagamentos do mês</span>
+          <strong>{formatCurrency(activeFixedSummary.pending)}</strong>
+        </summary>
+        {showPersonGroups ? (
         <div className="person-group-stack">
           {occurrenceGroups.length === 0 ? <p className="empty-state">Nenhum gasto fixo neste mês.</p> : null}
           {occurrenceGroups.map(({ expenses, person }) => (
@@ -990,94 +997,8 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           ))}
         </div>
       ) : (
-      <ul className="finance-list detached-list fixed-expense-list">
-        {overview.fixedExpenseOccurrences.map((expense) => (
-          <li key={expense.id}>
-            <div className="finance-item-main">
-              <span>
-              <strong>{expense.description}</strong>
-              <small>{expense.personEditor.displayName} - vence {formatDate(expense.dueDate)}</small>
-              </span>
-              <b>{formatCurrency(expense.amount)}</b>
-            </div>
-            <ItemActions>
-              <span className="finance-status" data-status={expense.status}>
-                {expense.status === "SETTLED" ? "Pago" : "Pendente"}
-              </span>
-              {expense.status === "PENDING" ? (
-                <details className="inline-payment-details">
-                  <summary>Pagar</summary>
-                  <form action={payFixedExpenseAction} className="inline-payment-form">
-                    <ReturnFields month={month} returnTo="/despesas-fixas" />
-                    <input name="fixedExpenseId" type="hidden" value={expense.fixedExpenseId} />
-                    <input name="dueDate" type="hidden" value={toDateInputValue(expense.dueDate)} />
-                    <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Pagamento" name="amount" />
-                    <TextInput defaultValue={toDateInputValue(expense.dueDate)} label="Data" name="paidAt" type="date" />
-                    <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} label="Conta" name="accountId" optional={false} />
-                    <button className="finance-secondary" type="submit">Pagar</button>
-                  </form>
-                </details>
-              ) : null}
-              {expense.status === "SETTLED" && expense.transactionId ? (
-                <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={expense.transactionId} month={month} returnTo="/despesas-fixas" />
-              ) : null}
-            </ItemActions>
-          </li>
-        ))}
-      </ul>
+        renderOccurrenceList(overview.fixedExpenseOccurrences)
       )}
-      <details className="compact-card">
-        <summary>Editar recorrências</summary>
-        {showPersonGroups ? (
-          <div className="person-group-stack recurring-group-stack">
-            {recurringGroups.length === 0 ? <p className="empty-state">Nenhuma recorrência cadastrada.</p> : null}
-            {recurringGroups.map(({ expenses, person }) => (
-              <section className="person-group" key={person.id}>
-                <h2>{person.name}</h2>
-                {renderRecurringList(expenses)}
-              </section>
-            ))}
-          </div>
-        ) : (
-        <ul className="finance-list detached-list">
-          {overview.fixedExpenses.map((expense) => (
-            <li key={expense.id}>
-            <div className="finance-item-main">
-              <span>
-              <strong>{expense.description}</strong>
-              <small>{expense.personEditor.displayName} · vence dia {expense.dueDay}</small>
-              </span>
-              <b>{formatCurrency(expense.amount)}</b>
-            </div>
-            <ItemActions>
-              <EditDetails>
-                <form action={updateFixedExpenseAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/despesas-fixas" />
-                  <input name="fixedExpenseId" type="hidden" value={expense.id} />
-                  <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
-                  <TextInput defaultValue={expense.description} label="Descricao" name="description" />
-                  <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
-                  <TextInput defaultValue={monthInputValue(expense.startMonth)} label="Mes inicial" name="startMonth" type="month" />
-                  <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
-                  <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
-                  <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
-                  <label className="finance-field">
-                    <span>Status padrao</span>
-                    <select defaultValue={expense.status} name="status">
-                      <option value="PENDING">Pendente</option>
-                      <option value="SETTLED">Realizado</option>
-                    </select>
-                  </label>
-                  <NotesField defaultValue={expense.notes} />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
-            </ItemActions>
-          </li>
-          ))}
-        </ul>
-        )}
       </details>
     </>
   );
