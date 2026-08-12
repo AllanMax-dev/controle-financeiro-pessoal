@@ -1135,6 +1135,9 @@ textarea:focus-visible {
 .purchase-list > li {
   display: block;
   padding: 0;
+}
+
+.purchase-list > li {
   overflow: hidden;
 }
 
