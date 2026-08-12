@@ -509,6 +509,7 @@ model CreditCardInstallment {
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   transaction    Transaction?
   shares         CreditCardInstallmentShare[]
+  invoicePayment  CreditCardInvoicePayment?
 
   @@unique([purchaseId, number])
   @@index([workspaceId, personEditorId, dueMonth])
@@ -560,6 +561,7 @@ model CreditCardInvoicePayment {
   workspaceId    String      @db.Uuid
   invoiceId      String      @db.Uuid
   accountId      String      @db.Uuid
+  creditCardInstallmentId String? @unique @db.Uuid
   personEditorId String      @db.Uuid
   amount         Decimal     @db.Decimal(19, 2)
   paidAt         DateTime    @db.Date
@@ -569,10 +571,12 @@ model CreditCardInvoicePayment {
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   invoice        CreditCardInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   account        FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  installment    CreditCardInstallment? @relation(fields: [creditCardInstallmentId], references: [id], onDelete: SetNull)
   personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, personEditorId, paidAt])
   @@index([workspaceId, accountId])
+  @@index([workspaceId, creditCardInstallmentId])
 }
 
 model SavingsGoal {

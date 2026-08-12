@@ -224,7 +224,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: {
         card: true,
         category: true,
-        installments: { include: { shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
+        installments: { include: { invoicePayment: { select: { id: true } }, shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
         personEditor: true,
       },
       orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
@@ -241,7 +241,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     database.creditCardInvoicePayment.findMany({
       where: { paidAt: { gte: start, lt: end }, workspaceId },
-      include: { account: true, invoice: { include: { card: true } }, personEditor: true },
+      include: { account: true, installment: { include: { purchase: true } }, invoice: { include: { card: true } }, personEditor: true },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
       take: 40,
     }),
