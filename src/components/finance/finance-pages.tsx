@@ -572,6 +572,15 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
 
 export function TransactionPageContent({ kind, month, options, overview, title }: { kind: "EXPENSE" | "INCOME"; month: string; options: Options; overview: Overview; title: string }) {
   const returnPath = kind === "INCOME" ? "/recebimentos" : "/gastos-variaveis";
+  const transactions = overview.transactions
+    .filter((transaction) => transaction.type === (kind === "INCOME" ? "INCOME" : "EXPENSE"))
+    .filter((transaction) => {
+      if (kind === "INCOME") {
+        return !transaction.salaryId;
+      }
+
+      return !transaction.creditCardInstallmentId && !transaction.debtInstallmentId && !transaction.fixedExpenseId && !transaction.salaryId;
+    });
 
   return (
     <>
@@ -598,10 +607,7 @@ export function TransactionPageContent({ kind, month, options, overview, title }
         <CategoryInlineForm kind={kind} month={month} returnTo={returnPath} />
       </WorkspacePage>
       <ul className="finance-list detached-list">
-        {overview.transactions
-          .filter((transaction) => transaction.type === (kind === "INCOME" ? "INCOME" : "EXPENSE"))
-          .filter((transaction) => !(kind === "INCOME" && transaction.salaryId))
-          .map((transaction) => (
+        {transactions.map((transaction) => (
             <li key={transaction.id}>
               <div className="finance-item-main">
                 <span>
