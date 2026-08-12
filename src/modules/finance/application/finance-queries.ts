@@ -156,7 +156,6 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     cardPurchases,
     allOpenCardInstallments,
     invoices,
-    invoicePayments,
     goals,
     goalMovementTotals,
     visibleGoalMovements,
@@ -238,12 +237,6 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       where: { month: start, workspaceId },
       include: { card: true, personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { dueDate: "asc" }],
-    }),
-    database.creditCardInvoicePayment.findMany({
-      where: { paidAt: { gte: start, lt: end }, workspaceId },
-      include: { account: true, installment: { include: { purchase: true } }, invoice: { include: { card: true } }, personEditor: true },
-      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
-      take: 40,
     }),
     database.savingsGoal.findMany({
       where: { workspaceId },
@@ -482,7 +475,6 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     goals: goalsWithTotals.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     investments: investments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    invoicePayments: invoicePayments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     month,
     people,
     salaries: salaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),

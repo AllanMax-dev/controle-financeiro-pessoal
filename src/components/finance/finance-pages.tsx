@@ -37,7 +37,6 @@ import {
   updateBalanceAdjustmentAction,
   updateCategoryAction,
   updateCreditCardAction,
-  updateCreditCardInvoicePaymentAction,
   updateCreditCardPurchaseAction,
   updateDebtAction,
   updateFixedExpenseAction,
@@ -1369,49 +1368,6 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
           </div>
         )}
       </section>
-      {overview.invoicePayments.length > 0 ? (
-        <section className="purchase-section">
-          <h2>Pagamentos de fatura</h2>
-          <ul className="finance-list detached-list">
-            {overview.invoicePayments.map((payment) => (
-              <li key={payment.id}>
-                <div className="finance-item-main">
-                  <span>
-                    <strong>
-                      {payment.creditCardInstallmentId && payment.installment
-                        ? `Parcela ${payment.installment.number} - ${payment.installment.purchase.description}`
-                        : `Pagamento - ${payment.invoice.card.name}`}
-                    </strong>
-                    <small>{payment.personEditor.displayName} - {payment.account.name} - {formatDate(payment.paidAt)}</small>
-                  </span>
-                  <b>{formatCurrency(payment.amount)}</b>
-                </div>
-                <ItemActions>
-                  <EditDetails>
-                    <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
-                      <ReturnFields month={month} returnTo="/cartoes" />
-                      <input name="paymentId" type="hidden" value={payment.id} />
-                      {payment.creditCardInstallmentId ? (
-                        <>
-                          <input name="amount" type="hidden" value={moneyInputValue(payment.amount)} />
-                          <small>Valor fixo da parcela: {formatCurrency(payment.amount)}</small>
-                        </>
-                      ) : (
-                        <MoneyInput defaultValue={moneyInputValue(payment.amount)} label="Valor" />
-                      )}
-                      <TextInput defaultValue={toDateInputValue(payment.paidAt)} label="Data" name="paidAt" type="date" />
-                      <AccountSelect accounts={options.accounts} defaultValue={payment.accountId} label="Conta" name="accountId" optional={false} />
-                      <NotesField defaultValue={payment.notes} />
-                      <button className="finance-secondary" type="submit">Salvar</button>
-                    </form>
-                  </EditDetails>
-                  <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={payment.id} month={month} returnTo="/cartoes" />
-                </ItemActions>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </>
   );
 }
