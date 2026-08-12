@@ -561,7 +561,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           <button className="finance-primary" type="submit">Criar recorrência</button>
         </form>
       </WorkspacePage>
-      <ul className="finance-list detached-list">
+      <ul className="finance-list detached-list fixed-expense-list">
         {overview.fixedExpenseOccurrences.map((expense) => (
           <li key={expense.id}>
             <div className="finance-item-main">
@@ -576,15 +576,18 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
                 {expense.status === "SETTLED" ? "Pago" : "Pendente"}
               </span>
               {expense.status === "PENDING" ? (
-                <form action={payFixedExpenseAction} className="inline-payment-form">
-                  <ReturnFields month={month} returnTo="/despesas-fixas" />
-                  <input name="fixedExpenseId" type="hidden" value={expense.fixedExpenseId} />
-                  <input name="dueDate" type="hidden" value={toDateInputValue(expense.dueDate)} />
-                  <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Pagamento" name="amount" />
-                  <TextInput defaultValue={toDateInputValue(expense.dueDate)} label="Data" name="paidAt" type="date" />
-                  <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} label="Conta" name="accountId" optional={false} />
-                  <button className="finance-secondary" type="submit">Pagar</button>
-                </form>
+                <details className="inline-payment-details">
+                  <summary>Pagar</summary>
+                  <form action={payFixedExpenseAction} className="inline-payment-form">
+                    <ReturnFields month={month} returnTo="/despesas-fixas" />
+                    <input name="fixedExpenseId" type="hidden" value={expense.fixedExpenseId} />
+                    <input name="dueDate" type="hidden" value={toDateInputValue(expense.dueDate)} />
+                    <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Pagamento" name="amount" />
+                    <TextInput defaultValue={toDateInputValue(expense.dueDate)} label="Data" name="paidAt" type="date" />
+                    <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} label="Conta" name="accountId" optional={false} />
+                    <button className="finance-secondary" type="submit">Pagar</button>
+                  </form>
+                </details>
               ) : null}
               {expense.status === "SETTLED" && expense.transactionId ? (
                 <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={expense.transactionId} month={month} returnTo="/despesas-fixas" />
