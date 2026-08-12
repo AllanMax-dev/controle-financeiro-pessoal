@@ -655,8 +655,8 @@ export async function payCreditCardInstallmentAction(formData: FormData) {
       throw new Error("Parcela sem fatura vinculada.");
     }
 
-    if (installment.status !== "OPEN") {
-      throw new Error("Apenas parcelas abertas podem ser pagas.");
+    if (installment.status !== "OPEN" && installment.status !== "PAID") {
+      throw new Error("Apenas parcelas abertas ou pagas sem registro podem ser ajustadas.");
     }
 
     const existingPayment = await transaction.creditCardInvoicePayment.findFirst({
@@ -1946,6 +1946,39 @@ export async function deleteCreditCardInvoicePaymentAction(formData: FormData) {
         status: nextPaidAmount.greaterThanOrEqualTo(payment.invoice.amount) ? "PAID" : "OPEN",
       },
     });
+  });
+
+  refreshAndRedirect(returnTo(formData, "/cartoes"));
+}
+
+export async function deleteCreditCardInstallmentPaymentAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const installmentId = text(formData, "installmentId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    const installment = await transaction.creditCardInstallment.findFirstOrThrow({
+      where: { id: installmentId, workspaceId: access.workspaceId },
+      include: { invoicePayment: { select: { id: true } } },
+    });
+    const invoiceIds = installment.invoiceId ? [installment.invoiceId] : [];
+
+    if (installment.invoicePayment) {
+      await transaction.creditCardInvoicePayment.deleteMany({ where: { id: installment.invoicePayment.id, workspaceId: access.workspaceId } });
+    }
+
+    await transaction.creditCardInstallment.updateMany({
+      where: { id: installment.id, workspaceId: access.workspaceId },
+      data: { status: "OPEN" },
+    });
+    await transaction.creditCardInstallmentShare.updateMany({
+      where: { installmentId: installment.id, workspaceId: access.workspaceId },
+      data: { status: "OPEN" },
+    });
+    await transaction.transaction.updateMany({
+      where: { creditCardInstallmentId: installment.id, workspaceId: access.workspaceId },
+      data: { settledAt: null, status: "PENDING" },
+    });
+    await recalculateCreditCardInvoices(transaction, access.workspaceId, invoiceIds);
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));

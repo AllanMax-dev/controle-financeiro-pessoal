@@ -19,7 +19,7 @@ import {
   deleteBalanceAdjustmentAction,
   deleteCategoryAction,
   deleteCreditCardAction,
-  deleteCreditCardInvoicePaymentAction,
+  deleteCreditCardInstallmentPaymentAction,
   deleteCreditCardPurchaseAction,
   deleteDebtAction,
   deleteDebtInstallmentPaymentAction,
@@ -1505,6 +1505,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                   const linkedPayment = installment.invoicePayment;
                                   const paymentAccounts = options.accounts.filter((account) => account.personEditorId === purchase.card.personEditorId);
                                   const cardPaymentAccounts = paymentAccounts.length > 0 ? paymentAccounts : options.accounts;
+                                  const defaultPaymentAccountId = linkedPayment?.accountId ?? purchase.card.paymentAccountId;
 
                                   return (
                                     <li key={installment.id}>
@@ -1526,26 +1527,37 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                             <ReturnFields month={month} returnTo="/cartoes" />
                                             <input name="installmentId" type="hidden" value={installment.id} />
                                             <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
-                                            <AccountSelect accounts={cardPaymentAccounts} label="Conta" name="accountId" optional={false} />
+                                            <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
                                             <NotesField />
                                             <button className="finance-secondary" type="submit">Adiantar parcela</button>
                                           </form>
                                         </details>
                                       ) : null}
-                                      {installment.status === "PAID" && linkedPayment ? (
+                                      {installment.status === "PAID" ? (
                                         <ItemActions>
                                           <EditDetails>
-                                            <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
-                                              <ReturnFields month={month} returnTo="/cartoes" />
-                                              <input name="paymentId" type="hidden" value={linkedPayment.id} />
-                                              <input name="amount" type="hidden" value={moneyInputValue(linkedPayment.amount)} />
-                                              <TextInput defaultValue={toDateInputValue(linkedPayment.paidAt)} label="Data" name="paidAt" type="date" />
-                                              <AccountSelect accounts={cardPaymentAccounts} defaultValue={linkedPayment.accountId} label="Conta" name="accountId" optional={false} />
-                                              <NotesField defaultValue={linkedPayment.notes} />
-                                              <button className="finance-secondary" type="submit">Salvar pagamento</button>
-                                            </form>
+                                            {linkedPayment ? (
+                                              <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                                                <ReturnFields month={month} returnTo="/cartoes" />
+                                                <input name="paymentId" type="hidden" value={linkedPayment.id} />
+                                                <input name="amount" type="hidden" value={moneyInputValue(linkedPayment.amount)} />
+                                                <TextInput defaultValue={toDateInputValue(linkedPayment.paidAt)} label="Data" name="paidAt" type="date" />
+                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
+                                                <NotesField defaultValue={linkedPayment.notes} />
+                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                                              </form>
+                                            ) : (
+                                              <form action={payCreditCardInstallmentAction} className="finance-edit-form">
+                                                <ReturnFields month={month} returnTo="/cartoes" />
+                                                <input name="installmentId" type="hidden" value={installment.id} />
+                                                <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
+                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
+                                                <NotesField />
+                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                                              </form>
+                                            )}
                                           </EditDetails>
-                                          <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={linkedPayment.id} month={month} returnTo="/cartoes" />
+                                          <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/cartoes" />
                                         </ItemActions>
                                       ) : null}
                                     </li>

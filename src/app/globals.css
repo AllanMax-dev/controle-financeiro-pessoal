@@ -1157,8 +1157,8 @@ textarea:focus-visible {
   width: 100%;
 }
 
-.debt-details summary,
-.purchase-details summary {
+.debt-details > summary,
+.purchase-details > summary {
   display: flex;
   align-items: center;
   width: 100%;
@@ -1168,13 +1168,13 @@ textarea:focus-visible {
   list-style: none;
 }
 
-.debt-details summary::-webkit-details-marker,
-.purchase-details summary::-webkit-details-marker {
+.debt-details > summary::-webkit-details-marker,
+.purchase-details > summary::-webkit-details-marker {
   display: none;
 }
 
-.debt-details summary::after,
-.purchase-details summary::after {
+.debt-details > summary::after,
+.purchase-details > summary::after {
   content: "Detalhes";
   margin-left: auto;
   padding: 7px 10px;
@@ -1185,10 +1185,15 @@ textarea:focus-visible {
   font-weight: 850;
 }
 
-.debt-details[open] summary,
-.purchase-details[open] summary {
+.debt-details[open] > summary::after,
+.purchase-details[open] > summary::after {
+  content: "Ocultar";
+}
+
+.debt-details[open] > summary,
+.purchase-details[open] > summary {
   border-bottom: 1px solid var(--border);
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface) 82%, var(--surface-muted));
 }
 
 .debt-detail-body,
@@ -1196,6 +1201,11 @@ textarea:focus-visible {
   display: grid;
   gap: 14px;
   padding: 14px;
+}
+
+.purchase-detail-body {
+  gap: 12px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--surface-muted));
 }
 
 .debt-metadata {
@@ -1223,6 +1233,17 @@ textarea:focus-visible {
   font-weight: 850;
 }
 
+.purchase-detail-body .debt-metadata {
+  gap: 8px;
+}
+
+.purchase-detail-body .debt-metadata div {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
 .installment-list {
   display: grid;
   gap: 8px;
@@ -1233,13 +1254,21 @@ textarea:focus-visible {
 
 .installment-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) auto auto minmax(0, auto);
+  gap: 8px 10px;
   align-items: center;
-  padding: 10px;
+  padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--surface) 96%, var(--surface-muted));
+  background: var(--surface);
+}
+
+.installment-list li > span:first-child {
+  min-width: 0;
+}
+
+.installment-list li > b {
+  font-size: 0.98rem;
 }
 
 .installment-list .inline-payment-details[open] {
@@ -1258,6 +1287,20 @@ textarea:focus-visible {
 
 .installment-list .finance-list-actions .finance-edit-details[open] {
   width: 100%;
+}
+
+.installment-list .finance-list-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.installment-list .finance-edit-details:not([open]) summary,
+.installment-list .inline-payment-details:not([open]) summary,
+.installment-list .destructive-confirm summary {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
 }
 
 .finance-item-main {
