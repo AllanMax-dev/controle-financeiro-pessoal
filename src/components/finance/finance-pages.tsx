@@ -31,7 +31,6 @@ import {
   deleteTransactionAction,
   deleteTransferAction,
   payDebtInstallmentAction,
-  payCreditCardInvoiceAction,
   payCreditCardInstallmentAction,
   payFixedExpenseAction,
   updateAccountAction,
@@ -1203,16 +1202,6 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
               <strong>{card.name}</strong>
               <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
               <progress max={Number(card.limit)} value={Number(card.committed)} />
-              {card.invoiceId ? (
-                <form action={payCreditCardInvoiceAction} className="inline-payment-form">
-                  <ReturnFields month={month} returnTo="/cartoes" />
-                  <input name="invoiceId" type="hidden" value={card.invoiceId} />
-                  <MoneyInput label="Pagamento" name="amount" />
-                  <TextInput label="Data" name="paidAt" type="date" />
-                  <AccountSelect accounts={options.accounts} label="Conta" name="accountId" />
-                  <button className="finance-secondary" type="submit">Pagar fatura</button>
-                </form>
-              ) : null}
               <ItemActions>
                 <EditDetails>
                   <form action={updateCreditCardAction} className="finance-edit-form">
