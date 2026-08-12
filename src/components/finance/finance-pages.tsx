@@ -527,7 +527,7 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
 function CreatePanel({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="finance-workspace finance-workspace-form-only finance-create-section">
-      <details className="finance-panel finance-create-sheet" id="finance-create">
+      <details className="finance-panel finance-create-sheet card-admin-panel" id="finance-create">
         <summary>
           <span>{title}</span>
           <strong>Adicionar</strong>

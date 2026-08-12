@@ -679,7 +679,7 @@ textarea:focus-visible {
 .finance-panel,
 .compact-card {
   border: 1px solid var(--border);
-  border-top: 0;
+  border-top: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -758,6 +758,7 @@ textarea:focus-visible {
 .finance-panel,
 .compact-card {
   padding: 18px;
+  min-width: 0;
 }
 
 .finance-panel h2,
@@ -1017,8 +1018,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 64px;
-  padding: 16px 18px;
+  min-height: 56px;
+  padding: 12px 16px;
   cursor: pointer;
   list-style: none;
 }
@@ -1049,6 +1050,10 @@ textarea:focus-visible {
 
 .finance-create-body {
   padding: 18px;
+}
+
+.finance-create-sheet.card-admin-panel .finance-create-body {
+  padding: 16px;
 }
 
 .compact-card > summary {
@@ -1123,12 +1128,18 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px 12px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 96%, var(--surface-muted));
+  box-shadow: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.finance-list li:hover {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
   background: var(--surface);
-  box-shadow: var(--shadow-xs);
 }
 
 .debt-list > li,
@@ -1151,8 +1162,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 70px;
-  padding: 14px;
+  min-height: 64px;
+  padding: 12px;
   cursor: pointer;
   list-style: none;
 }
@@ -1228,7 +1239,7 @@ textarea:focus-visible {
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 96%, var(--surface-muted));
 }
 
 .installment-payment-form {
@@ -1313,7 +1324,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  flex: 1 1 220px;
+  flex: 0 1 auto;
 }
 
 .finance-edit-details {
