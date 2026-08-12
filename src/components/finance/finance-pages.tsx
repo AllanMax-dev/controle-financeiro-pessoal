@@ -1170,15 +1170,18 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
             {installment.status === "PAID" ? "Pago" : installment.status === "CANCELED" ? "Cancelado" : "Pendente"}
           </span>
           {installment.status === "PENDING" && canPayFromThisLine ? (
-            <form action={payDebtInstallmentAction} className="inline-payment-form installment-payment-form">
-              <ReturnFields month={month} returnTo="/dividas" />
-              <input name="installmentId" type="hidden" value={installment.rootInstallmentId} />
-              <MoneyInput defaultValue={moneyInputValue(installment.installmentAmount)} label="Pagamento" name="amount" />
-              <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
-              <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
-              <NotesField />
-              <button className="finance-secondary" type="submit">Pagar parcela</button>
-            </form>
+            <details className="inline-payment-details">
+              <summary>Pagar</summary>
+              <form action={payDebtInstallmentAction} className="inline-payment-form">
+                <ReturnFields month={month} returnTo="/dividas" />
+                <input name="installmentId" type="hidden" value={installment.rootInstallmentId} />
+                <MoneyInput defaultValue={moneyInputValue(installment.installmentAmount)} label="Pagamento" name="amount" />
+                <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
+                <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+                <NotesField />
+                <button className="finance-secondary" type="submit">Pagar parcela</button>
+              </form>
+            </details>
           ) : null}
           {installment.status === "PENDING" && !canPayFromThisLine ? (
             <small>Pagamento feito pela parcela completa nos detalhes da dívida.</small>
@@ -1243,7 +1246,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
             {monthlyInstallmentGroups.map(({ installments, person }) => (
               <section className="person-group" key={person.id}>
                 <h2>{person.name}</h2>
-                <ul className="finance-list detached-list debt-list">
+                <ul className="finance-list detached-list debt-installment-list">
                   {installments.map(renderMonthlyInstallment)}
                 </ul>
               </section>
@@ -1252,7 +1255,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
         ) : overview.debtInstallments.length === 0 ? (
           <p className="empty-state">Nenhuma parcela de dívida neste mês.</p>
         ) : (
-          <ul className="finance-list detached-list debt-list">
+          <ul className="finance-list detached-list debt-installment-list">
             {overview.debtInstallments.map(renderMonthlyInstallment)}
           </ul>
         )}
@@ -1309,15 +1312,18 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                           {installment.status === "PAID" ? "Pago" : installment.status === "CANCELED" ? "Cancelado" : "Pendente"}
                         </span>
                         {installment.status === "PENDING" ? (
-                          <form action={payDebtInstallmentAction} className="inline-payment-form installment-payment-form">
-                            <ReturnFields month={month} returnTo="/dividas" />
-                            <input name="installmentId" type="hidden" value={installment.id} />
-                            <MoneyInput defaultValue={moneyInputValue(installment.amount)} label="Pagamento" name="amount" />
-                            <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
-                            <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
-                            <NotesField />
-                            <button className="finance-secondary" type="submit">Pagar parcela</button>
-                          </form>
+                          <details className="inline-payment-details">
+                            <summary>Pagar</summary>
+                            <form action={payDebtInstallmentAction} className="inline-payment-form">
+                              <ReturnFields month={month} returnTo="/dividas" />
+                              <input name="installmentId" type="hidden" value={installment.id} />
+                              <MoneyInput defaultValue={moneyInputValue(installment.amount)} label="Pagamento" name="amount" />
+                              <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
+                              <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+                              <NotesField />
+                              <button className="finance-secondary" type="submit">Pagar parcela</button>
+                            </form>
+                          </details>
                         ) : null}
                         {installment.status === "PAID" && installment.transaction ? (
                           <DeleteForm action={deleteDebtInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/dividas" />
@@ -1564,14 +1570,17 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                         {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
                                       </span>
                                       {installment.status === "OPEN" ? (
-                                        <form action={payCreditCardInstallmentAction} className="inline-payment-form installment-payment-form">
-                                          <ReturnFields month={month} returnTo="/cartoes" />
-                                          <input name="installmentId" type="hidden" value={installment.id} />
-                                          <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
-                                          <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
-                                          <NotesField />
-                                          <button className="finance-secondary" type="submit">Adiantar parcela</button>
-                                        </form>
+                                        <details className="inline-payment-details">
+                                          <summary>Adiantar</summary>
+                                          <form action={payCreditCardInstallmentAction} className="inline-payment-form">
+                                            <ReturnFields month={month} returnTo="/cartoes" />
+                                            <input name="installmentId" type="hidden" value={installment.id} />
+                                            <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
+                                            <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+                                            <NotesField />
+                                            <button className="finance-secondary" type="submit">Adiantar parcela</button>
+                                          </form>
+                                        </details>
                                       ) : null}
                                       {installment.status === "PAID" && linkedPayment ? (
                                         <div className="installment-payment-form">

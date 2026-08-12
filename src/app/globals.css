@@ -1219,7 +1219,7 @@ textarea:focus-visible {
 
 .installment-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -1230,6 +1230,14 @@ textarea:focus-visible {
 
 .installment-payment-form {
   grid-column: 1 / -1;
+}
+
+.installment-list .inline-payment-details[open] {
+  grid-column: 1 / -1;
+}
+
+.installment-list .inline-payment-details[open] summary {
+  width: 100%;
 }
 
 .finance-item-main {
@@ -1742,6 +1750,63 @@ progress::-webkit-progress-value {
   }
 
   .fixed-expense-list .inline-payment-details[open] summary {
+    width: 100%;
+  }
+
+  .debt-installment-list li {
+    align-items: center;
+    flex-direction: row;
+    gap: 9px;
+    padding: 10px 12px;
+  }
+
+  .debt-installment-list .finance-item-main {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .debt-installment-list .finance-item-main b {
+    font-size: 0.95rem;
+  }
+
+  .debt-installment-list .finance-list-actions {
+    width: auto;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+  }
+
+  .debt-installment-list .finance-list-actions:has(.inline-payment-details[open]) {
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .debt-installment-list .finance-status {
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 0.74rem;
+  }
+
+  .debt-installment-list .inline-payment-details:not([open]),
+  .debt-installment-list .delete-form {
+    width: auto;
+  }
+
+  .debt-installment-list .inline-payment-details:not([open]) summary,
+  .debt-installment-list .destructive-confirm summary {
+    width: auto;
+    min-width: 44px;
+    padding-inline: 10px;
+    font-size: 0.78rem;
+  }
+
+  .debt-installment-list .inline-payment-details[open] {
+    order: 3;
+    width: 100%;
+  }
+
+  .debt-installment-list .inline-payment-details[open] summary {
     width: 100%;
   }
 }
