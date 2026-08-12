@@ -818,6 +818,32 @@ textarea:focus-visible {
   font-weight: 750;
 }
 
+.person-group-stack {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.person-group {
+  display: grid;
+  gap: 8px;
+}
+
+.person-group > h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.person-group .detached-list {
+  margin-top: 0;
+}
+
+.recurring-group-stack {
+  margin-top: 14px;
+}
+
 .finance-create-sheet {
   padding: 0;
   overflow: hidden;
