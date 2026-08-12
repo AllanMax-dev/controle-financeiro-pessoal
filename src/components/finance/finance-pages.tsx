@@ -1144,8 +1144,12 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
       </section>
 
       <section className="credit-card-workspace">
-        <article className="finance-panel card-purchase-panel">
-          <h2>Nova compra parcelada</h2>
+        <details className="compact-card card-admin-panel card-purchase-panel">
+          <summary>
+            <span>Nova compra parcelada</span>
+            <strong>Cadastrar</strong>
+          </summary>
+          <div className="finance-create-body">
           <form action={createCreditCardPurchaseAction} className="finance-form card-purchase-form">
             <ReturnFields month={month} returnTo="/cartoes" />
             <label className="finance-field">
@@ -1169,7 +1173,8 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
             <NotesField />
             <button className="finance-primary" type="submit">Registrar compra</button>
           </form>
-        </article>
+          </div>
+        </details>
 
         <details className="compact-card card-admin-panel">
           <summary>
