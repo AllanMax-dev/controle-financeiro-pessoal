@@ -198,12 +198,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         active: true,
         workspaceId,
       },
-      include: { category: true, installments: { include: { transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
+      include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
       orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
     }),
     database.debtInstallment.findMany({
       where: { dueDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
-      include: { debt: true, personEditor: true },
+      include: { debt: true, personEditor: true, shares: { include: { personEditor: true } } },
       orderBy: [{ dueDate: "asc" }, { number: "asc" }],
     }),
     database.creditCard.findMany({
@@ -212,8 +212,8 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
     }),
     database.creditCardInstallment.findMany({
-      where: { dueMonth: { gte: start, lt: end }, status: "OPEN", workspaceId },
-      include: { card: true, personEditor: true, purchase: true },
+      where: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
+      include: { card: true, personEditor: true, purchase: true, shares: { include: { personEditor: true } } },
       orderBy: [{ dueMonth: "asc" }, { createdAt: "asc" }],
     }),
     database.creditCardPurchase.findMany({
@@ -224,7 +224,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: {
         card: true,
         category: true,
-        installments: { orderBy: { number: "asc" } },
+        installments: { include: { shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
         personEditor: true,
       },
       orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
@@ -339,6 +339,31 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       transactionId: fixedExpenseTransaction?.id ?? null,
     };
   });
+  const debtInstallmentResponsibilities = debtInstallments.flatMap((installment) =>
+    installment.shares.length > 0
+      ? installment.shares.map((share) => ({
+          ...installment,
+          amount: share.amount,
+          id: `${installment.id}:${share.personEditorId}`,
+          paidAt: share.paidAt,
+          personEditor: share.personEditor,
+          personEditorId: share.personEditorId,
+          status: share.status,
+        }))
+      : [installment],
+  );
+  const cardInstallmentResponsibilities = cardInstallments.flatMap((installment) =>
+    installment.shares.length > 0
+      ? installment.shares.map((share) => ({
+          ...installment,
+          amount: share.amount,
+          id: `${installment.id}:${share.personEditorId}`,
+          personEditor: share.personEditor,
+          personEditorId: share.personEditorId,
+          status: share.status,
+        }))
+      : [installment],
+  );
 
   const totalsByPerson = people.map((person) => {
     const personAccounts = accounts.filter((account) => account.personEditorId === person.id && account.active);
@@ -349,10 +374,8 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     );
     const personFixedOccurrences = fixedExpenseOccurrences.filter((fixedExpense) => fixedExpense.personEditorId === person.id);
     const personSalaryOccurrences = salaryOccurrences.filter((salary) => salary.personEditorId === person.id);
-    const personDebt = debtInstallments.filter((installment) => installment.personEditorId === person.id);
-    const personCardInstallments = cardInstallments.filter((installment) => installment.personEditorId === person.id);
-    const personInvoices = invoices.filter((invoice) => invoice.personEditorId === person.id);
-    const personInvoicePayments = invoicePayments.filter((payment) => payment.personEditorId === person.id);
+    const personDebt = debtInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
+    const personCardInstallments = cardInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
     const personInvestments = investments.filter((investment) => investment.personEditorId === person.id);
     const transactionIncome = sumMoney(personTransactions.filter(({ status, type }) => type === "INCOME" && status === "SETTLED").map(({ amount }) => amount));
     const receivableTransactions = sumMoney(personDirectTransactions.filter(({ status, type }) => type === "INCOME" && status === "PENDING").map(({ amount }) => amount));
@@ -362,22 +385,9 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     const fixedPending = sumMoney(personFixedOccurrences.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
     const debtTotal = sumMoney(personDebt.map(({ amount }) => amount));
     const debtPending = sumMoney(personDebt.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
-    const cardTransactionInstallmentIds = new Set(
-      personTransactions
-        .filter(({ creditCardInstallmentId, type }) => type === "EXPENSE" && Boolean(creditCardInstallmentId))
-        .map(({ creditCardInstallmentId }) => creditCardInstallmentId),
-    );
-    const cardTransactionTotal = sumMoney(
-      personTransactions
-        .filter(({ creditCardInstallmentId, type }) => type === "EXPENSE" && Boolean(creditCardInstallmentId))
-        .map(({ amount }) => amount),
-    );
-    const cardInstallmentFallback = sumMoney(
-      personCardInstallments
-        .filter(({ id }) => !cardTransactionInstallmentIds.has(id))
-        .map(({ amount }) => amount),
-    );
-    const invoicePending = sumMoney(personInvoices.map((invoice) => money(invoice.amount).minus(invoice.paidAmount)));
+    const cardTotal = sumMoney(personCardInstallments.map(({ amount }) => amount));
+    const cardPending = sumMoney(personCardInstallments.filter(({ status }) => status === "OPEN").map(({ amount }) => amount));
+    const cardPaid = sumMoney(personCardInstallments.filter(({ status }) => status === "PAID").map(({ amount }) => amount));
     const available = sumMoney(personAccounts.filter(({ type }) => type !== "INVESTMENT").map(({ balance }) => balance));
     const investmentRecords = sumMoney(personInvestments.map(({ amount }) => amount));
     const paid = sumMoney(
@@ -386,7 +396,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         .map(({ amount }) => amount),
     ).plus(sumMoney(personFixedOccurrences.filter(({ status }) => status === "SETTLED").map(({ amount }) => amount)))
       .plus(sumMoney(personDebt.filter(({ status }) => status === "PAID").map(({ amount }) => amount)))
-      .plus(sumMoney(personInvoicePayments.map(({ amount }) => amount)));
+      .plus(cardPaid);
     const pendingTransactions = sumMoney(
       personDirectTransactions
         .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
@@ -398,11 +408,11 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       name: person.name,
       total: buildPersonTotal({
         available,
-        expenses: transactionExpenses.plus(fixedTotal).plus(debtTotal).plus(cardTransactionTotal).plus(cardInstallmentFallback),
+        expenses: transactionExpenses.plus(fixedTotal).plus(debtTotal).plus(cardTotal),
         income: transactionIncome,
         investments: investmentRecords,
         paid,
-        pending: pendingTransactions.plus(fixedPending).plus(debtPending).plus(invoicePending),
+        pending: pendingTransactions.plus(fixedPending).plus(debtPending).plus(cardPending),
         receivable: receivableTransactions.plus(salaryReceivable),
       }),
     };
@@ -411,6 +421,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   const activeView = view === "casal" || !people.some(({ id }) => id === view) ? "casal" : view;
   const visiblePersonIds = activeView === "casal" ? people.map(({ id }) => id) : [activeView];
   const personIsVisible = (personEditorId: string) => visiblePersonIds.includes(personEditorId);
+  const debtIsVisible = (debt: (typeof debts)[number]) =>
+    personIsVisible(debt.personEditorId) ||
+    debt.installments.some((installment) => installment.shares.some((share) => personIsVisible(share.personEditorId)));
+  const purchaseIsVisible = (purchase: (typeof cardPurchases)[number]) =>
+    personIsVisible(purchase.personEditorId) ||
+    purchase.installments.some((installment) => installment.shares.some((share) => personIsVisible(share.personEditorId)));
   const cardsWithInvoices = cards.map((card) => {
     const invoice = invoices.find(({ cardId }) => cardId === card.id);
     const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
@@ -433,14 +449,14 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   return {
     accounts: accounts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     activeView,
-    cardInstallments: cardInstallments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    cardPurchases: cardPurchases.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cardInstallments: cardInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cardPurchases: cardPurchases.filter(purchaseIsVisible),
     cards: cardsWithInvoices.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     categories,
     coupleTotal,
     balanceAdjustments: balanceAdjustments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    debts: debts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    debtInstallments: debtInstallments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    debts: debts.filter(debtIsVisible),
+    debtInstallments: debtInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     fixedExpenseOccurrences: fixedExpenseOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     fixedExpenses: fixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),

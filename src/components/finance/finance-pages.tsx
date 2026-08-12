@@ -38,8 +38,10 @@ import {
   updateCategoryAction,
   updateCreditCardAction,
   updateCreditCardInvoicePaymentAction,
+  updateCreditCardInstallmentSharesAction,
   updateCreditCardPurchaseAction,
   updateDebtAction,
+  updateDebtInstallmentSharesAction,
   updateFixedExpenseAction,
   updateInvestmentAction,
   updateSalaryAction,
@@ -53,6 +55,7 @@ import { MonthNavigator } from "@/components/finance/month-navigator";
 import { PersonSegment } from "@/components/finance/person-segment";
 import type { getFinanceOptions, getFinanceOverview } from "@/modules/finance/application/finance-queries";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import { money } from "@/modules/shared/domain/money";
 
 type Overview = Awaited<ReturnType<typeof getFinanceOverview>>;
 type Options = Awaited<ReturnType<typeof getFinanceOptions>>;
@@ -134,12 +137,56 @@ function TextInput({ defaultValue, label, name, placeholder, required = true, ty
   );
 }
 
-function MoneyInput({ defaultValue, label, name = "amount" }: { defaultValue?: string; label: string; name?: string }) {
+function MoneyInput({ defaultValue, label, name = "amount", required = true }: { defaultValue?: string; label: string; name?: string; required?: boolean }) {
   return (
     <label className="finance-field">
       <span>{label}</span>
-      <input defaultValue={defaultValue} inputMode="decimal" name={name} placeholder="0,00" required type="text" />
+      <input defaultValue={defaultValue} inputMode="decimal" name={name} placeholder="0,00" required={required} type="text" />
     </label>
+  );
+}
+
+type MoneyLike = ReturnType<typeof money>;
+
+type ShareLike = {
+  amount: MoneyLike;
+  personEditorId: string;
+};
+
+function splitDefaultValues(shares: ShareLike[], fallbackPersonEditorId: string, fallbackAmount: MoneyLike, includeFallback = false) {
+  const values = new Map<string, MoneyLike>();
+
+  if (shares.length === 0) {
+    if (includeFallback) {
+      values.set(fallbackPersonEditorId, fallbackAmount);
+    }
+    return values;
+  }
+
+  for (const share of shares) {
+    const current = values.get(share.personEditorId);
+    values.set(share.personEditorId, current ? current.plus(share.amount) : share.amount);
+  }
+
+  return values;
+}
+
+function SplitFields({ defaultValues, people, title = "Divisão do valor total" }: { defaultValues?: Map<string, MoneyLike>; people: Options["people"]; title?: string }) {
+  return (
+    <fieldset className="finance-split-fields finance-field-wide">
+      <legend>{title}</legend>
+      <div className="finance-split-grid">
+        {people.map((person) => (
+          <MoneyInput
+            key={person.id}
+            defaultValue={defaultValues?.get(person.id) ? moneyInputValue(defaultValues.get(person.id)!) : undefined}
+            label={person.name}
+            name={`shareAmount:${person.id}`}
+            required={false}
+          />
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -879,6 +926,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <TextInput label="Data da compra" name="startDate" type="date" />
           <TextInput label="Primeiro vencimento" name="firstDueDate" type="date" />
           <TextInput label="Número de parcelas" name="installmentCount" type="number" />
+          <TextInput label="Parcelas já pagas" name="paidInstallmentCount" required={false} type="number" />
           <label className="finance-field">
             <span>Frequência</span>
             <select name="frequency">
@@ -887,6 +935,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
             </select>
           </label>
           <CategorySelect categories={options.categories} kind="EXPENSE" />
+          <SplitFields people={options.people} />
           <NotesField />
           <button className="finance-primary" type="submit">Criar dívida</button>
         </form>
@@ -895,6 +944,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
       <ul className="finance-list detached-list debt-list">
         {overview.debts.map((debt) => {
           const paidCount = debt.installments.filter((installment) => installment.status === "PAID").length;
+          const debtSplitDefaults = splitDefaultValues(debt.installments.flatMap((installment) => installment.shares), debt.personEditorId, debt.totalAmount);
 
           return (
             <li key={debt.id}>
@@ -933,6 +983,9 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         <span>
                           <strong>Parcela {installment.number}</strong>
                           <small>Vence {formatDate(installment.dueDate)}</small>
+                          {installment.shares.length > 0 ? (
+                            <small>{installment.shares.map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                          ) : null}
                         </span>
                         <b>{formatCurrency(installment.amount)}</b>
                         <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
@@ -952,6 +1005,15 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         {installment.status === "PAID" && installment.transaction ? (
                           <DeleteForm action={deleteDebtInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/dividas" />
                         ) : null}
+                        <details className="inline-split-details">
+                          <summary>Dividir parcela</summary>
+                          <form action={updateDebtInstallmentSharesAction} className="finance-edit-form installment-split-form">
+                            <ReturnFields month={month} returnTo="/dividas" />
+                            <input name="installmentId" type="hidden" value={installment.id} />
+                            <SplitFields defaultValues={splitDefaultValues(installment.shares, installment.personEditorId, installment.amount, true)} people={options.people} title="Divisão da parcela" />
+                            <button className="finance-secondary" type="submit">Salvar divisão</button>
+                          </form>
+                        </details>
                       </li>
                     ))}
                   </ul>
@@ -966,6 +1028,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         <TextInput defaultValue={toDateInputValue(debt.startDate)} label="Data da compra" name="startDate" type="date" />
                         <TextInput defaultValue={toDateInputValue(debt.firstDueDate)} label="Primeiro vencimento" name="firstDueDate" type="date" />
                         <TextInput defaultValue={debt.installmentCount} label="Numero de parcelas" name="installmentCount" type="number" />
+                        <TextInput defaultValue={paidCount} label="Parcelas ja pagas" name="paidInstallmentCount" required={false} type="number" />
                         <label className="finance-field">
                           <span>Frequencia</span>
                           <select defaultValue={debt.frequency} name="frequency">
@@ -974,6 +1037,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                           </select>
                         </label>
                         <CategorySelect categories={options.categories} defaultValue={debt.categoryId} kind="EXPENSE" />
+                        <SplitFields defaultValues={debtSplitDefaults} people={options.people} />
                         <NotesField defaultValue={debt.notes} />
                         <button className="finance-secondary" type="submit">Salvar</button>
                       </form>
@@ -1063,8 +1127,10 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
         <TextInput label="Descrição" name="description" />
         <MoneyInput label="Valor total" name="totalAmount" />
         <TextInput label="Parcelas" name="installmentCount" type="number" />
+        <TextInput label="Parcelas já pagas" name="paidInstallmentCount" required={false} type="number" />
         <TextInput label="Data" name="purchaseDate" type="date" />
         <CategorySelect categories={options.categories} kind="EXPENSE" />
+        <SplitFields people={options.people} />
         <NotesField />
         <button className="finance-secondary" type="submit">Registrar compra</button>
       </form>
@@ -1074,7 +1140,11 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
           <p className="empty-state">Nenhuma compra de cartão neste mês.</p>
         ) : (
           <ul className="finance-list detached-list purchase-list">
-            {overview.cardPurchases.map((purchase) => (
+            {overview.cardPurchases.map((purchase) => {
+              const paidCount = purchase.installments.filter((installment) => installment.status === "PAID").length;
+              const purchaseSplitDefaults = splitDefaultValues(purchase.installments.flatMap((installment) => installment.shares), purchase.personEditorId, purchase.totalAmount);
+
+              return (
               <li key={purchase.id}>
                 <details className="purchase-details">
                   <summary>
@@ -1111,11 +1181,23 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                           <span>
                             <strong>Parcela {installment.number}</strong>
                             <small>Fatura {formatDate(installment.dueMonth)}</small>
+                            {installment.shares.length > 0 ? (
+                              <small>{installment.shares.map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                            ) : null}
                           </span>
                           <b>{formatCurrency(installment.amount)}</b>
-                          <span className="finance-status" data-status={installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
-                            {installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                          <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+                            {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
                           </span>
+                          <details className="inline-split-details">
+                            <summary>Dividir parcela</summary>
+                            <form action={updateCreditCardInstallmentSharesAction} className="finance-edit-form installment-split-form">
+                              <ReturnFields month={month} returnTo="/cartoes" />
+                              <input name="installmentId" type="hidden" value={installment.id} />
+                              <SplitFields defaultValues={splitDefaultValues(installment.shares, installment.personEditorId, installment.amount, true)} people={options.people} title="Divisão da parcela" />
+                              <button className="finance-secondary" type="submit">Salvar divisão</button>
+                            </form>
+                          </details>
                         </li>
                       ))}
                     </ul>
@@ -1138,8 +1220,10 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                           <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
                           <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
                           <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
+                          <TextInput defaultValue={paidCount} label="Parcelas ja pagas" name="paidInstallmentCount" required={false} type="number" />
                           <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data" name="purchaseDate" type="date" />
                           <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
+                          <SplitFields defaultValues={purchaseSplitDefaults} people={options.people} />
                           <NotesField defaultValue={purchase.notes} />
                           <button className="finance-secondary" type="submit">Salvar</button>
                         </form>
@@ -1149,7 +1233,8 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                   </div>
                 </details>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
