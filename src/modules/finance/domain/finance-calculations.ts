@@ -48,6 +48,12 @@ export function addDays(date: Date, days: number) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
+export function monthlyDueDate(firstDueDate: Date, index: number) {
+  const monthStart = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth() + index, 1));
+
+  return clampDayInMonth(monthStart, firstDueDate.getUTCDate());
+}
+
 export function clampDayInMonth(month: Date, day: number) {
   const year = month.getUTCFullYear();
   const monthNumber = month.getUTCMonth();
@@ -57,7 +63,7 @@ export function clampDayInMonth(month: Date, day: number) {
 }
 
 export function installmentDueDate(firstDueDate: Date, index: number, frequency: "MONTHLY" | "FORTNIGHTLY") {
-  return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : addMonths(firstDueDate, index);
+  return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : monthlyDueDate(firstDueDate, index);
 }
 
 export function isDueOnOrBefore(dueDate: Date, referenceDate: Date) {

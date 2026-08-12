@@ -7,6 +7,7 @@ import {
   buildSalaryOccurrencePlan,
   installmentDueDate,
   isDueOnOrBefore,
+  monthlyDueDate,
   monthBounds,
   resolveInvoiceMonth,
   sumPersonTotals,
@@ -49,6 +50,18 @@ describe("finance calculations", () => {
     const plan = buildInstallmentPlan("90.00", 3);
 
     expect(plan.map((_, index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-08-10", "2026-08-24", "2026-09-07"]);
+  });
+
+  it("builds credit card installment due dates from the first installment date", () => {
+    const firstDueDate = new Date("2026-07-10T00:00:00.000Z");
+
+    expect([0, 1, 2].map((index) => monthlyDueDate(firstDueDate, index).toISOString().slice(0, 10))).toEqual(["2026-07-10", "2026-08-10", "2026-09-10"]);
+  });
+
+  it("clamps monthly due dates when the target month is shorter", () => {
+    const firstDueDate = new Date("2026-01-31T00:00:00.000Z");
+
+    expect([0, 1, 2].map((index) => monthlyDueDate(firstDueDate, index).toISOString().slice(0, 10))).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
   });
 
   it("keeps monthly salary as one monthly occurrence", () => {

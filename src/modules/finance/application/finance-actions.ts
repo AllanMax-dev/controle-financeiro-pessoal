@@ -10,17 +10,15 @@ import { getDatabase } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
-  addMonths,
   buildEqualSharePlan,
   buildInstallmentPlan,
   buildSalaryOccurrencePlan,
-  clampDayInMonth,
   dateFromInput,
   fixedExpenseDueDate,
   installmentDueDate,
   isDueOnOrBefore,
+  monthlyDueDate,
   monthStartFromInput,
-  resolveInvoiceMonth,
 } from "@/modules/finance/domain/finance-calculations";
 import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
 import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
@@ -46,6 +44,16 @@ function integer(formData: FormData, name: string, min: number, max: number) {
   }
 
   return value;
+}
+
+function monthStartFromDate(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function assertFirstDueDateAfterPurchase(purchaseDate: Date, firstDueDate: Date) {
+  if (firstDueDate.getTime() < purchaseDate.getTime()) {
+    throw new Error("A primeira parcela nao pode vencer antes da data da compra.");
+  }
 }
 
 async function automaticSplitFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
@@ -453,7 +461,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const card = await getDatabase().creditCard.findFirstOrThrow({
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
-    select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
+    select: { id: true, personEditorId: true },
   });
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
@@ -462,7 +470,8 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const installmentCount = integer(formData, "installmentCount", 1, 120);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
-  const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
+  const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
+  assertFirstDueDateAfterPurchase(purchaseDate, firstDueDate);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const purchaseId = randomUUID();
   const newInvoiceIds: string[] = [];
@@ -475,6 +484,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
         createdByEditorId: access.editorId,
         description: text(formData, "description"),
         id: purchaseId,
+        firstDueDate,
         installmentCount,
         notes: optionalText(formData, "notes"),
         personEditorId,
@@ -485,12 +495,12 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
     });
 
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
-      const dueMonth = addMonths(firstInvoiceMonth, installment.number - 1);
-      const dueDate = clampDayInMonth(dueMonth, card.dueDay);
+      const dueDate = monthlyDueDate(firstDueDate, installment.number - 1);
+      const dueMonth = monthStartFromDate(dueDate);
       const isPaid = isDueOnOrBefore(dueDate, today);
       const invoice = await transaction.creditCardInvoice.upsert({
         where: { cardId_month: { cardId: card.id, month: dueMonth } },
-        update: { amount: { increment: installment.amount } },
+        update: { amount: { increment: installment.amount }, dueDate },
         create: {
           amount: installment.amount,
           cardId: card.id,
@@ -1578,7 +1588,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   const purchaseId = text(formData, "purchaseId");
   const card = await getDatabase().creditCard.findFirstOrThrow({
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
-    select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
+    select: { id: true, personEditorId: true },
   });
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
@@ -1587,7 +1597,8 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const installmentCount = integer(formData, "installmentCount", 1, 120);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
-  const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
+  const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
+  assertFirstDueDateAfterPurchase(purchaseDate, firstDueDate);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const oldInvoiceIds: string[] = [];
   const newInvoiceIds: string[] = [];
@@ -1610,6 +1621,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
         cardId: card.id,
         categoryId,
         description: text(formData, "description"),
+        firstDueDate,
         installmentCount,
         notes: optionalText(formData, "notes"),
         personEditorId,
@@ -1625,12 +1637,12 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     await recalculateCreditCardInvoices(transaction, access.workspaceId, oldInvoiceIds);
 
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
-      const dueMonth = addMonths(firstInvoiceMonth, installment.number - 1);
-      const dueDate = clampDayInMonth(dueMonth, card.dueDay);
+      const dueDate = monthlyDueDate(firstDueDate, installment.number - 1);
+      const dueMonth = monthStartFromDate(dueDate);
       const isPaid = isDueOnOrBefore(dueDate, today);
       const invoice = await transaction.creditCardInvoice.upsert({
         where: { cardId_month: { cardId: card.id, month: dueMonth } },
-        update: { amount: { increment: installment.amount } },
+        update: { amount: { increment: installment.amount }, dueDate },
         create: {
           amount: installment.amount,
           cardId: card.id,

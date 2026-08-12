@@ -53,6 +53,7 @@ import { MonthNavigator } from "@/components/finance/month-navigator";
 import { PersonSegment } from "@/components/finance/person-segment";
 import type { getFinanceOptions, getFinanceOverview } from "@/modules/finance/application/finance-queries";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import { monthlyDueDate } from "@/modules/finance/domain/finance-calculations";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 type Overview = Awaited<ReturnType<typeof getFinanceOverview>>;
@@ -240,6 +241,10 @@ function cardPurchaseMonthShares(purchase: CardPurchase, month: string) {
   }
 
   return Array.from(values.values());
+}
+
+function cardPurchaseInstallmentDueDate(purchase: CardPurchase, installment: CardPurchase["installments"][number]) {
+  return monthlyDueDate(purchase.firstDueDate, installment.number - 1);
 }
 
 function NotesField({ defaultValue }: { defaultValue?: string | null } = {}) {
@@ -1152,6 +1157,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
             <MoneyInput label="Valor total" name="totalAmount" />
             <TextInput label="Parcelas" name="installmentCount" type="number" />
             <TextInput label="Data da compra" name="purchaseDate" type="date" />
+            <TextInput label="Primeira parcela" name="firstDueDate" type="date" />
             <CategorySelect categories={options.categories} kind="EXPENSE" />
             <CardShareFields people={options.people} />
             <NotesField />
@@ -1253,7 +1259,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                               <div className="finance-item-main">
                                 <span>
                                   <strong>{purchase.description}</strong>
-                                  <small>{responsibilityLabel} - {purchase.card.name} - {purchase.installmentCount}x - {formatDate(purchase.purchaseDate)}</small>
+                                  <small>{responsibilityLabel} - {purchase.card.name} - {purchase.installmentCount}x - compra {formatDate(purchase.purchaseDate)} - primeira {formatDate(purchase.firstDueDate)}</small>
                                   {monthShares.length > 0 ? (
                                     <small>{monthShares.map((share) => `${share.name}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
                                   ) : null}
@@ -1288,7 +1294,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                   <li key={installment.id}>
                                     <span>
                                       <strong>Parcela {installment.number}</strong>
-                                      <small>Fatura {formatDate(installment.dueMonth)}</small>
+                                      <small>Vence {formatDate(cardPurchaseInstallmentDueDate(purchase, installment))}</small>
                                       {installment.shares.length > 0 ? (
                                         <small>{installment.shares.map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
                                       ) : null}
@@ -1320,6 +1326,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                     <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
                                     <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
                                     <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data da compra" name="purchaseDate" type="date" />
+                                    <TextInput defaultValue={toDateInputValue(purchase.firstDueDate)} label="Primeira parcela" name="firstDueDate" type="date" />
                                     <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
                                     <CardShareFields defaultValues={shareDefaults} people={options.people} />
                                     <NotesField defaultValue={purchase.notes} />

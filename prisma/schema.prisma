@@ -471,6 +471,7 @@ model CreditCardPurchase {
   totalAmount    Decimal     @db.Decimal(19, 2)
   installmentCount Int
   purchaseDate   DateTime    @db.Date
+  firstDueDate   DateTime    @db.Date
   notes          String?     @db.Text
   canceledAt     DateTime?   @db.Date
   createdByEditorId String?  @db.Uuid
