@@ -202,7 +202,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     database.debtInstallment.findMany({
       where: { dueDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
-      include: { debt: true, personEditor: true, shares: { include: { personEditor: true } } },
+      include: { debt: true, personEditor: true, shares: { include: { personEditor: true } }, transaction: { select: { id: true } } },
       orderBy: [{ dueDate: "asc" }, { number: "asc" }],
     }),
     database.creditCard.findMany({
@@ -338,12 +338,14 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
           ...installment,
           amount: share.amount,
           id: `${installment.id}:${share.personEditorId}`,
+          installmentAmount: installment.amount,
+          rootInstallmentId: installment.id,
           paidAt: share.paidAt,
           personEditor: share.personEditor,
           personEditorId: share.personEditorId,
           status: share.status,
         }))
-      : [installment],
+      : [{ ...installment, installmentAmount: installment.amount, rootInstallmentId: installment.id }],
   );
   const cardInstallmentResponsibilities = cardInstallments.flatMap((installment) =>
     installment.shares.length > 0

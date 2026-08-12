@@ -70,6 +70,10 @@ function monthInputValue(value: Date) {
   return toDateInputValue(value).slice(0, 7);
 }
 
+function spendingPercentLabel(paid: MoneyLike, income: MoneyLike) {
+  return income.greaterThan(0) ? `${paid.div(income).times(100).toDecimalPlaces(0).toString()}%` : "Sem renda";
+}
+
 function ReturnFields({ month, returnTo }: { month: string; returnTo: string }) {
   return (
     <>
@@ -299,14 +303,30 @@ function DeleteForm({ action, idName, idValue, month, returnTo }: { action: Form
   );
 }
 
-export function PageHeader({ month, subtitle, title }: { month: string; subtitle: string; title: string }) {
+function getActiveTotal(overview: Overview) {
+  return overview.activeView === "casal"
+    ? overview.coupleTotal
+    : overview.totalsByPerson.find((person) => person.id === overview.activeView)?.total ?? overview.coupleTotal;
+}
+
+function getVisibleTotalCards(overview: Overview) {
+  return overview.activeView === "casal"
+    ? [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson]
+    : overview.totalsByPerson.filter((person) => person.id === overview.activeView);
+}
+
+function getVisiblePeople(overview: Overview) {
+  return overview.activeView === "casal" ? overview.people : overview.people.filter((person) => person.id === overview.activeView);
+}
+
+export function PageHeader({ month, showMonth = true, subtitle, title }: { month: string; showMonth?: boolean; subtitle: string; title: string }) {
   return (
     <section className="finance-page-header">
       <div>
         <p>{subtitle}</p>
         <h1>{title}</h1>
       </div>
-      <MonthNavigator month={month} />
+      {showMonth ? <MonthNavigator month={month} /> : null}
     </section>
   );
 }
@@ -316,49 +336,78 @@ export function PersonTabs({ month, overview }: { month: string; overview: Overv
 }
 
 export function DashboardPageContent({ month, overview }: { month: string; overview: Overview }) {
-  const cards =
-    overview.activeView === "casal"
-      ? [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson]
-      : overview.totalsByPerson.filter((person) => person.id === overview.activeView);
+  const cards = getVisibleTotalCards(overview);
   const chartCards = overview.activeView === "casal" ? overview.totalsByPerson : cards;
-  const dueItems = [
-    ...overview.salaryOccurrences.map((salary) => ({
+  const paymentItems = [
+    ...overview.transactions
+      .filter(
+        (transaction) =>
+          transaction.type === "EXPENSE" &&
+          transaction.status === "PENDING" &&
+          !transaction.creditCardInstallmentId &&
+          !transaction.debtInstallmentId &&
+          !transaction.fixedExpenseId &&
+          !transaction.salaryId,
+      )
+      .map((transaction) => ({
+        amount: transaction.amount,
+        dueDate: transaction.dueDate ?? transaction.competenceDate,
+        id: `transaction-${transaction.id}`,
+        name: transaction.description,
+        person: transaction.personEditor.displayName,
+        status: transaction.category?.name ?? "Gasto variavel",
+      })),
+    ...overview.fixedExpenseOccurrences
+      .filter((expense) => expense.status === "PENDING")
+      .map((expense) => ({
+        amount: expense.amount,
+        dueDate: expense.dueDate,
+        id: `fixed-${expense.id}`,
+        name: expense.description,
+        person: expense.personEditor.displayName,
+        status: "Gasto fixo",
+      })),
+    ...overview.debtInstallments
+      .filter((installment) => installment.status === "PENDING")
+      .map((installment) => ({
+        amount: installment.amount,
+        dueDate: installment.dueDate,
+        id: `debt-${installment.id}`,
+        name: installment.debt.description,
+        person: installment.personEditor.displayName,
+        status: `Divida - parcela ${installment.number}`,
+      })),
+    ...overview.cardInstallments
+      .filter((installment) => installment.status === "OPEN")
+      .map((installment) => ({
+        amount: installment.amount,
+        dueDate: installment.dueMonth,
+        id: `card-${installment.id}`,
+        name: installment.purchase.description,
+        person: installment.personEditor.displayName,
+        status: `Cartao - ${installment.card.name}`,
+      })),
+  ].sort((left, right) => left.dueDate.getTime() - right.dueDate.getTime()).slice(0, 6);
+  const receivableItems = [
+    ...overview.salaryOccurrences
+      .filter((salary) => salary.status === "PENDING")
+      .map((salary) => ({
       amount: salary.amount,
       dueDate: salary.dueDate,
       id: `salary-${salary.id}`,
       name: salary.description,
       person: salary.personEditor.displayName,
-      status: salary.status === "SETTLED" ? "Confirmado" : "Pendente",
+      status: "Salario pendente",
     })),
-    ...overview.fixedExpenseOccurrences
-      .filter((expense) => expense.status === "PENDING")
-      .map((expense) => ({
-      amount: expense.amount,
-      dueDate: expense.dueDate,
-      id: `fixed-${expense.id}`,
-      name: expense.description,
-      person: expense.personEditor.displayName,
-      status: "Pendente",
-    })),
-    ...overview.debtInstallments
-      .filter((installment) => installment.status === "PENDING")
-      .map((installment) => ({
-      amount: installment.amount,
-      dueDate: installment.dueDate,
-      id: `debt-${installment.id}`,
-      name: installment.debt.description,
-      person: installment.personEditor.displayName,
-      status: `parcela ${installment.number}`,
-    })),
-    ...overview.cards
-      .filter((card) => card.invoiceStatus !== "PAID" && card.invoiceAmount.minus(card.invoicePaidAmount).greaterThan(0))
-      .map((card) => ({
-        amount: card.invoiceAmount.minus(card.invoicePaidAmount),
-        dueDate: card.invoiceDueDate,
-        id: `invoice-${card.id}`,
-        name: card.name,
-        person: card.personEditor.displayName,
-        status: "Fatura",
+    ...overview.transactions
+      .filter((transaction) => transaction.type === "INCOME" && transaction.status === "PENDING" && !transaction.salaryId)
+      .map((transaction) => ({
+        amount: transaction.amount,
+        dueDate: transaction.dueDate ?? transaction.competenceDate,
+        id: `receivable-${transaction.id}`,
+        name: transaction.description,
+        person: transaction.personEditor.displayName,
+        status: transaction.category?.name ?? "Recebimento pendente",
       })),
   ].sort((left, right) => left.dueDate.getTime() - right.dueDate.getTime()).slice(0, 6);
   const chartData = chartCards.map((card) => ({
@@ -399,6 +448,18 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
                 <dt>Investido</dt>
                 <dd>{formatCurrency(card.total.investments)}</dd>
               </div>
+              <div>
+                <dt>Patrimônio</dt>
+                <dd>{formatCurrency(card.total.wealth)}</dd>
+              </div>
+              <div>
+                <dt>Resultado</dt>
+                <dd>{formatCurrency(card.total.net)}</dd>
+              </div>
+              <div>
+                <dt>Uso da renda</dt>
+                <dd>{spendingPercentLabel(card.total.paid, card.total.income)}</dd>
+              </div>
             </dl>
           </article>
         ))}
@@ -409,9 +470,9 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
           <FinanceDashboardChart data={chartData} />
         </article>
         <article className="finance-panel">
-          <h2>Próximos vencimentos</h2>
+          <h2>Próximos pagamentos</h2>
           <ul className="finance-list">
-            {dueItems.map((item) => (
+            {paymentItems.map((item) => (
               <li key={item.id}>
                 <span>
                   <strong>{item.name}</strong>
@@ -421,20 +482,22 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
               </li>
             ))}
           </ul>
+          {paymentItems.length === 0 ? <p className="empty-state">Nenhum pagamento pendente no mês.</p> : null}
         </article>
         <article className="finance-panel">
-          <h2>Seus cartões</h2>
+          <h2>Próximos recebimentos</h2>
           <ul className="finance-list">
-            {overview.cards.slice(0, 4).map((card) => (
-              <li key={card.id}>
+            {receivableItems.map((item) => (
+              <li key={item.id}>
                 <span>
-                  <strong>{card.name}</strong>
-                  <small>{card.personEditor.displayName} · vence {formatDate(card.invoiceDueDate)}</small>
+                  <strong>{item.name}</strong>
+                  <small>{item.person} - {item.status}{item.dueDate ? ` - ${formatDate(item.dueDate)}` : ""}</small>
                 </span>
-                <b>{formatCurrency(card.invoiceAmount)}</b>
+                <b>{formatCurrency(item.amount)}</b>
               </li>
             ))}
           </ul>
+          {receivableItems.length === 0 ? <p className="empty-state">Nenhum recebimento pendente no mês.</p> : null}
         </article>
       </section>
     </>
@@ -455,19 +518,108 @@ function CreatePanel({ children, title }: { children: ReactNode; title: string }
   );
 }
 
-function WorkspacePage({ children, formTitle, month, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; subtitle: string; title: string }) {
+function WorkspacePage({ children, formTitle, month, showMonth = true, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; showMonth?: boolean; subtitle: string; title: string }) {
   return (
     <>
-      <PageHeader month={month} subtitle={subtitle} title={title} />
+      <PageHeader month={month} showMonth={showMonth} subtitle={subtitle} title={title} />
       <CreatePanel title={formTitle}>{children}</CreatePanel>
     </>
   );
 }
 
 export function BanksPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
+  const activeTotal = getActiveTotal(overview);
+  const visibleTotals = getVisibleTotalCards(overview);
+  const accountGroups = getVisiblePeople(overview)
+    .map((person) => {
+      const accounts = overview.accounts.filter((account) => account.personEditorId === person.id);
+
+      return {
+        investments: accounts.filter((account) => account.type === "INVESTMENT"),
+        operational: accounts.filter((account) => account.type !== "INVESTMENT"),
+        person,
+      };
+    })
+    .filter((group) => group.operational.length > 0 || group.investments.length > 0);
+
   return (
     <>
       <PageHeader month={month} subtitle="Bancos e dinheiro" title="Bancos" />
+      <PersonTabs month={month} overview={overview} />
+      <section className="card-month-summary" aria-label="Resumo de dinheiro e investimentos">
+        <article className="card-month-card">
+          <span>Dinheiro disponível</span>
+          <strong>{formatCurrency(activeTotal.available)}</strong>
+          <small>Contas de uso diário, sem investimentos</small>
+        </article>
+        <article className="card-month-card">
+          <span>Investimentos</span>
+          <strong>{formatCurrency(activeTotal.investments)}</strong>
+          <small>Separado do dinheiro disponível</small>
+        </article>
+        <article className="card-month-card">
+          <span>Patrimônio financeiro</span>
+          <strong>{formatCurrency(activeTotal.wealth)}</strong>
+          <small>Disponível + investido</small>
+        </article>
+      </section>
+      <section className="compact-card">
+        <h2>Divisão dos saldos</h2>
+        <ul className="finance-list">
+          {visibleTotals.map((person) => (
+            <li key={person.id}>
+              <span>
+                <strong>{person.name}</strong>
+                <small>Disponível {formatCurrency(person.total.available)} - Investido {formatCurrency(person.total.investments)}</small>
+              </span>
+              <b>{formatCurrency(person.total.wealth)}</b>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="compact-card">
+        <h2>Contas por pessoa</h2>
+        {accountGroups.length === 0 ? <p className="empty-state">Nenhuma conta cadastrada.</p> : null}
+        <div className="person-group-stack">
+          {accountGroups.map((group) => (
+            <section className="person-group" key={group.person.id}>
+              <h2>{group.person.name}</h2>
+              {group.operational.length > 0 ? (
+                <>
+                  <h3>Contas</h3>
+                  <ul className="finance-list">
+                    {group.operational.map((account) => (
+                      <li key={account.id}>
+                        <span>
+                          <strong>{account.name}</strong>
+                          <small>{account.institution ?? "Sem instituição"}</small>
+                        </span>
+                        <b>{formatCurrency(account.balance)}</b>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {group.investments.length > 0 ? (
+                <>
+                  <h3>Investimentos</h3>
+                  <ul className="finance-list">
+                    {group.investments.map((account) => (
+                      <li key={account.id}>
+                        <span>
+                          <strong>{account.name}</strong>
+                          <small>{account.institution ?? "Sem instituição"}</small>
+                        </span>
+                        <b>{formatCurrency(account.balance)}</b>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </section>
+          ))}
+        </div>
+      </section>
       <ul className="finance-list detached-list account-list">
         {overview.accounts.map((account) => (
           <li key={account.id}>
@@ -520,6 +672,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
               <option value="DIGITAL">Conta digital</option>
               <option value="SAVINGS">Poupança</option>
               <option value="CASH">Dinheiro</option>
+              <option value="INVESTMENT">Investimento</option>
               <option value="OTHER">Outra</option>
             </select>
           </label>
@@ -660,6 +813,26 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
       person,
     }))
     .filter(({ expenses }) => expenses.length > 0);
+  const fixedSummaryCards = getVisiblePeople(overview).map((person) => {
+    const expenses = overview.fixedExpenses.filter((expense) => expense.personEditorId === person.id);
+    const occurrences = overview.fixedExpenseOccurrences.filter((expense) => expense.personEditorId === person.id);
+
+    return {
+      id: person.id,
+      name: person.name,
+      paid: sumMoney(occurrences.filter((expense) => expense.status === "SETTLED").map((expense) => expense.amount)),
+      pending: sumMoney(occurrences.filter((expense) => expense.status === "PENDING").map((expense) => expense.amount)),
+      total: sumMoney(expenses.map((expense) => expense.amount)),
+    };
+  });
+  const fixedCoupleSummary = {
+    id: "casal",
+    name: "Casal",
+    paid: sumMoney(fixedSummaryCards.map((summary) => summary.paid)),
+    pending: sumMoney(fixedSummaryCards.map((summary) => summary.pending)),
+    total: sumMoney(fixedSummaryCards.map((summary) => summary.total)),
+  };
+  const visibleFixedSummaryCards = overview.activeView === "casal" ? [fixedCoupleSummary, ...fixedSummaryCards] : fixedSummaryCards;
   const renderOccurrence = (expense: Overview["fixedExpenseOccurrences"][number]) => (
     <li key={expense.id}>
       <div className="finance-item-main">
@@ -748,7 +921,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
 
   return (
     <>
-      <WorkspacePage formTitle="Novo gasto fixo" listTitle="Recorrências ativas" month={month} subtitle="Compromissos recorrentes" title="Gastos fixos">
+      <WorkspacePage formTitle="Novo gasto fixo" listTitle="Recorrências ativas" month={month} showMonth={false} subtitle="Compromissos recorrentes" title="Gastos fixos">
         <form action={createFixedExpenseAction} className="finance-form">
           <ReturnFields month={month} returnTo="/despesas-fixas" />
           <PersonSelect people={options.people} />
@@ -770,6 +943,42 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         </form>
       </WorkspacePage>
       <PersonTabs month={month} overview={overview} />
+      <section className="card-month-summary" aria-label="Resumo dos gastos fixos">
+        {visibleFixedSummaryCards.map((summary) => (
+          <article className="card-month-card" data-active={overview.activeView === summary.id ? "true" : undefined} key={summary.id}>
+            <span>{summary.name}</span>
+            <strong>{formatCurrency(summary.total)}</strong>
+            <small>Compromisso mensal fixo</small>
+            <dl>
+              <div>
+                <dt>Pendente no mês</dt>
+                <dd>{formatCurrency(summary.pending)}</dd>
+              </div>
+              <div>
+                <dt>Pago no mês</dt>
+                <dd>{formatCurrency(summary.paid)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </section>
+      <section className="compact-card">
+        <h2>Recorrências cadastradas</h2>
+        {showPersonGroups ? (
+          <div className="person-group-stack recurring-group-stack">
+            {recurringGroups.length === 0 ? <p className="empty-state">Nenhuma recorrência cadastrada.</p> : null}
+            {recurringGroups.map(({ expenses, person }) => (
+              <section className="person-group" key={person.id}>
+                <h2>{person.name}</h2>
+                {renderRecurringList(expenses)}
+              </section>
+            ))}
+          </div>
+        ) : (
+          renderRecurringList(overview.fixedExpenses)
+        )}
+      </section>
+      <h2>Pagamentos do mês</h2>
       {showPersonGroups ? (
         <div className="person-group-stack">
           {occurrenceGroups.length === 0 ? <p className="empty-state">Nenhum gasto fixo neste mês.</p> : null}
@@ -818,7 +1027,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
       </ul>
       )}
       <details className="compact-card">
-        <summary>Gerenciar recorrencias</summary>
+        <summary>Editar recorrências</summary>
         {showPersonGroups ? (
           <div className="person-group-stack recurring-group-stack">
             {recurringGroups.length === 0 ? <p className="empty-state">Nenhuma recorrência cadastrada.</p> : null}
@@ -875,9 +1084,50 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
 }
 
 export function ReceiptsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
+  const salarySummaryCards = getVisiblePeople(overview).map((person) => {
+    const salaries = overview.salaries.filter((salary) => salary.personEditorId === person.id);
+    const occurrences = overview.salaryOccurrences.filter((salary) => salary.personEditorId === person.id);
+
+    return {
+      id: person.id,
+      name: person.name,
+      received: sumMoney(occurrences.filter((salary) => salary.status === "SETTLED").map((salary) => salary.amount)),
+      receivable: sumMoney(occurrences.filter((salary) => salary.status === "PENDING").map((salary) => salary.amount)),
+      total: sumMoney(salaries.map((salary) => salary.amount)),
+    };
+  });
+  const salaryCoupleSummary = {
+    id: "casal",
+    name: "Casal",
+    received: sumMoney(salarySummaryCards.map((summary) => summary.received)),
+    receivable: sumMoney(salarySummaryCards.map((summary) => summary.receivable)),
+    total: sumMoney(salarySummaryCards.map((summary) => summary.total)),
+  };
+  const visibleSalarySummaryCards = overview.activeView === "casal" ? [salaryCoupleSummary, ...salarySummaryCards] : salarySummaryCards;
+
   return (
     <>
       <TransactionPageContent kind="INCOME" month={month} options={options} overview={overview} title="Recebimentos" />
+      <PersonTabs month={month} overview={overview} />
+      <section className="card-month-summary" aria-label="Resumo de salários">
+        {visibleSalarySummaryCards.map((summary) => (
+          <article className="card-month-card" data-active={overview.activeView === summary.id ? "true" : undefined} key={summary.id}>
+            <span>{summary.name}</span>
+            <strong>{formatCurrency(summary.total)}</strong>
+            <small>Renda recorrente mensal</small>
+            <dl>
+              <div>
+                <dt>Recebido</dt>
+                <dd>{formatCurrency(summary.received)}</dd>
+              </div>
+              <div>
+                <dt>A receber</dt>
+                <dd>{formatCurrency(summary.receivable)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </section>
       {overview.salaryOccurrences.length > 0 ? (
         <section className="compact-card">
           <h2>Salarios do mes</h2>
@@ -977,6 +1227,72 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
 }
 
 export function DebtsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
+  const showDebtPersonGroups = overview.activeView === "casal";
+  const monthlyInstallmentGroups = getVisiblePeople(overview)
+    .map((person) => ({
+      installments: overview.debtInstallments.filter((installment) => installment.personEditorId === person.id),
+      person,
+    }))
+    .filter(({ installments }) => installments.length > 0);
+  const monthlyDebtSummaryCards = getVisiblePeople(overview).map((person) => {
+    const installments = overview.debtInstallments.filter((installment) => installment.personEditorId === person.id);
+
+    return {
+      id: person.id,
+      name: person.name,
+      paid: sumMoney(installments.filter((installment) => installment.status === "PAID").map((installment) => installment.amount)),
+      pending: sumMoney(installments.filter((installment) => installment.status === "PENDING").map((installment) => installment.amount)),
+      total: sumMoney(installments.map((installment) => installment.amount)),
+    };
+  });
+  const monthlyDebtCoupleSummary = {
+    id: "casal",
+    name: "Casal",
+    paid: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.paid)),
+    pending: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.pending)),
+    total: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.total)),
+  };
+  const visibleMonthlyDebtSummaryCards = overview.activeView === "casal" ? [monthlyDebtCoupleSummary, ...monthlyDebtSummaryCards] : monthlyDebtSummaryCards;
+  const renderMonthlyInstallment = (installment: Overview["debtInstallments"][number]) => {
+    const isSharedLine = !money(installment.amount).equals(installment.installmentAmount);
+    const canPayFromThisLine = installment.personEditorId === installment.debt.personEditorId;
+
+    return (
+      <li key={installment.id}>
+        <div className="finance-item-main">
+          <span>
+            <strong>{installment.debt.description}</strong>
+            <small>{installment.personEditor.displayName} - parcela {installment.number} - vence {formatDate(installment.dueDate)}</small>
+            {isSharedLine ? <small>Parte da pessoa. Parcela total {formatCurrency(installment.installmentAmount)}</small> : null}
+          </span>
+          <b>{formatCurrency(installment.amount)}</b>
+        </div>
+        <ItemActions>
+          <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+            {installment.status === "PAID" ? "Pago" : installment.status === "CANCELED" ? "Cancelado" : "Pendente"}
+          </span>
+          {installment.status === "PENDING" && canPayFromThisLine ? (
+            <form action={payDebtInstallmentAction} className="inline-payment-form installment-payment-form">
+              <ReturnFields month={month} returnTo="/dividas" />
+              <input name="installmentId" type="hidden" value={installment.rootInstallmentId} />
+              <MoneyInput defaultValue={moneyInputValue(installment.installmentAmount)} label="Pagamento" name="amount" />
+              <TextInput defaultValue={toDateInputValue(installment.dueDate)} label="Data" name="paidAt" type="date" />
+              <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+              <NotesField />
+              <button className="finance-secondary" type="submit">Pagar parcela</button>
+            </form>
+          ) : null}
+          {installment.status === "PENDING" && !canPayFromThisLine ? (
+            <small>Pagamento feito pela parcela completa nos detalhes da dívida.</small>
+          ) : null}
+          {installment.status === "PAID" && installment.transaction ? (
+            <DeleteForm action={deleteDebtInstallmentPaymentAction} idName="installmentId" idValue={installment.rootInstallmentId} month={month} returnTo="/dividas" />
+          ) : null}
+        </ItemActions>
+      </li>
+    );
+  };
+
   return (
     <>
       <WorkspacePage formTitle="Nova dívida" listTitle="Dívidas cadastradas" month={month} subtitle="Dívidas parceladas" title="Dívidas">
@@ -1002,6 +1318,48 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
         </form>
       </WorkspacePage>
       <PersonTabs month={month} overview={overview} />
+      <section className="card-month-summary" aria-label="Parcelas de dívidas no mês">
+        {visibleMonthlyDebtSummaryCards.map((summary) => (
+          <article className="card-month-card" data-active={overview.activeView === summary.id ? "true" : undefined} key={summary.id}>
+            <span>{summary.name}</span>
+            <strong>{formatCurrency(summary.total)}</strong>
+            <small>Parcelas no mês selecionado</small>
+            <dl>
+              <div>
+                <dt>Pendente</dt>
+                <dd>{formatCurrency(summary.pending)}</dd>
+              </div>
+              <div>
+                <dt>Pago</dt>
+                <dd>{formatCurrency(summary.paid)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </section>
+      <section className="compact-card">
+        <h2>Parcelas do mês</h2>
+        {showDebtPersonGroups ? (
+          <div className="person-group-stack">
+            {monthlyInstallmentGroups.length === 0 ? <p className="empty-state">Nenhuma parcela de dívida neste mês.</p> : null}
+            {monthlyInstallmentGroups.map(({ installments, person }) => (
+              <section className="person-group" key={person.id}>
+                <h2>{person.name}</h2>
+                <ul className="finance-list detached-list debt-list">
+                  {installments.map(renderMonthlyInstallment)}
+                </ul>
+              </section>
+            ))}
+          </div>
+        ) : overview.debtInstallments.length === 0 ? (
+          <p className="empty-state">Nenhuma parcela de dívida neste mês.</p>
+        ) : (
+          <ul className="finance-list detached-list debt-list">
+            {overview.debtInstallments.map(renderMonthlyInstallment)}
+          </ul>
+        )}
+      </section>
+      <h2>Dívidas cadastradas</h2>
       <ul className="finance-list detached-list debt-list">
         {overview.debts.map((debt) => {
           const paidCount = debt.installments.filter((installment) => installment.status === "PAID").length;
