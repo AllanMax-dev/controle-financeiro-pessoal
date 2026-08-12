@@ -76,10 +76,10 @@ function ReturnFields({ month, returnTo }: { month: string; returnTo: string }) 
   );
 }
 
-function PersonSelect({ defaultValue, people }: { defaultValue?: string; people: Options["people"] }) {
+function PersonSelect({ defaultValue, label = "Pessoa", people }: { defaultValue?: string; label?: string; people: Options["people"] }) {
   return (
     <label className="finance-field">
-      <span>Pessoa</span>
+      <span>{label}</span>
       <select defaultValue={defaultValue} name="personEditorId" required>
         {people.map((person) => (
           <option key={person.id} value={person.id}>
@@ -1059,6 +1059,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
             ))}
           </select>
         </label>
+        <PersonSelect label="Responsável" people={options.people} />
         <TextInput label="Descrição" name="description" />
         <MoneyInput label="Valor total" name="totalAmount" />
         <TextInput label="Parcelas" name="installmentCount" type="number" />
@@ -1133,6 +1134,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                               ))}
                             </select>
                           </label>
+                          <PersonSelect defaultValue={purchase.personEditorId} label="Responsável" people={options.people} />
                           <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
                           <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
                           <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />

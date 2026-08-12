@@ -335,6 +335,8 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
+  const personEditorId = text(formData, "personEditorId") || card.personEditorId;
+  await assertPerson(access.workspaceId, personEditorId);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
@@ -353,7 +355,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
         id: purchaseId,
         installmentCount,
         notes: optionalText(formData, "notes"),
-        personEditorId: card.personEditorId,
+        personEditorId,
         purchaseDate,
         totalAmount,
         workspaceId: access.workspaceId,
@@ -384,7 +386,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
           dueMonth,
           invoiceId: invoice.id,
           number: installment.number,
-          personEditorId: card.personEditorId,
+          personEditorId,
           purchaseId,
           workspaceId: access.workspaceId,
         },
@@ -401,7 +403,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
           creditCardInstallmentId: cardInstallment.id,
           description: `${text(formData, "description")} ${installment.number}/${installmentCount}`,
           dueDate,
-          personEditorId: card.personEditorId,
+          personEditorId,
           status: "PENDING",
           type: "EXPENSE",
           workspaceId: access.workspaceId,
@@ -1386,6 +1388,8 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
+  const personEditorId = text(formData, "personEditorId") || card.personEditorId;
+  await assertPerson(access.workspaceId, personEditorId);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
@@ -1415,7 +1419,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
         description: text(formData, "description"),
         installmentCount,
         notes: optionalText(formData, "notes"),
-        personEditorId: card.personEditorId,
+        personEditorId,
         purchaseDate,
         totalAmount,
       },
@@ -1469,7 +1473,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
           dueMonth,
           invoiceId: invoice.id,
           number: installment.number,
-          personEditorId: card.personEditorId,
+          personEditorId,
           purchaseId,
           workspaceId: access.workspaceId,
         },
@@ -1486,7 +1490,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
           creditCardInstallmentId: cardInstallment.id,
           description: `${text(formData, "description")} ${installment.number}/${installmentCount}`,
           dueDate,
-          personEditorId: card.personEditorId,
+          personEditorId,
           status: "PENDING",
           type: "EXPENSE",
           workspaceId: access.workspaceId,
