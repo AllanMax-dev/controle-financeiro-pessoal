@@ -37,6 +37,7 @@ import {
   updateBalanceAdjustmentAction,
   updateCategoryAction,
   updateCreditCardAction,
+  updateCreditCardInvoicePaymentAction,
   updateCreditCardPurchaseAction,
   updateDebtAction,
   updateFixedExpenseAction,
@@ -1502,6 +1503,8 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                 {purchase.installments.map((installment) => {
                                   const installmentDueDate = cardPurchaseInstallmentDueDate(purchase, installment);
                                   const linkedPayment = installment.invoicePayment;
+                                  const paymentAccounts = options.accounts.filter((account) => account.personEditorId === purchase.card.personEditorId);
+                                  const cardPaymentAccounts = paymentAccounts.length > 0 ? paymentAccounts : options.accounts;
 
                                   return (
                                     <li key={installment.id}>
@@ -1523,17 +1526,27 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                             <ReturnFields month={month} returnTo="/cartoes" />
                                             <input name="installmentId" type="hidden" value={installment.id} />
                                             <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
-                                            <AccountSelect accounts={options.accounts} label="Conta" name="accountId" optional={false} />
+                                            <AccountSelect accounts={cardPaymentAccounts} label="Conta" name="accountId" optional={false} />
                                             <NotesField />
                                             <button className="finance-secondary" type="submit">Adiantar parcela</button>
                                           </form>
                                         </details>
                                       ) : null}
                                       {installment.status === "PAID" && linkedPayment ? (
-                                        <div className="installment-payment-form">
-                                          <small>Pagamento antecipado registrado nesta parcela.</small>
+                                        <ItemActions>
+                                          <EditDetails>
+                                            <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                                              <ReturnFields month={month} returnTo="/cartoes" />
+                                              <input name="paymentId" type="hidden" value={linkedPayment.id} />
+                                              <input name="amount" type="hidden" value={moneyInputValue(linkedPayment.amount)} />
+                                              <TextInput defaultValue={toDateInputValue(linkedPayment.paidAt)} label="Data" name="paidAt" type="date" />
+                                              <AccountSelect accounts={cardPaymentAccounts} defaultValue={linkedPayment.accountId} label="Conta" name="accountId" optional={false} />
+                                              <NotesField defaultValue={linkedPayment.notes} />
+                                              <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                                            </form>
+                                          </EditDetails>
                                           <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={linkedPayment.id} month={month} returnTo="/cartoes" />
-                                        </div>
+                                        </ItemActions>
                                       ) : null}
                                     </li>
                                   );

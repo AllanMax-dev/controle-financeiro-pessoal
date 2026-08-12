@@ -1242,15 +1242,21 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--surface) 96%, var(--surface-muted));
 }
 
-.installment-payment-form {
-  grid-column: 1 / -1;
-}
-
 .installment-list .inline-payment-details[open] {
   grid-column: 1 / -1;
 }
 
 .installment-list .inline-payment-details[open] summary {
+  width: 100%;
+}
+
+.installment-list .finance-list-actions:has(.finance-edit-details[open]) {
+  grid-column: 1 / -1;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.installment-list .finance-list-actions .finance-edit-details[open] {
   width: 100%;
 }
 

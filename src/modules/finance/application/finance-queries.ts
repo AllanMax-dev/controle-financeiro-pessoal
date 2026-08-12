@@ -223,7 +223,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: {
         card: true,
         category: true,
-        installments: { include: { invoicePayment: { select: { id: true } }, shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
+        installments: { include: { invoicePayment: { select: { accountId: true, amount: true, id: true, notes: true, paidAt: true } }, shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
         personEditor: true,
       },
       orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
