@@ -286,17 +286,37 @@ function EditDetails({ children }: { children: ReactNode }) {
   );
 }
 
-function DeleteForm({ action, idName, idValue, month, returnTo }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string }) {
+function DeleteForm({
+  action,
+  buttonLabel = "Excluir de vez",
+  confirmDescription = "Esta ação não poderá ser desfeita.",
+  confirmTitle = "Excluir este item?",
+  idName,
+  idValue,
+  month,
+  returnTo,
+  summaryLabel = "Excluir",
+}: {
+  action: FormAction;
+  buttonLabel?: string;
+  confirmDescription?: string;
+  confirmTitle?: string;
+  idName: string;
+  idValue: string;
+  month: string;
+  returnTo: string;
+  summaryLabel?: string;
+}) {
   return (
     <form action={action} className="delete-form">
       <ReturnFields month={month} returnTo={returnTo} />
       <input name={idName} type="hidden" value={idValue} />
       <details className="destructive-confirm">
-        <summary>Excluir</summary>
+        <summary>{summaryLabel}</summary>
         <div>
-          <strong>Excluir este item?</strong>
-          <small>Esta ação não poderá ser desfeita.</small>
-          <button className="finance-danger" type="submit">Excluir de vez</button>
+          <strong>{confirmTitle}</strong>
+          <small>{confirmDescription}</small>
+          <button className="finance-danger" type="submit">{buttonLabel}</button>
         </div>
       </details>
     </form>
@@ -863,7 +883,17 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         </details>
       ) : null}
       {occurrence?.status === "SETTLED" && occurrence.transactionId ? (
-        <DeleteForm action={deleteTransactionAction} idName="transactionId" idValue={occurrence.transactionId} month={month} returnTo="/despesas-fixas" />
+        <DeleteForm
+          action={deleteTransactionAction}
+          buttonLabel="Desfazer pagamento"
+          confirmDescription="Remove o pagamento deste mês e volta o gasto fixo para pendente."
+          confirmTitle="Desfazer pagamento?"
+          idName="transactionId"
+          idValue={occurrence.transactionId}
+          month={month}
+          returnTo="/despesas-fixas"
+          summaryLabel="Desfazer"
+        />
       ) : null}
       <EditDetails>
         <form action={updateFixedExpenseAction} className="finance-edit-form">
