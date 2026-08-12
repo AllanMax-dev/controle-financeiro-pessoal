@@ -44,10 +44,6 @@ export function addMonths(date: Date, months: number) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, date.getUTCDate()));
 }
 
-export function addDays(date: Date, days: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
-}
-
 export function monthlyDueDate(firstDueDate: Date, index: number) {
   const monthStart = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth() + index, 1));
 
@@ -62,8 +58,19 @@ export function clampDayInMonth(month: Date, day: number) {
   return new Date(Date.UTC(year, monthNumber, Math.min(Math.max(day, 1), lastDay)));
 }
 
+export function fortnightlyDueDate(firstDueDate: Date, index: number) {
+  const monthStart = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth(), 1));
+  const firstHalf = clampDayInMonth(monthStart, 15);
+  const secondHalf = clampDayInMonth(monthStart, 30);
+  const firstSlot = firstDueDate.getTime() <= firstHalf.getTime() ? 0 : firstDueDate.getTime() <= secondHalf.getTime() ? 1 : 2;
+  const slot = firstSlot + index;
+  const dueMonth = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth() + Math.floor(slot / 2), 1));
+
+  return clampDayInMonth(dueMonth, slot % 2 === 0 ? 15 : 30);
+}
+
 export function installmentDueDate(firstDueDate: Date, index: number, frequency: "MONTHLY" | "FORTNIGHTLY") {
-  return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : monthlyDueDate(firstDueDate, index);
+  return frequency === "FORTNIGHTLY" ? fortnightlyDueDate(firstDueDate, index) : monthlyDueDate(firstDueDate, index);
 }
 
 export function isDueOnOrBefore(dueDate: Date, referenceDate: Date) {

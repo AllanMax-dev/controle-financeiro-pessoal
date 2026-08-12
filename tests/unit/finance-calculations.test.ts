@@ -49,7 +49,19 @@ describe("finance calculations", () => {
     const firstDueDate = new Date("2026-08-10T00:00:00.000Z");
     const plan = buildInstallmentPlan("90.00", 3);
 
-    expect(plan.map((_, index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-08-10", "2026-08-24", "2026-09-07"]);
+    expect(plan.map((_, index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-08-15", "2026-08-30", "2026-09-15"]);
+  });
+
+  it("starts fortnightly debt installments on the next 15/30 slot", () => {
+    const firstDueDate = new Date("2026-08-20T00:00:00.000Z");
+
+    expect([0, 1, 2].map((index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-08-30", "2026-09-15", "2026-09-30"]);
+  });
+
+  it("clamps the second fortnightly debt slot when the month has no day 30", () => {
+    const firstDueDate = new Date("2026-02-20T00:00:00.000Z");
+
+    expect([0, 1, 2].map((index) => installmentDueDate(firstDueDate, index, "FORTNIGHTLY").toISOString().slice(0, 10))).toEqual(["2026-02-28", "2026-03-15", "2026-03-30"]);
   });
 
   it("builds credit card installment due dates from the first installment date", () => {
