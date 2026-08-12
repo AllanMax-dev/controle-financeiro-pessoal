@@ -69,6 +69,42 @@ async function automaticSplitFromForm(formData: FormData, workspaceId: string, f
   };
 }
 
+async function cardPurchaseResponsibilityFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
+  const responsibilityTarget = text(formData, "responsibilityTarget") || text(formData, "personEditorId") || fallbackPersonEditorId;
+  const wantsCoupleSplit = responsibilityTarget === "COUPLE" || text(formData, "splitMode") === "EQUAL";
+
+  if (!wantsCoupleSplit) {
+    return {
+      personEditorId: responsibilityTarget,
+      split: { explicit: false, shares: [{ amount: totalAmount, personEditorId: responsibilityTarget }] },
+    };
+  }
+
+  const people = await getDatabase().editor.findMany({
+    where: { active: true, workspaceId },
+    orderBy: { displayName: "asc" },
+    select: { id: true },
+  });
+  const shares = people.map((person) => {
+    const rawAmount = text(formData, `cardShareAmount:${person.id}`);
+
+    return {
+      amount: rawAmount ? parseMoneyInput(rawAmount) : money(0),
+      personEditorId: person.id,
+    };
+  }).filter((share) => share.amount.greaterThan(0));
+  const splitTotal = sumMoney(shares.map((share) => share.amount));
+
+  if (shares.length < 2 || !splitTotal.equals(totalAmount)) {
+    throw new Error("A divisao do cartao precisa informar os valores de cada pessoa e somar exatamente o valor total.");
+  }
+
+  return {
+    personEditorId: shares[0]!.personEditorId,
+    split: { explicit: true, shares },
+  };
+}
+
 async function recalculateCreditCardInvoices(transaction: Prisma.TransactionClient, workspaceId: string, invoiceIds: string[]) {
   for (const invoiceId of [...new Set(invoiceIds)]) {
     const amount = money((await transaction.creditCardInstallment.aggregate({
@@ -419,15 +455,14 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
-  const personEditorId = text(formData, "personEditorId") || card.personEditorId;
-  await assertPerson(access.workspaceId, personEditorId);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
+  const { personEditorId, split } = await cardPurchaseResponsibilityFromForm(formData, access.workspaceId, card.personEditorId, totalAmount);
+  await assertPerson(access.workspaceId, personEditorId);
   const installmentCount = integer(formData, "installmentCount", 1, 120);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
   const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
-  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const purchaseId = randomUUID();
   const newInvoiceIds: string[] = [];
@@ -1545,15 +1580,14 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
-  const personEditorId = text(formData, "personEditorId") || card.personEditorId;
-  await assertPerson(access.workspaceId, personEditorId);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
+  const { personEditorId, split } = await cardPurchaseResponsibilityFromForm(formData, access.workspaceId, card.personEditorId, totalAmount);
+  await assertPerson(access.workspaceId, personEditorId);
   const installmentCount = integer(formData, "installmentCount", 1, 120);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
   const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
-  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
   const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const oldInvoiceIds: string[] = [];
   const newInvoiceIds: string[] = [];

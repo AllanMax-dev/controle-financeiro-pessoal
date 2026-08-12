@@ -364,6 +364,24 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         }))
       : [installment],
   );
+  const cardTotalsByPerson = people.map((person) => {
+    const installments = cardInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
+
+    return {
+      id: person.id,
+      name: person.name,
+      paid: sumMoney(installments.filter(({ status }) => status === "PAID").map(({ amount }) => amount)),
+      pending: sumMoney(installments.filter(({ status }) => status === "OPEN").map(({ amount }) => amount)),
+      total: sumMoney(installments.map(({ amount }) => amount)),
+    };
+  });
+  const cardCoupleTotal = {
+    id: "casal",
+    name: "Casal",
+    paid: sumMoney(cardTotalsByPerson.map(({ paid }) => paid)),
+    pending: sumMoney(cardTotalsByPerson.map(({ pending }) => pending)),
+    total: sumMoney(cardTotalsByPerson.map(({ total }) => total)),
+  };
 
   const totalsByPerson = people.map((person) => {
     const personAccounts = accounts.filter((account) => account.personEditorId === person.id && account.active);
@@ -450,7 +468,9 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     accounts: accounts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     activeView,
     cardInstallments: cardInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cardCoupleTotal,
     cardPurchases: cardPurchases.filter(purchaseIsVisible),
+    cardTotalsByPerson,
     cards: cardsWithInvoices.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     categories,
     coupleTotal,

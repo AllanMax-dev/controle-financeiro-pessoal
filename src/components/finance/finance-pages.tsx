@@ -53,9 +53,12 @@ import { MonthNavigator } from "@/components/finance/month-navigator";
 import { PersonSegment } from "@/components/finance/person-segment";
 import type { getFinanceOptions, getFinanceOverview } from "@/modules/finance/application/finance-queries";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import { money, sumMoney } from "@/modules/shared/domain/money";
 
 type Overview = Awaited<ReturnType<typeof getFinanceOverview>>;
 type Options = Awaited<ReturnType<typeof getFinanceOptions>>;
+type CardPurchase = Overview["cardPurchases"][number];
+type MoneyLike = ReturnType<typeof money>;
 
 const personColors = ["#5f6fb2", "#357a68", "#2f855a"];
 
@@ -161,6 +164,82 @@ function SplitModeSelect({ defaultValue = "OWNER" }: { defaultValue?: "OWNER" | 
       </select>
     </label>
   );
+}
+
+function CardResponsibilitySelect({ defaultValue, people }: { defaultValue?: string; people: Options["people"] }) {
+  return (
+    <label className="finance-field">
+      <span>Responsável</span>
+      <select defaultValue={defaultValue} name="responsibilityTarget" required>
+        {people.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.name}
+          </option>
+        ))}
+        <option value="COUPLE">Casal</option>
+      </select>
+    </label>
+  );
+}
+
+function cardPurchaseUsesCouple(purchase: CardPurchase) {
+  return purchase.installments.some((installment) => installment.shares.length > 0);
+}
+
+function cardPurchaseShareDefaultValues(purchase: CardPurchase) {
+  const values = new Map<string, MoneyLike>();
+
+  for (const installment of purchase.installments) {
+    for (const share of installment.shares) {
+      const current = values.get(share.personEditorId);
+      values.set(share.personEditorId, current ? current.plus(share.amount) : money(share.amount));
+    }
+  }
+
+  return values;
+}
+
+function CardShareFields({ defaultValues, people }: { defaultValues?: Map<string, MoneyLike>; people: Options["people"] }) {
+  return (
+    <fieldset className="card-share-fields finance-field-wide">
+      <legend>Divisão do valor total</legend>
+      <div className="card-share-grid">
+        {people.map((person) => (
+          <MoneyInput
+            key={person.id}
+            defaultValue={defaultValues?.get(person.id) ? moneyInputValue(defaultValues.get(person.id)!) : undefined}
+            label={person.name}
+            name={`cardShareAmount:${person.id}`}
+            required={false}
+          />
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function cardPurchaseMonthInstallments(purchase: CardPurchase, month: string) {
+  return purchase.installments.filter((installment) => monthInputValue(installment.dueMonth) === month);
+}
+
+function cardPurchaseMonthTotal(purchase: CardPurchase, month: string) {
+  return sumMoney(cardPurchaseMonthInstallments(purchase, month).map((installment) => installment.amount));
+}
+
+function cardPurchaseMonthShares(purchase: CardPurchase, month: string) {
+  const values = new Map<string, { amount: MoneyLike; name: string }>();
+
+  for (const installment of cardPurchaseMonthInstallments(purchase, month)) {
+    for (const share of installment.shares) {
+      const current = values.get(share.personEditorId);
+      values.set(share.personEditorId, {
+        amount: current ? current.amount.plus(share.amount) : money(share.amount),
+        name: share.personEditor.displayName,
+      });
+    }
+  }
+
+  return Array.from(values.values());
 }
 
 function NotesField({ defaultValue }: { defaultValue?: string | null } = {}) {
@@ -1017,204 +1096,282 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
 }
 
 export function CardsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
+  const cardSummaryCards = [overview.cardCoupleTotal, ...overview.cardTotalsByPerson];
+  const sharedPurchases = overview.cardPurchases.filter(cardPurchaseUsesCouple);
+  const purchaseGroups = [
+    { id: "casal", name: "Casal", purchases: sharedPurchases },
+    ...overview.people.map((person) => ({
+      id: person.id,
+      name: person.name,
+      purchases: overview.cardPurchases.filter((purchase) => !cardPurchaseUsesCouple(purchase) && purchase.personEditorId === person.id),
+    })),
+  ].filter((group) => group.purchases.length > 0);
+
   return (
     <>
-      <WorkspacePage formTitle="Novo cartão" listTitle="Seus cartões" month={month} subtitle="Faturas e limite" title="Cartões de crédito">
-        <form action={createCreditCardAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/cartoes" />
-          <PersonSelect people={options.people} />
-          <TextInput label="Nome" name="name" />
-          <TextInput label="Instituição" name="institution" required={false} />
-          <MoneyInput label="Limite" name="limit" />
-          <TextInput label="Fechamento" name="closingDay" type="number" />
-          <TextInput label="Vencimento" name="dueDay" type="number" />
-          <AccountSelect accounts={options.accounts} label="Conta de pagamento" name="paymentAccountId" />
-          <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
-          <button className="finance-primary" type="submit">Criar cartão</button>
-        </form>
-      </WorkspacePage>
+      <PageHeader month={month} subtitle="Compras parceladas, faturas e responsáveis" title="Cartões de crédito" />
       <PersonTabs month={month} overview={overview} />
-      <ul className="card-grid">
-        {overview.cards.map((card) => (
-          <li key={card.id}>
-            <span>{card.personEditor.displayName}</span>
-            <strong>{card.name}</strong>
-            <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
-            <progress max={Number(card.limit)} value={Number(card.committed)} />
-            {card.invoiceId ? (
-              <form action={payCreditCardInvoiceAction} className="inline-payment-form">
-                <ReturnFields month={month} returnTo="/cartoes" />
-                <input name="invoiceId" type="hidden" value={card.invoiceId} />
-                <MoneyInput label="Pagamento" name="amount" />
-                <TextInput label="Data" name="paidAt" type="date" />
-                <AccountSelect accounts={options.accounts} label="Conta" name="accountId" />
-                <button className="finance-secondary" type="submit">Pagar fatura</button>
-              </form>
-            ) : null}
-            <ItemActions>
-              <EditDetails>
-                <form action={updateCreditCardAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/cartoes" />
-                  <input name="cardId" type="hidden" value={card.id} />
-                  <PersonSelect defaultValue={card.personEditorId} people={options.people} />
-                  <TextInput defaultValue={card.name} label="Nome" name="name" />
-                  <TextInput defaultValue={card.institution} label="Instituicao" name="institution" required={false} />
-                  <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
-                  <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
-                  <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
-                  <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
-                  <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
-            </ItemActions>
-          </li>
+
+      <section className="card-month-summary" aria-label="Gastos de cartão no mês">
+        {cardSummaryCards.map((summary) => (
+          <article className="card-month-card" data-active={overview.activeView === summary.id ? "true" : undefined} key={summary.id}>
+            <span>{summary.name}</span>
+            <strong>{formatCurrency(summary.total)}</strong>
+            <small>No mês selecionado</small>
+            <dl>
+              <div>
+                <dt>Aberto</dt>
+                <dd>{formatCurrency(summary.pending)}</dd>
+              </div>
+              <div>
+                <dt>Pago</dt>
+                <dd>{formatCurrency(summary.paid)}</dd>
+              </div>
+            </dl>
+          </article>
         ))}
-      </ul>
-      <form action={createCreditCardPurchaseAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/cartoes" />
-        <h2>Compra no cartão</h2>
-        <label className="finance-field">
-          <span>Cartão</span>
-          <select name="cardId" required>
-            {options.cards.map((card) => (
-              <option key={card.id} value={card.id}>
-                {card.personEditor.displayName} · {card.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <PersonSelect label="Responsável" people={options.people} />
-        <TextInput label="Descrição" name="description" />
-        <MoneyInput label="Valor total" name="totalAmount" />
-        <TextInput label="Parcelas" name="installmentCount" type="number" />
-        <TextInput label="Data" name="purchaseDate" type="date" />
-        <CategorySelect categories={options.categories} kind="EXPENSE" />
-        <SplitModeSelect />
-        <NotesField />
-        <button className="finance-secondary" type="submit">Registrar compra</button>
-      </form>
+      </section>
+
+      <section className="credit-card-workspace">
+        <article className="finance-panel card-purchase-panel">
+          <h2>Nova compra parcelada</h2>
+          <form action={createCreditCardPurchaseAction} className="finance-form card-purchase-form">
+            <ReturnFields month={month} returnTo="/cartoes" />
+            <label className="finance-field">
+              <span>Cartão</span>
+              <select name="cardId" required>
+                {options.cards.map((card) => (
+                  <option key={card.id} value={card.id}>
+                    {card.personEditor.displayName} · {card.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <CardResponsibilitySelect people={options.people} />
+            <TextInput label="Descrição" name="description" />
+            <MoneyInput label="Valor total" name="totalAmount" />
+            <TextInput label="Parcelas" name="installmentCount" type="number" />
+            <TextInput label="Data da compra" name="purchaseDate" type="date" />
+            <CategorySelect categories={options.categories} kind="EXPENSE" />
+            <CardShareFields people={options.people} />
+            <NotesField />
+            <button className="finance-primary" type="submit">Registrar compra</button>
+          </form>
+        </article>
+
+        <details className="compact-card card-admin-panel">
+          <summary>
+            <span>Novo cartão</span>
+            <strong>Adicionar</strong>
+          </summary>
+          <div className="finance-create-body">
+            <form action={createCreditCardAction} className="finance-form">
+              <ReturnFields month={month} returnTo="/cartoes" />
+              <PersonSelect people={options.people} />
+              <TextInput label="Nome" name="name" />
+              <TextInput label="Instituição" name="institution" required={false} />
+              <MoneyInput label="Limite" name="limit" />
+              <TextInput label="Fechamento" name="closingDay" type="number" />
+              <TextInput label="Vencimento" name="dueDay" type="number" />
+              <AccountSelect accounts={options.accounts} label="Conta de pagamento" name="paymentAccountId" />
+              <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
+              <button className="finance-secondary" type="submit">Criar cartão</button>
+            </form>
+          </div>
+        </details>
+      </section>
+
       <section className="purchase-section">
-        <h2>Compras feitas</h2>
-        {overview.cardPurchases.length === 0 ? (
+        <h2>Cartões e faturas</h2>
+        <ul className="card-grid credit-card-list">
+          {overview.cards.map((card) => (
+            <li key={card.id}>
+              <span>{card.personEditor.displayName}</span>
+              <strong>{card.name}</strong>
+              <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
+              <progress max={Number(card.limit)} value={Number(card.committed)} />
+              {card.invoiceId ? (
+                <form action={payCreditCardInvoiceAction} className="inline-payment-form">
+                  <ReturnFields month={month} returnTo="/cartoes" />
+                  <input name="invoiceId" type="hidden" value={card.invoiceId} />
+                  <MoneyInput label="Pagamento" name="amount" />
+                  <TextInput label="Data" name="paidAt" type="date" />
+                  <AccountSelect accounts={options.accounts} label="Conta" name="accountId" />
+                  <button className="finance-secondary" type="submit">Pagar fatura</button>
+                </form>
+              ) : null}
+              <ItemActions>
+                <EditDetails>
+                  <form action={updateCreditCardAction} className="finance-edit-form">
+                    <ReturnFields month={month} returnTo="/cartoes" />
+                    <input name="cardId" type="hidden" value={card.id} />
+                    <PersonSelect defaultValue={card.personEditorId} people={options.people} />
+                    <TextInput defaultValue={card.name} label="Nome" name="name" />
+                    <TextInput defaultValue={card.institution} label="Instituicao" name="institution" required={false} />
+                    <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
+                    <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
+                    <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
+                    <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
+                    <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
+                    <button className="finance-secondary" type="submit">Salvar</button>
+                  </form>
+                </EditDetails>
+                <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
+              </ItemActions>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="purchase-section">
+        <h2>Compras parceladas</h2>
+        {purchaseGroups.length === 0 ? (
           <p className="empty-state">Nenhuma compra de cartão neste mês.</p>
         ) : (
-          <ul className="finance-list detached-list purchase-list">
-            {overview.cardPurchases.map((purchase) => {
-              const purchaseSplitMode = splitModeDefault(purchase.installments);
+          <div className="card-purchase-groups">
+            {purchaseGroups.map((group) => {
+              const groupMonthTotal = sumMoney(group.purchases.map((purchase) => cardPurchaseMonthTotal(purchase, month)));
 
               return (
-              <li key={purchase.id}>
-                <details className="purchase-details">
-                  <summary>
-                    <div className="finance-item-main">
-                      <span>
-                        <strong>{purchase.description}</strong>
-                        <small>{purchase.personEditor.displayName} - {purchase.card.name} - {formatDate(purchase.purchaseDate)}</small>
-                      </span>
-                      <b>{formatCurrency(purchase.totalAmount)}</b>
-                    </div>
-                  </summary>
-                  <div className="purchase-detail-body">
-                    <dl className="debt-metadata">
-                      <div>
-                        <dt>Cartão</dt>
-                        <dd>{purchase.card.name}</dd>
-                      </div>
-                      <div>
-                        <dt>Pessoa</dt>
-                        <dd>{purchase.personEditor.displayName}</dd>
-                      </div>
-                      <div>
-                        <dt>Categoria</dt>
-                        <dd>{purchase.category?.name ?? "Sem categoria"}</dd>
-                      </div>
-                      <div>
-                        <dt>Parcelas</dt>
-                        <dd>{purchase.installmentCount}x</dd>
-                      </div>
-                    </dl>
-                    <ul className="installment-list">
-                      {purchase.installments.map((installment) => (
-                        <li key={installment.id}>
-                          <span>
-                            <strong>Parcela {installment.number}</strong>
-                            <small>Fatura {formatDate(installment.dueMonth)}</small>
-                            {installment.shares.length > 0 ? (
-                              <small>{installment.shares.map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
-                            ) : null}
-                          </span>
-                          <b>{formatCurrency(installment.amount)}</b>
-                          <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
-                            {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
-                          </span>
+                <section className="card-purchase-group" key={group.id}>
+                  <header>
+                    <h3>{group.name}</h3>
+                    <strong>{formatCurrency(groupMonthTotal)}</strong>
+                  </header>
+                  <ul className="finance-list detached-list purchase-list">
+                    {group.purchases.map((purchase) => {
+                      const monthTotal = cardPurchaseMonthTotal(purchase, month);
+                      const monthShares = cardPurchaseMonthShares(purchase, month);
+                      const purchaseInstallments = cardPurchaseMonthInstallments(purchase, month);
+                      const responsibilityLabel = cardPurchaseUsesCouple(purchase) ? "Casal" : purchase.personEditor.displayName;
+                      const shareDefaults = cardPurchaseShareDefaultValues(purchase);
+
+                      return (
+                        <li key={purchase.id}>
+                          <details className="purchase-details">
+                            <summary>
+                              <div className="finance-item-main">
+                                <span>
+                                  <strong>{purchase.description}</strong>
+                                  <small>{responsibilityLabel} - {purchase.card.name} - {purchase.installmentCount}x - {formatDate(purchase.purchaseDate)}</small>
+                                  {monthShares.length > 0 ? (
+                                    <small>{monthShares.map((share) => `${share.name}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                                  ) : null}
+                                </span>
+                                <span className="purchase-amount-stack">
+                                  <b>{formatCurrency(monthTotal)}</b>
+                                  <small>Total {formatCurrency(purchase.totalAmount)}</small>
+                                </span>
+                              </div>
+                            </summary>
+                            <div className="purchase-detail-body">
+                              <dl className="debt-metadata">
+                                <div>
+                                  <dt>Cartão</dt>
+                                  <dd>{purchase.card.name}</dd>
+                                </div>
+                                <div>
+                                  <dt>Responsável</dt>
+                                  <dd>{responsibilityLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt>Categoria</dt>
+                                  <dd>{purchase.category?.name ?? "Sem categoria"}</dd>
+                                </div>
+                                <div>
+                                  <dt>Parcela do mês</dt>
+                                  <dd>{purchaseInstallments.map((installment) => `${installment.number}/${purchase.installmentCount}`).join(", ") || "-"}</dd>
+                                </div>
+                              </dl>
+                              <ul className="installment-list">
+                                {purchase.installments.map((installment) => (
+                                  <li key={installment.id}>
+                                    <span>
+                                      <strong>Parcela {installment.number}</strong>
+                                      <small>Fatura {formatDate(installment.dueMonth)}</small>
+                                      {installment.shares.length > 0 ? (
+                                        <small>{installment.shares.map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                                      ) : null}
+                                    </span>
+                                    <b>{formatCurrency(installment.amount)}</b>
+                                    <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+                                      {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                              <ItemActions>
+                                <EditDetails>
+                                  <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
+                                    <ReturnFields month={month} returnTo="/cartoes" />
+                                    <input name="purchaseId" type="hidden" value={purchase.id} />
+                                    <label className="finance-field">
+                                      <span>Cartão</span>
+                                      <select defaultValue={purchase.cardId} name="cardId" required>
+                                        {options.cards.map((card) => (
+                                          <option key={card.id} value={card.id}>
+                                            {card.personEditor.displayName} - {card.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <CardResponsibilitySelect defaultValue={cardPurchaseUsesCouple(purchase) ? "COUPLE" : purchase.personEditorId} people={options.people} />
+                                    <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
+                                    <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
+                                    <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
+                                    <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data da compra" name="purchaseDate" type="date" />
+                                    <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
+                                    <CardShareFields defaultValues={shareDefaults} people={options.people} />
+                                    <NotesField defaultValue={purchase.notes} />
+                                    <button className="finance-secondary" type="submit">Salvar</button>
+                                  </form>
+                                </EditDetails>
+                                <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
+                              </ItemActions>
+                            </div>
+                          </details>
                         </li>
-                      ))}
-                    </ul>
-                    <ItemActions>
-                      <EditDetails>
-                        <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
-                          <ReturnFields month={month} returnTo="/cartoes" />
-                          <input name="purchaseId" type="hidden" value={purchase.id} />
-                          <label className="finance-field">
-                            <span>Cartao</span>
-                            <select defaultValue={purchase.cardId} name="cardId" required>
-                              {options.cards.map((card) => (
-                                <option key={card.id} value={card.id}>
-                                  {card.personEditor.displayName} - {card.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <PersonSelect defaultValue={purchase.personEditorId} label="Responsável" people={options.people} />
-                          <TextInput defaultValue={purchase.description} label="Descricao" name="description" />
-                          <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
-                          <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
-                          <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data" name="purchaseDate" type="date" />
-                          <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
-                          <SplitModeSelect defaultValue={purchaseSplitMode} />
-                          <NotesField defaultValue={purchase.notes} />
-                          <button className="finance-secondary" type="submit">Salvar</button>
-                        </form>
-                      </EditDetails>
-                      <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
-                    </ItemActions>
-                  </div>
-                </details>
-              </li>
+                      );
+                    })}
+                  </ul>
+                </section>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
-      <ul className="finance-list detached-list">
-        {overview.invoicePayments.map((payment) => (
-          <li key={payment.id}>
-            <div className="finance-item-main">
-              <span>
-                <strong>Pagamento - {payment.invoice.card.name}</strong>
-                <small>{payment.personEditor.displayName} - {payment.account.name} - {formatDate(payment.paidAt)}</small>
-              </span>
-              <b>{formatCurrency(payment.amount)}</b>
-            </div>
-            <ItemActions>
-              <EditDetails>
-                <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/cartoes" />
-                  <input name="paymentId" type="hidden" value={payment.id} />
-                  <MoneyInput defaultValue={moneyInputValue(payment.amount)} label="Valor" />
-                  <TextInput defaultValue={toDateInputValue(payment.paidAt)} label="Data" name="paidAt" type="date" />
-                  <AccountSelect accounts={options.accounts} defaultValue={payment.accountId} label="Conta" name="accountId" optional={false} />
-                  <NotesField defaultValue={payment.notes} />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={payment.id} month={month} returnTo="/cartoes" />
-            </ItemActions>
-          </li>
-        ))}
-      </ul>
+      {overview.invoicePayments.length > 0 ? (
+        <section className="purchase-section">
+          <h2>Pagamentos de fatura</h2>
+          <ul className="finance-list detached-list">
+            {overview.invoicePayments.map((payment) => (
+              <li key={payment.id}>
+                <div className="finance-item-main">
+                  <span>
+                    <strong>Pagamento - {payment.invoice.card.name}</strong>
+                    <small>{payment.personEditor.displayName} - {payment.account.name} - {formatDate(payment.paidAt)}</small>
+                  </span>
+                  <b>{formatCurrency(payment.amount)}</b>
+                </div>
+                <ItemActions>
+                  <EditDetails>
+                    <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                      <ReturnFields month={month} returnTo="/cartoes" />
+                      <input name="paymentId" type="hidden" value={payment.id} />
+                      <MoneyInput defaultValue={moneyInputValue(payment.amount)} label="Valor" />
+                      <TextInput defaultValue={toDateInputValue(payment.paidAt)} label="Data" name="paidAt" type="date" />
+                      <AccountSelect accounts={options.accounts} defaultValue={payment.accountId} label="Conta" name="accountId" optional={false} />
+                      <NotesField defaultValue={payment.notes} />
+                      <button className="finance-secondary" type="submit">Salvar</button>
+                    </form>
+                  </EditDetails>
+                  <DeleteForm action={deleteCreditCardInvoicePaymentAction} idName="paymentId" idValue={payment.id} month={month} returnTo="/cartoes" />
+                </ItemActions>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

@@ -818,6 +818,170 @@ textarea:focus-visible {
   font-weight: 750;
 }
 
+.card-month-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-month-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--primary);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.card-month-card[data-active="true"] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
+.card-month-card > span,
+.card-month-card > small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.card-month-card > strong {
+  font-size: 1.45rem;
+}
+
+.card-month-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.card-month-card div {
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.card-month-card dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.card-month-card dd {
+  margin: 3px 0 0;
+  font-weight: 850;
+}
+
+.credit-card-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.card-purchase-panel {
+  border-top: 4px solid var(--primary);
+}
+
+.card-admin-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.card-admin-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-admin-panel > summary span {
+  font-weight: 850;
+}
+
+.card-admin-panel > summary strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: white;
+  font-size: 0.84rem;
+}
+
+.card-admin-panel .finance-create-body {
+  padding: 14px 0 0;
+}
+
+.card-share-fields {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.card-share-fields legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.card-share-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.card-purchase-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.card-purchase-group {
+  display: grid;
+  gap: 8px;
+}
+
+.card-purchase-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-purchase-group h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.card-purchase-group > header strong {
+  color: var(--ink);
+}
+
+.purchase-amount-stack {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.purchase-amount-stack small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
 .person-group-stack {
   display: grid;
   gap: 16px;
@@ -1374,9 +1538,12 @@ progress::-webkit-progress-value {
   }
 
   .snapshot-grid,
+  .card-month-summary,
   .finance-dashboard-grid,
   .finance-workspace,
+  .credit-card-workspace,
   .card-grid,
+  .card-share-grid,
   .guide-hero,
   .guide-grid {
     grid-template-columns: 1fr;
