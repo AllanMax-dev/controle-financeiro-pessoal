@@ -11,16 +11,19 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireCurrentAccess } from "@/modules/access/application/require-current-access";
 import {
   addMonths,
+  buildEqualSharePlan,
   buildInstallmentPlan,
   buildSalaryOccurrencePlan,
   clampDayInMonth,
   dateFromInput,
   fixedExpenseDueDate,
   installmentDueDate,
+  isDueOnOrBefore,
   monthStartFromInput,
   resolveInvoiceMonth,
 } from "@/modules/finance/domain/finance-calculations";
 import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { money, parseMoneyInput, sumMoney } from "@/modules/shared/domain/money";
 
 type FinanceValidationClient = ReturnType<typeof getDatabase> | Prisma.TransactionClient;
@@ -45,38 +48,25 @@ function integer(formData: FormData, name: string, min: number, max: number) {
   return value;
 }
 
-function optionalInteger(formData: FormData, name: string, fallback: number, min: number, max: number) {
-  return text(formData, name) ? integer(formData, name, min, max) : fallback;
-}
-
-async function splitAmountsFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
-  const people = await getDatabase().editor.findMany({
-    where: { active: true, workspaceId },
-    select: { id: true },
-  });
-  const shares = people.map((person) => {
-    const rawAmount = text(formData, `shareAmount:${person.id}`);
-
-    return {
-      amount: rawAmount ? parseMoneyInput(rawAmount) : money(0),
-      explicit: Boolean(rawAmount),
-      personEditorId: person.id,
-    };
-  });
-  const hasExplicitShare = shares.some((share) => share.explicit);
-
-  if (!hasExplicitShare) {
+async function automaticSplitFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
+  if (text(formData, "splitMode") !== "EQUAL") {
     return { explicit: false, shares: [{ amount: totalAmount, personEditorId: fallbackPersonEditorId }] };
   }
 
-  const positiveShares = shares.filter((share) => share.amount.greaterThan(0));
-  const splitTotal = sumMoney(positiveShares.map((share) => share.amount));
+  const people = await getDatabase().editor.findMany({
+    where: { active: true, workspaceId },
+    orderBy: { displayName: "asc" },
+    select: { id: true },
+  });
 
-  if (!splitTotal.equals(totalAmount)) {
-    throw new Error("A divisao precisa somar exatamente o valor total.");
+  if (people.length < 2) {
+    return { explicit: false, shares: [{ amount: totalAmount, personEditorId: fallbackPersonEditorId }] };
   }
 
-  return { explicit: true, shares: positiveShares };
+  return {
+    explicit: true,
+    shares: buildEqualSharePlan(totalAmount, people.map((person) => person.id)),
+  };
 }
 
 async function recalculateCreditCardInvoices(transaction: Prisma.TransactionClient, workspaceId: string, invoiceIds: string[]) {
@@ -331,12 +321,12 @@ export async function createDebtAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 240);
-  const paidInstallmentCount = optionalInteger(formData, "paidInstallmentCount", 0, 0, installmentCount);
   const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
   const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
-  const split = await splitAmountsFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const debtId = randomUUID();
 
   await getDatabase().$transaction(async (transaction) => {
@@ -359,7 +349,7 @@ export async function createDebtAction(formData: FormData) {
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const installmentId = randomUUID();
       const dueDate = installmentDueDate(firstDueDate, installment.number - 1, frequency);
-      const isPaid = installment.number <= paidInstallmentCount;
+      const isPaid = isDueOnOrBefore(dueDate, today);
 
       await transaction.debtInstallment.create({
         data: {
@@ -435,10 +425,10 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 120);
-  const paidInstallmentCount = optionalInteger(formData, "paidInstallmentCount", 0, 0, installmentCount);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
   const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
-  const split = await splitAmountsFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const purchaseId = randomUUID();
   const newInvoiceIds: string[] = [];
 
@@ -462,7 +452,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const dueMonth = addMonths(firstInvoiceMonth, installment.number - 1);
       const dueDate = clampDayInMonth(dueMonth, card.dueDay);
-      const isPaid = installment.number <= paidInstallmentCount;
+      const isPaid = isDueOnOrBefore(dueDate, today);
       const invoice = await transaction.creditCardInvoice.upsert({
         where: { cardId_month: { cardId: card.id, month: dueMonth } },
         update: { amount: { increment: installment.amount } },
@@ -1367,38 +1357,6 @@ export async function deleteDebtInstallmentPaymentAction(formData: FormData) {
   refreshAndRedirect(returnTo(formData, "/dividas"));
 }
 
-export async function updateDebtInstallmentSharesAction(formData: FormData) {
-  const access = await requireCurrentAccess();
-  const installmentId = text(formData, "installmentId");
-
-  await getDatabase().$transaction(async (transaction) => {
-    const installment = await transaction.debtInstallment.findFirstOrThrow({
-      where: { id: installmentId, workspaceId: access.workspaceId },
-      select: { amount: true, dueDate: true, id: true, paidAt: true, personEditorId: true, status: true },
-    });
-    const split = await splitAmountsFromForm(formData, access.workspaceId, installment.personEditorId, money(installment.amount));
-
-    await transaction.debtInstallmentShare.deleteMany({ where: { installmentId: installment.id, workspaceId: access.workspaceId } });
-
-    if (split.explicit) {
-      for (const share of split.shares) {
-        await transaction.debtInstallmentShare.create({
-          data: {
-            amount: share.amount,
-            installmentId: installment.id,
-            paidAt: installment.status === "PAID" ? installment.paidAt ?? installment.dueDate : null,
-            personEditorId: share.personEditorId,
-            status: installment.status,
-            workspaceId: access.workspaceId,
-          },
-        });
-      }
-    }
-  });
-
-  refreshAndRedirect(returnTo(formData, "/dividas"));
-}
-
 export async function updateDebtAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "debtId");
@@ -1406,12 +1364,12 @@ export async function updateDebtAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 240);
-  const paidInstallmentCount = optionalInteger(formData, "paidInstallmentCount", 0, 0, installmentCount);
   const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
   const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
-  const split = await splitAmountsFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
 
   await getDatabase().$transaction(async (transaction) => {
     const { count } = await transaction.debt.updateMany({
@@ -1457,7 +1415,7 @@ export async function updateDebtAction(formData: FormData) {
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const installmentId = randomUUID();
       const dueDate = installmentDueDate(firstDueDate, installment.number - 1, frequency);
-      const isPaid = installment.number <= paidInstallmentCount;
+      const isPaid = isDueOnOrBefore(dueDate, today);
 
       await transaction.debtInstallment.create({
         data: {
@@ -1593,10 +1551,10 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 120);
-  const paidInstallmentCount = optionalInteger(formData, "paidInstallmentCount", 0, 0, installmentCount);
   const purchaseDate = dateFromInput(text(formData, "purchaseDate"));
   const firstInvoiceMonth = resolveInvoiceMonth(purchaseDate, card.closingDay);
-  const split = await splitAmountsFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const today = calendarDateInTimeZone(new Date(), access.workspaceTimezone);
   const oldInvoiceIds: string[] = [];
   const newInvoiceIds: string[] = [];
 
@@ -1635,7 +1593,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const dueMonth = addMonths(firstInvoiceMonth, installment.number - 1);
       const dueDate = clampDayInMonth(dueMonth, card.dueDay);
-      const isPaid = installment.number <= paidInstallmentCount;
+      const isPaid = isDueOnOrBefore(dueDate, today);
       const invoice = await transaction.creditCardInvoice.upsert({
         where: { cardId_month: { cardId: card.id, month: dueMonth } },
         update: { amount: { increment: installment.amount } },
@@ -1705,37 +1663,6 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   });
 
   await audit(access.workspaceId, access.editorId, "CreditCardPurchase", purchaseId, "update");
-  refreshAndRedirect(returnTo(formData, "/cartoes"));
-}
-
-export async function updateCreditCardInstallmentSharesAction(formData: FormData) {
-  const access = await requireCurrentAccess();
-  const installmentId = text(formData, "installmentId");
-
-  await getDatabase().$transaction(async (transaction) => {
-    const installment = await transaction.creditCardInstallment.findFirstOrThrow({
-      where: { id: installmentId, workspaceId: access.workspaceId },
-      select: { amount: true, id: true, personEditorId: true, status: true },
-    });
-    const split = await splitAmountsFromForm(formData, access.workspaceId, installment.personEditorId, money(installment.amount));
-
-    await transaction.creditCardInstallmentShare.deleteMany({ where: { installmentId: installment.id, workspaceId: access.workspaceId } });
-
-    if (split.explicit) {
-      for (const share of split.shares) {
-        await transaction.creditCardInstallmentShare.create({
-          data: {
-            amount: share.amount,
-            installmentId: installment.id,
-            personEditorId: share.personEditorId,
-            status: installment.status,
-            workspaceId: access.workspaceId,
-          },
-        });
-      }
-    }
-  });
-
   refreshAndRedirect(returnTo(formData, "/cartoes"));
 }
 

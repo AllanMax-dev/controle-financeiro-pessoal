@@ -60,6 +60,10 @@ export function installmentDueDate(firstDueDate: Date, index: number, frequency:
   return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : addMonths(firstDueDate, index);
 }
 
+export function isDueOnOrBefore(dueDate: Date, referenceDate: Date) {
+  return dueDate.getTime() <= referenceDate.getTime();
+}
+
 export function fixedExpenseDueDate(monthStart: Date, dueDay: number) {
   return clampDayInMonth(monthStart, dueDay);
 }
@@ -100,6 +104,13 @@ export function buildInstallmentPlan(total: Decimal.Value, count: number) {
   return allocateMoney(total, count).map((amount, index) => ({
     amount,
     number: index + 1,
+  }));
+}
+
+export function buildEqualSharePlan(total: Decimal.Value, personEditorIds: string[]) {
+  return allocateMoney(total, personEditorIds.length).map((amount, index) => ({
+    amount,
+    personEditorId: personEditorIds[index]!,
   }));
 }
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildEqualSharePlan,
   buildInstallmentPlan,
   buildPersonTotal,
   buildSalaryOccurrencePlan,
   installmentDueDate,
+  isDueOnOrBefore,
   monthBounds,
   resolveInvoiceMonth,
   sumPersonTotals,
@@ -24,6 +26,22 @@ describe("finance calculations", () => {
 
     expect(plan.map((installment) => installment.amount.toFixed(2))).toEqual(["33.34", "33.33", "33.33"]);
     expect(plan.map((installment, index) => installmentDueDate(firstDueDate, index, "MONTHLY").toISOString().slice(0, 10))).toEqual(["2026-08-10", "2026-09-10", "2026-10-10"]);
+  });
+
+  it("splits shared values equally between people without losing cents", () => {
+    const shares = buildEqualSharePlan("100.00", ["allan", "mayara"]);
+
+    expect(shares).toHaveLength(2);
+    expect(shares.map((share) => share.personEditorId)).toEqual(["allan", "mayara"]);
+    expect(shares.map((share) => share.amount.toFixed(2))).toEqual(["50.00", "50.00"]);
+  });
+
+  it("marks installments as paid when their due date is on or before today", () => {
+    const today = new Date("2026-08-12T00:00:00.000Z");
+
+    expect(isDueOnOrBefore(new Date("2026-08-10T00:00:00.000Z"), today)).toBe(true);
+    expect(isDueOnOrBefore(new Date("2026-08-12T00:00:00.000Z"), today)).toBe(true);
+    expect(isDueOnOrBefore(new Date("2026-08-13T00:00:00.000Z"), today)).toBe(false);
   });
 
   it("supports fortnightly debt installments", () => {

@@ -511,29 +511,6 @@ textarea:focus-visible {
   font-weight: 780;
 }
 
-.finance-split-fields {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-
-.finance-split-fields legend {
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
-.finance-split-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-}
-
 .finance-month-form input,
 .finance-month-form button,
 .finance-field input,
@@ -1089,21 +1066,6 @@ textarea:focus-visible {
 
 .installment-payment-form {
   grid-column: 1 / -1;
-}
-
-.inline-split-details {
-  grid-column: 1 / -1;
-}
-
-.inline-split-details summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.installment-split-form {
-  margin-top: 10px;
 }
 
 .finance-item-main {
