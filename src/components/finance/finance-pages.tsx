@@ -882,19 +882,6 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           </form>
         </details>
       ) : null}
-      {occurrence?.status === "SETTLED" && occurrence.transactionId ? (
-        <DeleteForm
-          action={deleteTransactionAction}
-          buttonLabel="Desfazer pagamento"
-          confirmDescription="Remove o pagamento deste mês e volta o gasto fixo para pendente."
-          confirmTitle="Desfazer pagamento?"
-          idName="transactionId"
-          idValue={occurrence.transactionId}
-          month={month}
-          returnTo="/despesas-fixas"
-          summaryLabel="Desfazer"
-        />
-      ) : null}
       <EditDetails>
         <form action={updateFixedExpenseAction} className="finance-edit-form">
           <ReturnFields month={month} returnTo="/despesas-fixas" />
