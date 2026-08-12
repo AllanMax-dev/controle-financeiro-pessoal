@@ -549,7 +549,6 @@ function WorkspacePage({ children, formTitle, month, showMonth = true, subtitle,
 
 export function BanksPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   const activeTotal = getActiveTotal(overview);
-  const visibleTotals = getVisibleTotalCards(overview);
   const accountGroups = getVisiblePeople(overview)
     .map((person) => {
       const accounts = overview.accounts.filter((account) => account.personEditorId === person.id);
@@ -561,6 +560,86 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
       };
     })
     .filter((group) => group.operational.length > 0 || group.investments.length > 0);
+  const renderAccountItem = (account: (typeof overview.accounts)[number]) => {
+    const accountAdjustments = overview.balanceAdjustments.filter((adjustment) => adjustment.accountId === account.id);
+
+    return (
+      <li key={account.id}>
+        <div className="finance-item-main">
+          <span>
+            <strong>{account.name}</strong>
+            <small>{account.personEditor.displayName} · {account.institution ?? "Sem instituição"}</small>
+          </span>
+          <b>{formatCurrency(account.balance)}</b>
+        </div>
+        <ItemActions>
+          <EditDetails>
+            <form action={updateAccountAction} className="finance-edit-form">
+              <ReturnFields month={month} returnTo="/bancos" />
+              <input name="accountId" type="hidden" value={account.id} />
+              <PersonSelect defaultValue={account.personEditorId} people={options.people} />
+              <TextInput defaultValue={account.institution} label="Instituição" name="institution" required={false} />
+              <TextInput defaultValue={account.name} label="Nome" name="name" />
+              <label className="finance-field">
+                <span>Tipo</span>
+                <select defaultValue={account.type} name="type" required>
+                  <option value="CHECKING">Conta corrente</option>
+                  <option value="DIGITAL">Conta digital</option>
+                  <option value="SAVINGS">Poupança</option>
+                  <option value="CASH">Dinheiro</option>
+                  <option value="INVESTMENT">Investimento</option>
+                  <option value="OTHER">Outra</option>
+                </select>
+              </label>
+              <MoneyInput defaultValue={moneyInputValue(account.initialBalance)} label="Saldo inicial" name="initialBalance" />
+              <TextInput defaultValue={account.color} label="Cor" name="color" required={false} type="color" />
+              <button className="finance-secondary" type="submit">Salvar</button>
+            </form>
+            <form action={createBalanceAdjustmentAction} className="finance-edit-form account-balance-adjustment-form">
+              <ReturnFields month={month} returnTo="/bancos" />
+              <input name="accountId" type="hidden" value={account.id} />
+              <MoneyInput defaultValue={moneyInputValue(account.balance)} label="Saldo real hoje" name="targetBalance" />
+              <TextInput label="Data" name="effectiveAt" type="date" />
+              <NotesField />
+              <button className="finance-secondary" type="submit">Ajustar saldo atual</button>
+            </form>
+            {accountAdjustments.length > 0 ? (
+              <div className="account-adjustment-history">
+                <strong>Ajustes deste mês</strong>
+                <ul className="finance-list">
+                  {accountAdjustments.map((adjustment) => (
+                    <li key={adjustment.id}>
+                      <div className="finance-item-main">
+                        <span>
+                          <strong>{formatDate(adjustment.effectiveAt)}</strong>
+                          <small>Saldo real informado</small>
+                        </span>
+                        <b>{formatCurrency(adjustment.targetBalance)}</b>
+                      </div>
+                      <ItemActions>
+                        <EditDetails>
+                          <form action={updateBalanceAdjustmentAction} className="finance-edit-form">
+                            <ReturnFields month={month} returnTo="/bancos" />
+                            <input name="adjustmentId" type="hidden" value={adjustment.id} />
+                            <MoneyInput defaultValue={moneyInputValue(adjustment.targetBalance)} label="Saldo real" name="targetBalance" />
+                            <TextInput defaultValue={toDateInputValue(adjustment.effectiveAt)} label="Data" name="effectiveAt" type="date" />
+                            <NotesField defaultValue={adjustment.notes} />
+                            <button className="finance-secondary" type="submit">Salvar</button>
+                          </form>
+                        </EditDetails>
+                        <DeleteForm action={deleteBalanceAdjustmentAction} idName="adjustmentId" idValue={adjustment.id} month={month} returnTo="/bancos" />
+                      </ItemActions>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </EditDetails>
+          <DeleteForm action={deleteAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
+        </ItemActions>
+      </li>
+    );
+  };
 
   return (
     <>
@@ -584,21 +663,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
         </article>
       </section>
       <section className="compact-card">
-        <h2>Divisão dos saldos</h2>
-        <ul className="finance-list">
-          {visibleTotals.map((person) => (
-            <li key={person.id}>
-              <span>
-                <strong>{person.name}</strong>
-                <small>Disponível {formatCurrency(person.total.available)} - Investido {formatCurrency(person.total.investments)}</small>
-              </span>
-              <b>{formatCurrency(person.total.wealth)}</b>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="compact-card">
-        <h2>Contas por pessoa</h2>
+        <h2>Contas</h2>
         {accountGroups.length === 0 ? <p className="empty-state">Nenhuma conta cadastrada.</p> : null}
         <div className="person-group-stack">
           {accountGroups.map((group) => (
@@ -607,32 +672,16 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
               {group.operational.length > 0 ? (
                 <>
                   <h3>Contas</h3>
-                  <ul className="finance-list">
-                    {group.operational.map((account) => (
-                      <li key={account.id}>
-                        <span>
-                          <strong>{account.name}</strong>
-                          <small>{account.institution ?? "Sem instituição"}</small>
-                        </span>
-                        <b>{formatCurrency(account.balance)}</b>
-                      </li>
-                    ))}
+                  <ul className="finance-list account-list">
+                    {group.operational.map(renderAccountItem)}
                   </ul>
                 </>
               ) : null}
               {group.investments.length > 0 ? (
                 <>
                   <h3>Investimentos</h3>
-                  <ul className="finance-list">
-                    {group.investments.map((account) => (
-                      <li key={account.id}>
-                        <span>
-                          <strong>{account.name}</strong>
-                          <small>{account.institution ?? "Sem instituição"}</small>
-                        </span>
-                        <b>{formatCurrency(account.balance)}</b>
-                      </li>
-                    ))}
+                  <ul className="finance-list account-list">
+                    {group.investments.map(renderAccountItem)}
                   </ul>
                 </>
               ) : null}
@@ -640,45 +689,6 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
           ))}
         </div>
       </section>
-      <ul className="finance-list detached-list account-list">
-        {overview.accounts.map((account) => (
-          <li key={account.id}>
-            <div className="finance-item-main">
-              <span>
-              <strong>{account.name}</strong>
-              <small>{account.personEditor.displayName} · {account.institution ?? "Sem instituição"}</small>
-              </span>
-              <b>{formatCurrency(account.balance)}</b>
-            </div>
-            <ItemActions>
-              <EditDetails>
-                <form action={updateAccountAction} className="finance-edit-form">
-                  <ReturnFields month={month} returnTo="/bancos" />
-                  <input name="accountId" type="hidden" value={account.id} />
-                  <PersonSelect defaultValue={account.personEditorId} people={options.people} />
-                  <TextInput defaultValue={account.institution} label="Instituição" name="institution" required={false} />
-                  <TextInput defaultValue={account.name} label="Nome" name="name" />
-                  <label className="finance-field">
-                    <span>Tipo</span>
-                    <select defaultValue={account.type} name="type" required>
-                      <option value="CHECKING">Conta corrente</option>
-                      <option value="DIGITAL">Conta digital</option>
-                      <option value="SAVINGS">Poupança</option>
-                      <option value="CASH">Dinheiro</option>
-                      <option value="INVESTMENT">Investimento</option>
-                      <option value="OTHER">Outra</option>
-                    </select>
-                  </label>
-                  <MoneyInput defaultValue={moneyInputValue(account.initialBalance)} label="Saldo inicial" name="initialBalance" />
-                  <TextInput defaultValue={account.color} label="Cor" name="color" required={false} type="color" />
-                  <button className="finance-secondary" type="submit">Salvar</button>
-                </form>
-              </EditDetails>
-              <DeleteForm action={deleteAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
-            </ItemActions>
-          </li>
-        ))}
-      </ul>
       <CreatePanel title="Nova conta">
         <form action={createAccountAction} className="finance-form">
           <ReturnFields month={month} returnTo="/bancos" />
@@ -701,42 +711,6 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
           <button className="finance-primary" type="submit">Criar conta</button>
         </form>
       </CreatePanel>
-      <form action={createBalanceAdjustmentAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/bancos" />
-        <AccountSelect accounts={options.accounts} label="Conta para ajustar" name="accountId" optional={false} />
-        <MoneyInput label="Saldo real hoje" name="targetBalance" />
-        <TextInput label="Data" name="effectiveAt" type="date" />
-        <NotesField />
-        <button className="finance-secondary" type="submit">Ajustar saldo atual</button>
-      </form>
-      {overview.balanceAdjustments.length > 0 ? (
-        <ul className="finance-list detached-list">
-          {overview.balanceAdjustments.map((adjustment) => (
-            <li key={adjustment.id}>
-              <div className="finance-item-main">
-                <span>
-                  <strong>{adjustment.account.name}</strong>
-                  <small>{adjustment.personEditor.displayName} - ajuste em {formatDate(adjustment.effectiveAt)}</small>
-                </span>
-                <b>{formatCurrency(adjustment.targetBalance)}</b>
-              </div>
-              <ItemActions>
-                <EditDetails>
-                  <form action={updateBalanceAdjustmentAction} className="finance-edit-form">
-                    <ReturnFields month={month} returnTo="/bancos" />
-                    <input name="adjustmentId" type="hidden" value={adjustment.id} />
-                    <MoneyInput defaultValue={moneyInputValue(adjustment.targetBalance)} label="Saldo real" name="targetBalance" />
-                    <TextInput defaultValue={toDateInputValue(adjustment.effectiveAt)} label="Data" name="effectiveAt" type="date" />
-                    <NotesField defaultValue={adjustment.notes} />
-                    <button className="finance-secondary" type="submit">Salvar</button>
-                  </form>
-                </EditDetails>
-                <DeleteForm action={deleteBalanceAdjustmentAction} idName="adjustmentId" idValue={adjustment.id} month={month} returnTo="/bancos" />
-              </ItemActions>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </>
   );
 }
