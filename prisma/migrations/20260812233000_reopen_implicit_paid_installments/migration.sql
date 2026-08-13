@@ -134,8 +134,8 @@ UPDATE "CreditCardInvoice" invoice
 SET "amount" = totals."amount",
     "paidAmount" = LEAST(totals."amount", totals."paidAmount"),
     "status" = CASE
-      WHEN totals."amount" > 0 AND LEAST(totals."amount", totals."paidAmount") >= totals."amount" THEN 'PAID'
-      ELSE 'OPEN'
+      WHEN totals."amount" > 0 AND LEAST(totals."amount", totals."paidAmount") >= totals."amount" THEN 'PAID'::"CreditCardInvoiceStatus"
+      ELSE 'OPEN'::"CreditCardInvoiceStatus"
     END,
     "updatedAt" = CURRENT_TIMESTAMP
 FROM invoice_totals totals
