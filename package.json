@@ -18,7 +18,7 @@
     "test:e2e": "playwright test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "node scripts/prisma-deploy-recover.mjs",
+    "prisma:deploy": "prisma migrate deploy",
     "seed": "prisma db seed",
     "access:create": "tsx scripts/create-access-link.ts",
     "access:revoke": "tsx scripts/revoke-access.ts",
