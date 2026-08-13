@@ -5,8 +5,9 @@ import {
   buildInstallmentPlan,
   buildPersonTotal,
   buildSalaryOccurrencePlan,
+  clampDayInMonth,
+  creditCardFirstDueDate,
   installmentDueDate,
-  isDueOnOrBefore,
   monthlyDueDate,
   monthBounds,
   resolveInvoiceMonth,
@@ -37,12 +38,11 @@ describe("finance calculations", () => {
     expect(shares.map((share) => share.amount.toFixed(2))).toEqual(["50.00", "50.00"]);
   });
 
-  it("marks installments as paid when their due date is on or before today", () => {
-    const today = new Date("2026-08-12T00:00:00.000Z");
+  it("splits larger installments without losing cents", () => {
+    const plan = buildInstallmentPlan("999.99", 7);
 
-    expect(isDueOnOrBefore(new Date("2026-08-10T00:00:00.000Z"), today)).toBe(true);
-    expect(isDueOnOrBefore(new Date("2026-08-12T00:00:00.000Z"), today)).toBe(true);
-    expect(isDueOnOrBefore(new Date("2026-08-13T00:00:00.000Z"), today)).toBe(false);
+    expect(plan.map((installment) => installment.amount.toFixed(2))).toEqual(["142.86", "142.86", "142.86", "142.86", "142.85", "142.85", "142.85"]);
+    expect(plan.reduce((total, installment) => total.plus(installment.amount), plan[0]!.amount.minus(plan[0]!.amount)).toFixed(2)).toBe("999.99");
   });
 
   it("supports fortnightly debt installments", () => {
@@ -93,6 +93,17 @@ describe("finance calculations", () => {
   it("resolves credit card invoice month from the closing day", () => {
     expect(resolveInvoiceMonth(new Date("2026-08-03T00:00:00.000Z"), 5).toISOString().slice(0, 10)).toBe("2026-08-01");
     expect(resolveInvoiceMonth(new Date("2026-08-07T00:00:00.000Z"), 5).toISOString().slice(0, 10)).toBe("2026-09-01");
+  });
+
+  it("derives one invoice due date from the invoice month and card due day", () => {
+    expect(clampDayInMonth(new Date("2026-08-01T00:00:00.000Z"), 10).toISOString().slice(0, 10)).toBe("2026-08-10");
+    expect(clampDayInMonth(new Date("2026-02-01T00:00:00.000Z"), 31).toISOString().slice(0, 10)).toBe("2026-02-28");
+  });
+
+  it("calculates the first credit card due date from purchase date, closing day and due day", () => {
+    expect(creditCardFirstDueDate(new Date("2026-08-03T00:00:00.000Z"), 5, 10).toISOString().slice(0, 10)).toBe("2026-08-10");
+    expect(creditCardFirstDueDate(new Date("2026-08-07T00:00:00.000Z"), 5, 10).toISOString().slice(0, 10)).toBe("2026-09-10");
+    expect(creditCardFirstDueDate(new Date("2026-08-12T00:00:00.000Z"), 20, 10).toISOString().slice(0, 10)).toBe("2026-09-10");
   });
 
   it("aggregates personal totals into the couple view", () => {

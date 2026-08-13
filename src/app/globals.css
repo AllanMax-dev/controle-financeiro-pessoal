@@ -977,6 +977,25 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.purchase-summary-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.purchase-summary-copy strong {
+  line-height: 1.2;
+}
+
+.purchase-summary-copy small {
+  line-height: 1.35;
+}
+
+.purchase-share-line {
+  color: var(--ink);
+  font-weight: 760;
+}
+
 .purchase-amount-stack small {
   color: var(--muted);
   font-size: 0.74rem;
@@ -1235,6 +1254,7 @@ textarea:focus-visible {
 
 .purchase-detail-body .debt-metadata {
   gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .purchase-detail-body .debt-metadata div {
@@ -1301,6 +1321,11 @@ textarea:focus-visible {
   padding: 7px 10px;
   border-radius: 999px;
   font-size: 0.8rem;
+}
+
+.purchase-detail-body > .finance-list-actions {
+  justify-content: flex-end;
+  padding-top: 2px;
 }
 
 .finance-item-main {
@@ -1837,6 +1862,33 @@ progress::-webkit-progress-value {
 
   .fixed-expense-list .inline-payment-details[open] summary {
     width: 100%;
+  }
+
+  .purchase-details > summary {
+    min-height: auto;
+    padding: 10px;
+  }
+
+  .purchase-details > summary::after {
+    margin-left: 6px;
+    padding: 6px 8px;
+    font-size: 0.74rem;
+  }
+
+  .purchase-details > summary .finance-item-main {
+    min-width: 0;
+  }
+
+  .purchase-amount-stack {
+    justify-items: start;
+  }
+
+  .purchase-detail-body {
+    padding: 10px;
+  }
+
+  .purchase-detail-body > .finance-list-actions {
+    justify-content: flex-start;
   }
 
   .debt-installment-list li {

@@ -73,10 +73,6 @@ export function installmentDueDate(firstDueDate: Date, index: number, frequency:
   return frequency === "FORTNIGHTLY" ? fortnightlyDueDate(firstDueDate, index) : monthlyDueDate(firstDueDate, index);
 }
 
-export function isDueOnOrBefore(dueDate: Date, referenceDate: Date) {
-  return dueDate.getTime() <= referenceDate.getTime();
-}
-
 export function fixedExpenseDueDate(monthStart: Date, dueDay: number) {
   return clampDayInMonth(monthStart, dueDay);
 }
@@ -111,6 +107,13 @@ export function resolveInvoiceMonth(purchaseDate: Date, closingDay: number) {
   const closingDate = clampDayInMonth(purchaseMonth, closingDay);
 
   return purchaseDate.getTime() <= closingDate.getTime() ? purchaseMonth : addMonths(purchaseMonth, 1);
+}
+
+export function creditCardFirstDueDate(purchaseDate: Date, closingDay: number, dueDay: number) {
+  const invoiceMonth = resolveInvoiceMonth(purchaseDate, closingDay);
+  const dueDate = clampDayInMonth(invoiceMonth, dueDay);
+
+  return dueDate.getTime() < purchaseDate.getTime() ? clampDayInMonth(addMonths(invoiceMonth, 1), dueDay) : dueDate;
 }
 
 export function buildInstallmentPlan(total: Decimal.Value, count: number) {

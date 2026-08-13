@@ -1376,7 +1376,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
             <MoneyInput label="Valor total" name="totalAmount" />
             <TextInput label="Parcelas" name="installmentCount" type="number" />
             <TextInput label="Data da compra" name="purchaseDate" type="date" />
-            <TextInput label="Primeira parcela" name="firstDueDate" type="date" />
+              <TextInput label="Primeira parcela (opcional)" name="firstDueDate" required={false} type="date" />
             <CategorySelect categories={options.categories} kind="EXPENSE" />
             <CardShareFields people={options.people} />
             <NotesField />
@@ -1467,12 +1467,15 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                           <details className="purchase-details">
                             <summary>
                               <div className="finance-item-main">
-                                <span>
+                                <span className="purchase-summary-copy">
                                   <strong>{purchase.description}</strong>
-                                  <small>{responsibilityLabel} - {purchase.card.name} - {purchase.installmentCount}x - compra {formatDate(purchase.purchaseDate)} - primeira {formatDate(purchase.firstDueDate)}</small>
+                                  <small>{purchase.card.name} - {purchase.installmentCount}x</small>
+                                  <small>Compra {formatDate(purchase.purchaseDate)} - primeira parcela {formatDate(purchase.firstDueDate)}</small>
                                   {monthShares.length > 0 ? (
-                                    <small>{monthShares.map((share) => `${share.name}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
-                                  ) : null}
+                                    <small className="purchase-share-line">{monthShares.map((share) => `${share.name}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                                  ) : (
+                                    <small>{responsibilityLabel}</small>
+                                  )}
                                 </span>
                                 <span className="purchase-amount-stack">
                                   <b>{formatCurrency(monthTotal)}</b>
@@ -1584,7 +1587,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                     <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
                                     <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
                                     <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data da compra" name="purchaseDate" type="date" />
-                                    <TextInput defaultValue={toDateInputValue(purchase.firstDueDate)} label="Primeira parcela" name="firstDueDate" type="date" />
+                                    <TextInput defaultValue={toDateInputValue(purchase.firstDueDate)} label="Primeira parcela (opcional)" name="firstDueDate" required={false} type="date" />
                                     <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
                                     <CardShareFields defaultValues={shareDefaults} people={options.people} />
                                     <NotesField defaultValue={purchase.notes} />
