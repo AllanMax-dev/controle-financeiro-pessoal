@@ -50,6 +50,21 @@ export function monthlyDueDate(firstDueDate: Date, index: number) {
   return clampDayInMonth(monthStart, firstDueDate.getUTCDate());
 }
 
+export type CreditCardInstallmentCalendarStatus = "OPEN" | "PAID" | "CANCELED";
+
+export function creditCardInstallmentStatusOnDate(
+  firstDueDate: Date,
+  installmentNumber: number,
+  today: Date,
+  currentStatus: CreditCardInstallmentCalendarStatus,
+): CreditCardInstallmentCalendarStatus {
+  if (currentStatus !== "OPEN") {
+    return currentStatus;
+  }
+
+  return monthlyDueDate(firstDueDate, installmentNumber - 1).getTime() <= today.getTime() ? "PAID" : "OPEN";
+}
+
 export function clampDayInMonth(month: Date, day: number) {
   const year = month.getUTCFullYear();
   const monthNumber = month.getUTCMonth();

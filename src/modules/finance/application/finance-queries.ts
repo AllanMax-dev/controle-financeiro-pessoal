@@ -5,10 +5,12 @@ import {
   buildSalaryOccurrencePlan,
   buildPersonTotal,
   clampDayInMonth,
+  creditCardInstallmentStatusOnDate,
   fixedExpenseDueDate,
   monthBounds,
   sumPersonTotals,
 } from "@/modules/finance/domain/finance-calculations";
+import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 export type FinanceAccess = {
@@ -139,9 +141,10 @@ async function getAccountBalances(workspaceId: string) {
   }));
 }
 
-export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal") {
+export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
   const database = getDatabase();
   const { end, start } = monthBounds(month);
+  const today = calendarDateInTimeZone(new Date(), timeZone);
   const [
     people,
     accounts,
@@ -231,7 +234,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     database.creditCardInstallment.findMany({
       where: { invoice: { is: { status: { not: "PAID" } } }, status: "OPEN", workspaceId },
-      select: { amount: true, cardId: true },
+      select: { amount: true, cardId: true, number: true, purchase: { select: { firstDueDate: true } } },
     }),
     database.creditCardInvoice.findMany({
       where: { month: start, workspaceId },
@@ -281,6 +284,33 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     );
   }
 
+  const cardInstallmentsWithCalendarStatus = cardInstallments.map((installment) => {
+    const status = creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, installment.status);
+
+    return {
+      ...installment,
+      status,
+      shares: installment.shares.map((share) => ({
+        ...share,
+        status: creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, share.status),
+      })),
+    };
+  });
+  const cardPurchasesWithCalendarStatus = cardPurchases.map((purchase) => ({
+    ...purchase,
+    installments: purchase.installments.map((installment) => {
+      const status = creditCardInstallmentStatusOnDate(purchase.firstDueDate, installment.number, today, installment.status);
+
+      return {
+        ...installment,
+        status,
+        shares: installment.shares.map((share) => ({
+          ...share,
+          status: creditCardInstallmentStatusOnDate(purchase.firstDueDate, installment.number, today, share.status),
+        })),
+      };
+    }),
+  }));
   const salaryOccurrences = salaries.flatMap((salary) =>
     buildSalaryOccurrencePlan(salary.amount, salary.frequency, start, salary.paymentDay)
       .filter(({ dueDate }) => dueDate >= salary.startMonth && dueDate < end && (!salary.archivedAt || dueDate <= salary.archivedAt))
@@ -347,7 +377,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         }))
       : [{ ...installment, installmentAmount: installment.amount, rootInstallmentId: installment.id }],
   );
-  const cardInstallmentResponsibilities = cardInstallments.flatMap((installment) =>
+  const cardInstallmentResponsibilities = cardInstallmentsWithCalendarStatus.flatMap((installment) =>
     installment.shares.length > 0
       ? installment.shares.map((share) => ({
           ...installment,
@@ -442,7 +472,13 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     purchase.installments.some((installment) => installment.shares.some((share) => personIsVisible(share.personEditorId)));
   const cardsWithInvoices = cards.map((card) => {
     const invoice = invoices.find(({ cardId }) => cardId === card.id);
-    const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
+    const committed = sumMoney(
+      allOpenCardInstallments
+        .filter((installment) =>
+          installment.cardId === card.id &&
+          creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, "OPEN") === "OPEN")
+        .map(({ amount }) => amount),
+    );
 
     return {
       ...card,
@@ -464,7 +500,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     activeView,
     cardInstallments: cardInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     cardCoupleTotal,
-    cardPurchases: cardPurchases.filter(purchaseIsVisible),
+    cardPurchases: cardPurchasesWithCalendarStatus.filter(purchaseIsVisible),
     cardTotalsByPerson,
     cards: cardsWithInvoices.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     categories,

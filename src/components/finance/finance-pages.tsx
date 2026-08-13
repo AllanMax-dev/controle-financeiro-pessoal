@@ -1560,7 +1560,9 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                               </form>
                                             )}
                                           </EditDetails>
-                                          <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/cartoes" />
+                                          {linkedPayment ? (
+                                            <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/cartoes" />
+                                          ) : null}
                                         </ItemActions>
                                       ) : null}
                                     </li>

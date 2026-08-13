@@ -7,6 +7,7 @@ import {
   buildSalaryOccurrencePlan,
   clampDayInMonth,
   creditCardFirstDueDate,
+  creditCardInstallmentStatusOnDate,
   installmentDueDate,
   monthlyDueDate,
   monthBounds,
@@ -68,6 +69,13 @@ describe("finance calculations", () => {
     const firstDueDate = new Date("2026-07-10T00:00:00.000Z");
 
     expect([0, 1, 2].map((index) => monthlyDueDate(firstDueDate, index).toISOString().slice(0, 10))).toEqual(["2026-07-10", "2026-08-10", "2026-09-10"]);
+  });
+
+  it("marks credit card installments due today or earlier as paid by calendar", () => {
+    const firstDueDate = new Date("2026-07-10T00:00:00.000Z");
+    const today = new Date("2026-08-12T00:00:00.000Z");
+
+    expect([1, 2, 3].map((number) => creditCardInstallmentStatusOnDate(firstDueDate, number, today, "OPEN"))).toEqual(["PAID", "PAID", "OPEN"]);
   });
 
   it("clamps monthly due dates when the target month is shorter", () => {

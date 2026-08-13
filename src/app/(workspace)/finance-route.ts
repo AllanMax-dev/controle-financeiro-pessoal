@@ -19,7 +19,7 @@ export async function loadFinanceRoute(searchParams: Promise<FinanceSearchParams
   const month = selectedMonthParam(rawSearchParams.month, fallbackMonth);
   const view = selectedViewParam(rawSearchParams.view);
   const [overview, options] = await Promise.all([
-    getFinanceOverview(access.workspaceId, month, view),
+    getFinanceOverview(access.workspaceId, month, view, access.workspaceTimezone),
     getFinanceOptions(access.workspaceId),
   ]);
 
