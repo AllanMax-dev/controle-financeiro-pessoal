@@ -232,13 +232,14 @@ function cardPurchaseMonthTotal(purchase: CardPurchase, month: string) {
 }
 
 function cardPurchaseMonthShares(purchase: CardPurchase, month: string) {
-  const values = new Map<string, { amount: MoneyLike; name: string }>();
+  const values = new Map<string, { amount: MoneyLike; id: string; name: string }>();
 
   for (const installment of cardPurchaseMonthInstallments(purchase, month)) {
     for (const share of installment.shares) {
       const current = values.get(share.personEditorId);
       values.set(share.personEditorId, {
         amount: current ? current.amount.plus(share.amount) : money(share.amount),
+        id: share.personEditorId,
         name: share.personEditor.displayName,
       });
     }
@@ -1100,38 +1101,149 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
 }
 
 export function DebtsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
-  const visiblePersonIds = new Set(getVisiblePeople(overview).map((person) => person.id));
+  const returnTo = "/dividas";
+  const visiblePeople = getVisiblePeople(overview);
+  const visiblePersonIds = new Set(visiblePeople.map((person) => person.id));
   const monthlyDebtRows = overview.debts
     .map((debt) => ({
       currentInstallments: overview.debtInstallments.filter((installment) => installment.debt.id === debt.id),
       debt,
     }))
     .filter(({ currentInstallments }) => currentInstallments.length > 0);
-  const monthlyDebtSummaryCards = getVisiblePeople(overview).map((person) => {
+  const currentMonthOccurrences = new Map(overview.fixedExpenseOccurrences.map((expense) => [expense.fixedExpenseId, expense]));
+  const fixedGroups = visiblePeople
+    .map((person) => ({
+      expenses: overview.fixedExpenses.filter((expense) => expense.personEditorId === person.id),
+      person,
+    }))
+    .filter(({ expenses }) => expenses.length > 0);
+  const sharedPurchases = overview.cardPurchases.filter(cardPurchaseUsesCouple);
+  const purchaseGroups = (
+    overview.activeView === "casal"
+      ? [
+          { id: "casal", name: "Casal", purchases: sharedPurchases },
+          ...visiblePeople.map((person) => ({
+            id: person.id,
+            name: person.name,
+            purchases: overview.cardPurchases.filter((purchase) => !cardPurchaseUsesCouple(purchase) && purchase.personEditorId === person.id),
+          })),
+        ]
+      : visiblePeople.map((person) => ({
+          id: person.id,
+          name: person.name,
+          purchases: overview.cardPurchases,
+        }))
+  ).filter((group) => group.purchases.length > 0);
+  const monthlyDebtSummaryCards = visiblePeople.map((person) => {
     const installments = overview.debtInstallments.filter((installment) => installment.personEditorId === person.id);
+    const cardInstallments = overview.cardInstallments.filter((installment) => installment.personEditorId === person.id);
+    const fixedOccurrences = overview.fixedExpenseOccurrences.filter((expense) => expense.personEditorId === person.id);
+    const fixedTotal = sumMoney(fixedOccurrences.map((expense) => expense.amount));
+    const installmentTotal = sumMoney([...installments.map((installment) => installment.amount), ...cardInstallments.map((installment) => installment.amount)]);
 
     return {
       id: person.id,
       name: person.name,
-      paid: sumMoney(installments.filter((installment) => installment.status === "PAID").map((installment) => installment.amount)),
-      pending: sumMoney(installments.filter((installment) => installment.status === "PENDING").map((installment) => installment.amount)),
-      total: sumMoney(installments.map((installment) => installment.amount)),
+      fixed: fixedTotal,
+      installments: installmentTotal,
+      paid: sumMoney([
+        ...installments.filter((installment) => installment.status === "PAID").map((installment) => installment.amount),
+        ...cardInstallments.filter((installment) => installment.status === "PAID").map((installment) => installment.amount),
+        ...fixedOccurrences.filter((expense) => expense.status === "SETTLED").map((expense) => expense.amount),
+      ]),
+      pending: sumMoney([
+        ...installments.filter((installment) => installment.status === "PENDING").map((installment) => installment.amount),
+        ...cardInstallments.filter((installment) => installment.status === "OPEN").map((installment) => installment.amount),
+        ...fixedOccurrences.filter((expense) => expense.status === "PENDING").map((expense) => expense.amount),
+      ]),
+      total: installmentTotal.plus(fixedTotal),
     };
   });
   const monthlyDebtCoupleSummary = {
     id: "casal",
     name: "Casal",
+    fixed: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.fixed)),
+    installments: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.installments)),
     paid: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.paid)),
     pending: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.pending)),
     total: sumMoney(monthlyDebtSummaryCards.map((summary) => summary.total)),
   };
   const visibleMonthlyDebtSummaryCards = overview.activeView === "casal" ? [monthlyDebtCoupleSummary, ...monthlyDebtSummaryCards] : monthlyDebtSummaryCards;
+  const renderFixedExpense = (expense: Overview["fixedExpenses"][number]) => {
+    const occurrence = currentMonthOccurrences.get(expense.id);
+    const amount = occurrence?.amount ?? expense.amount;
+    const dueDate = occurrence?.dueDate;
+
+    return (
+      <li key={expense.id}>
+        <div className="finance-item-main">
+          <span>
+            <strong>{expense.description}</strong>
+            <small>{expense.personEditor.displayName} · vence {dueDate ? formatDate(dueDate) : `dia ${expense.dueDay}`}</small>
+          </span>
+          <b>{formatCurrency(amount)}</b>
+        </div>
+        <ItemActions>
+          {occurrence ? (
+            <span className="finance-status" data-status={occurrence.status}>
+              {occurrence.status === "SETTLED" ? "Pago" : "Pendente"}
+            </span>
+          ) : null}
+          {occurrence?.status === "PENDING" ? (
+            <details className="inline-payment-details">
+              <summary>Pagar</summary>
+              <form action={payFixedExpenseAction} className="inline-payment-form">
+                <ReturnFields month={month} returnTo={returnTo} />
+                <input name="fixedExpenseId" type="hidden" value={expense.id} />
+                <input name="dueDate" type="hidden" value={toDateInputValue(occurrence.dueDate)} />
+                <MoneyInput defaultValue={moneyInputValue(amount)} label="Pagamento" name="amount" />
+                <TextInput defaultValue={toDateInputValue(occurrence.dueDate)} label="Data" name="paidAt" type="date" />
+                <AccountSelect accounts={options.accounts} defaultValue={occurrence.accountId} label="Conta" name="accountId" optional={false} />
+                <button className="finance-secondary" type="submit">Pagar</button>
+              </form>
+            </details>
+          ) : null}
+          <EditDetails>
+            <form action={updateFixedExpenseAction} className="finance-edit-form">
+              <ReturnFields month={month} returnTo={returnTo} />
+              <input name="fixedExpenseId" type="hidden" value={expense.id} />
+              <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
+              <TextInput defaultValue={expense.description} label="Descrição" name="description" />
+              <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
+              <TextInput defaultValue={monthInputValue(expense.startMonth)} label="Mês inicial" name="startMonth" type="month" />
+              <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
+              <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
+              <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
+              <label className="finance-field">
+                <span>Status padrão</span>
+                <select defaultValue={expense.status} name="status">
+                  <option value="PENDING">Pendente</option>
+                  <option value="SETTLED">Realizado</option>
+                </select>
+              </label>
+              <NotesField defaultValue={expense.notes} />
+              <button className="finance-secondary" type="submit">Salvar</button>
+            </form>
+          </EditDetails>
+          <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} />
+        </ItemActions>
+      </li>
+    );
+  };
+  const renderFixedList = (expenses: Overview["fixedExpenses"]) =>
+    expenses.length === 0 ? (
+      <p className="empty-state">Nenhum gasto fixo cadastrado.</p>
+    ) : (
+      <ul className="finance-list detached-list">
+        {expenses.map(renderFixedExpense)}
+      </ul>
+    );
 
   return (
     <>
-      <WorkspacePage formTitle="Nova dívida" listTitle="Dívidas cadastradas" month={month} subtitle="Dívidas parceladas" title="Dívidas">
+      <WorkspacePage formTitle="Nova dívida parcelada" listTitle="Dívidas cadastradas" month={month} subtitle="Parceladas, fixas e cartão no mesmo lugar" title="Dívidas">
         <form action={createDebtAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/dividas" />
+          <ReturnFields month={month} returnTo={returnTo} />
           <PersonSelect people={options.people} />
           <TextInput label="Descrição" name="description" />
           <MoneyInput label="Valor total" name="totalAmount" />
@@ -1151,14 +1263,104 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <button className="finance-primary" type="submit">Criar dívida</button>
         </form>
       </WorkspacePage>
+      <section className="credit-card-workspace">
+        <details className="compact-card card-admin-panel">
+          <summary>
+            <span>Novo gasto fixo</span>
+            <strong>Cadastrar</strong>
+          </summary>
+          <div className="finance-create-body">
+            <form action={createFixedExpenseAction} className="finance-form">
+              <ReturnFields month={month} returnTo={returnTo} />
+              <PersonSelect people={options.people} />
+              <TextInput label="Descrição" name="description" />
+              <MoneyInput label="Valor" />
+              <TextInput label="Mês inicial" name="startMonth" type="month" />
+              <TextInput label="Dia de vencimento" name="dueDay" type="number" />
+              <CategorySelect categories={options.categories} kind="EXPENSE" />
+              <AccountSelect accounts={options.accounts} />
+              <label className="finance-field">
+                <span>Status padrão</span>
+                <select name="status">
+                  <option value="PENDING">Pendente</option>
+                  <option value="SETTLED">Realizado</option>
+                </select>
+              </label>
+              <NotesField />
+              <button className="finance-secondary" type="submit">Criar gasto fixo</button>
+            </form>
+          </div>
+        </details>
+
+        <details className="compact-card card-admin-panel card-purchase-panel">
+          <summary>
+            <span>Nova compra no cartão</span>
+            <strong>Cadastrar</strong>
+          </summary>
+          <div className="finance-create-body">
+            <form action={createCreditCardPurchaseAction} className="finance-form card-purchase-form">
+              <ReturnFields month={month} returnTo={returnTo} />
+              <label className="finance-field">
+                <span>Cartão</span>
+                <select name="cardId" required>
+                  {options.cards.map((card) => (
+                    <option key={card.id} value={card.id}>
+                      {card.personEditor.displayName} · {card.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <CardResponsibilitySelect people={options.people} />
+              <TextInput label="Descrição" name="description" />
+              <MoneyInput label="Valor total" name="totalAmount" />
+              <TextInput label="Parcelas" name="installmentCount" type="number" />
+              <TextInput label="Data da compra" name="purchaseDate" type="date" />
+              <TextInput label="Primeira parcela (opcional)" name="firstDueDate" required={false} type="date" />
+              <CategorySelect categories={options.categories} kind="EXPENSE" />
+              <CardShareFields people={options.people} />
+              <NotesField />
+              <button className="finance-secondary" type="submit">Registrar compra</button>
+            </form>
+          </div>
+        </details>
+
+        <details className="compact-card card-admin-panel">
+          <summary>
+            <span>Novo cartão</span>
+            <strong>Adicionar</strong>
+          </summary>
+          <div className="finance-create-body">
+            <form action={createCreditCardAction} className="finance-form">
+              <ReturnFields month={month} returnTo={returnTo} />
+              <PersonSelect people={options.people} />
+              <TextInput label="Nome" name="name" />
+              <TextInput label="Instituição" name="institution" required={false} />
+              <MoneyInput label="Limite" name="limit" />
+              <TextInput label="Fechamento" name="closingDay" type="number" />
+              <TextInput label="Vencimento" name="dueDay" type="number" />
+              <AccountSelect accounts={options.accounts} label="Conta de pagamento" name="paymentAccountId" />
+              <TextInput defaultValue="#357a68" label="Cor" name="color" required={false} type="color" />
+              <button className="finance-secondary" type="submit">Criar cartão</button>
+            </form>
+          </div>
+        </details>
+      </section>
       <PersonTabs month={month} overview={overview} />
-      <section className="card-month-summary" aria-label="Parcelas de dívidas no mês">
+      <section className="card-month-summary" aria-label="Resumo mensal de dívidas">
         {visibleMonthlyDebtSummaryCards.map((summary) => (
           <article className="card-month-card" data-active={overview.activeView === summary.id ? "true" : undefined} key={summary.id}>
             <span>{summary.name}</span>
             <strong>{formatCurrency(summary.total)}</strong>
-            <small>Parcelas no mês selecionado</small>
+            <small>Total no mês selecionado</small>
             <dl>
+              <div>
+                <dt>Parceladas</dt>
+                <dd>{formatCurrency(summary.installments)}</dd>
+              </div>
+              <div>
+                <dt>Fixas</dt>
+                <dd>{formatCurrency(summary.fixed)}</dd>
+              </div>
               <div>
                 <dt>Pendente</dt>
                 <dd>{formatCurrency(summary.pending)}</dd>
@@ -1172,7 +1374,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
         ))}
       </section>
       <section className="compact-card">
-        <h2>Parcelas do mês</h2>
+        <h2>Dívidas parceladas</h2>
         {monthlyDebtRows.length === 0 ? (
           <p className="empty-state">Nenhuma parcela de dívida neste mês.</p>
         ) : (
@@ -1301,7 +1503,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <button className="finance-secondary" type="submit">Salvar</button>
                           </form>
                         </EditDetails>
-                        <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo="/dividas" />
+                        <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo={returnTo} />
                       </ItemActions>
                     </div>
                   </details>
@@ -1309,6 +1511,230 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
               );
             })}
           </ul>
+        )}
+      </section>
+      <section className="compact-card">
+        <h2>Dívidas fixas</h2>
+        {overview.activeView === "casal" ? (
+          <div className="person-group-stack recurring-group-stack">
+            {fixedGroups.length === 0 ? <p className="empty-state">Nenhum gasto fixo cadastrado.</p> : null}
+            {fixedGroups.map(({ expenses, person }) => (
+              <section className="person-group" key={person.id}>
+                <h2>{person.name}</h2>
+                {renderFixedList(expenses)}
+              </section>
+            ))}
+          </div>
+        ) : (
+          renderFixedList(overview.fixedExpenses)
+        )}
+      </section>
+      <section className="purchase-section">
+        <h2>Cartões cadastrados</h2>
+        <ul className="card-grid credit-card-list">
+          {overview.cards.map((card) => (
+            <li key={card.id}>
+              <span>{card.personEditor.displayName}</span>
+              <strong>{card.name}</strong>
+              <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
+              <progress max={Number(card.limit)} value={Number(card.committed)} />
+              <ItemActions>
+                <EditDetails>
+                  <form action={updateCreditCardAction} className="finance-edit-form">
+                    <ReturnFields month={month} returnTo={returnTo} />
+                    <input name="cardId" type="hidden" value={card.id} />
+                    <PersonSelect defaultValue={card.personEditorId} people={options.people} />
+                    <TextInput defaultValue={card.name} label="Nome" name="name" />
+                    <TextInput defaultValue={card.institution} label="Instituição" name="institution" required={false} />
+                    <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
+                    <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
+                    <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
+                    <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
+                    <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
+                    <button className="finance-secondary" type="submit">Salvar</button>
+                  </form>
+                </EditDetails>
+                <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo={returnTo} />
+              </ItemActions>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="purchase-section">
+        <h2>Compras parceladas no cartão</h2>
+        {purchaseGroups.length === 0 ? (
+          <p className="empty-state">Nenhuma compra de cartão neste mês.</p>
+        ) : (
+          <div className="card-purchase-groups">
+            {purchaseGroups.map((group) => {
+              const groupMonthTotal = sumMoney(group.purchases.map((purchase) => {
+                const monthShares = cardPurchaseMonthShares(purchase, month);
+                const visibleMonthShares = monthShares.filter((share) => visiblePersonIds.has(share.id));
+
+                return monthShares.length > 0 ? sumMoney(visibleMonthShares.map((share) => share.amount)) : cardPurchaseMonthTotal(purchase, month);
+              }));
+
+              return (
+                <section className="card-purchase-group" key={group.id}>
+                  <header>
+                    <h3>{group.name}</h3>
+                    <strong>{formatCurrency(groupMonthTotal)}</strong>
+                  </header>
+                  <ul className="finance-list detached-list purchase-list">
+                    {group.purchases.map((purchase) => {
+                      const monthShares = cardPurchaseMonthShares(purchase, month);
+                      const visibleMonthShares = monthShares.filter((share) => visiblePersonIds.has(share.id));
+                      const monthTotal = monthShares.length > 0 ? sumMoney(visibleMonthShares.map((share) => share.amount)) : cardPurchaseMonthTotal(purchase, month);
+                      const purchaseInstallments = cardPurchaseMonthInstallments(purchase, month);
+                      const responsibilityLabel = cardPurchaseUsesCouple(purchase) ? "Casal" : purchase.personEditor.displayName;
+                      const shareDefaults = cardPurchaseShareDefaultValues(purchase);
+
+                      return (
+                        <li key={purchase.id}>
+                          <details className="purchase-details">
+                            <summary>
+                              <div className="finance-item-main">
+                                <span className="purchase-summary-copy">
+                                  <strong>{purchase.description}</strong>
+                                  <small>{purchase.card.name} - {purchase.installmentCount}x</small>
+                                  <small>Compra {formatDate(purchase.purchaseDate)} - primeira parcela {formatDate(purchase.firstDueDate)}</small>
+                                  {visibleMonthShares.length > 0 ? (
+                                    <small className="purchase-share-line">{visibleMonthShares.map((share) => `${share.name}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                                  ) : (
+                                    <small>{responsibilityLabel}</small>
+                                  )}
+                                </span>
+                                <span className="purchase-amount-stack">
+                                  <b>{formatCurrency(monthTotal)}</b>
+                                  <small>Total {formatCurrency(purchase.totalAmount)}</small>
+                                </span>
+                              </div>
+                            </summary>
+                            <div className="purchase-detail-body">
+                              <dl className="debt-metadata">
+                                <div>
+                                  <dt>Cartão</dt>
+                                  <dd>{purchase.card.name}</dd>
+                                </div>
+                                <div>
+                                  <dt>Responsável</dt>
+                                  <dd>{responsibilityLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt>Categoria</dt>
+                                  <dd>{purchase.category?.name ?? "Sem categoria"}</dd>
+                                </div>
+                                <div>
+                                  <dt>Parcela do mês</dt>
+                                  <dd>{purchaseInstallments.map((installment) => `${installment.number}/${purchase.installmentCount}`).join(", ") || "-"}</dd>
+                                </div>
+                              </dl>
+                              <ul className="installment-list">
+                                {purchase.installments.map((installment) => {
+                                  const installmentDueDate = cardPurchaseInstallmentDueDate(purchase, installment);
+                                  const linkedPayment = installment.invoicePayment;
+                                  const paymentAccounts = options.accounts.filter((account) => account.personEditorId === purchase.card.personEditorId);
+                                  const cardPaymentAccounts = paymentAccounts.length > 0 ? paymentAccounts : options.accounts;
+                                  const defaultPaymentAccountId = linkedPayment?.accountId ?? purchase.card.paymentAccountId;
+
+                                  return (
+                                    <li key={installment.id}>
+                                      <span>
+                                        <strong>Parcela {installment.number}</strong>
+                                        <small>Vence {formatDate(installmentDueDate)}</small>
+                                        {installment.shares.length > 0 ? (
+                                          <small>{installment.shares.filter((share) => visiblePersonIds.has(share.personEditorId)).map((share) => `${share.personEditor.displayName}: ${formatCurrency(share.amount)}`).join(" - ")}</small>
+                                        ) : null}
+                                      </span>
+                                      <b>{formatCurrency(installment.amount)}</b>
+                                      <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
+                                        {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                                      </span>
+                                      {installment.status === "OPEN" ? (
+                                        <details className="inline-payment-details">
+                                          <summary>Adiantar</summary>
+                                          <form action={payCreditCardInstallmentAction} className="inline-payment-form">
+                                            <ReturnFields month={month} returnTo={returnTo} />
+                                            <input name="installmentId" type="hidden" value={installment.id} />
+                                            <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
+                                            <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
+                                            <NotesField />
+                                            <button className="finance-secondary" type="submit">Adiantar parcela</button>
+                                          </form>
+                                        </details>
+                                      ) : null}
+                                      {installment.status === "PAID" ? (
+                                        <ItemActions>
+                                          <EditDetails>
+                                            {linkedPayment ? (
+                                              <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                                                <ReturnFields month={month} returnTo={returnTo} />
+                                                <input name="paymentId" type="hidden" value={linkedPayment.id} />
+                                                <input name="amount" type="hidden" value={moneyInputValue(linkedPayment.amount)} />
+                                                <TextInput defaultValue={toDateInputValue(linkedPayment.paidAt)} label="Data" name="paidAt" type="date" />
+                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
+                                                <NotesField defaultValue={linkedPayment.notes} />
+                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                                              </form>
+                                            ) : (
+                                              <form action={payCreditCardInstallmentAction} className="finance-edit-form">
+                                                <ReturnFields month={month} returnTo={returnTo} />
+                                                <input name="installmentId" type="hidden" value={installment.id} />
+                                                <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
+                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
+                                                <NotesField />
+                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                                              </form>
+                                            )}
+                                          </EditDetails>
+                                          {linkedPayment ? (
+                                            <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo={returnTo} />
+                                          ) : null}
+                                        </ItemActions>
+                                      ) : null}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                              <ItemActions>
+                                <EditDetails>
+                                  <form action={updateCreditCardPurchaseAction} className="finance-edit-form">
+                                    <ReturnFields month={month} returnTo={returnTo} />
+                                    <input name="purchaseId" type="hidden" value={purchase.id} />
+                                    <label className="finance-field">
+                                      <span>Cartão</span>
+                                      <select defaultValue={purchase.cardId} name="cardId" required>
+                                        {options.cards.map((card) => (
+                                          <option key={card.id} value={card.id}>
+                                            {card.personEditor.displayName} - {card.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <CardResponsibilitySelect defaultValue={cardPurchaseUsesCouple(purchase) ? "COUPLE" : purchase.personEditorId} people={options.people} />
+                                    <TextInput defaultValue={purchase.description} label="Descrição" name="description" />
+                                    <MoneyInput defaultValue={moneyInputValue(purchase.totalAmount)} label="Valor total" name="totalAmount" />
+                                    <TextInput defaultValue={purchase.installmentCount} label="Parcelas" name="installmentCount" type="number" />
+                                    <TextInput defaultValue={toDateInputValue(purchase.purchaseDate)} label="Data da compra" name="purchaseDate" type="date" />
+                                    <TextInput defaultValue={toDateInputValue(purchase.firstDueDate)} label="Primeira parcela (opcional)" name="firstDueDate" required={false} type="date" />
+                                    <CategorySelect categories={options.categories} defaultValue={purchase.categoryId} kind="EXPENSE" />
+                                    <CardShareFields defaultValues={shareDefaults} people={options.people} />
+                                    <NotesField defaultValue={purchase.notes} />
+                                    <button className="finance-secondary" type="submit">Salvar</button>
+                                  </form>
+                                </EditDetails>
+                                <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo={returnTo} />
+                              </ItemActions>
+                            </div>
+                          </details>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
         )}
       </section>
     </>

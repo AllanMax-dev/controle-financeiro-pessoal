@@ -6,10 +6,8 @@ const firstSteps = [
 ];
 
 const routineSteps = [
-  "Use Gastos fixos para compromissos que se repetem todo mês, como internet, aluguel, academia ou assinaturas.",
   "Use Gastos variáveis para compras do dia a dia pagas em conta ou dinheiro.",
-  "Use Cartões para compras no crédito. A compra vira despesa por competência; a conta bancária só reduz quando a fatura for paga.",
-  "Use Dívidas para parcelas planejadas fora do cartão, com vencimentos mensais ou quinzenais.",
+  "Use Dívidas para gastos fixos, compras no cartão e parcelas planejadas, sempre separados entre Allan, Mayara e Casal.",
   "Use Transferências para mover dinheiro entre contas. Transferência não é gasto nem recebimento do casal.",
 ];
 
@@ -63,8 +61,8 @@ export default function HowToUsePage() {
           <li>Categorias de receita e despesa criadas.</li>
           <li>Contas de Allan e Mayara cadastradas com saldo real.</li>
           <li>Salários e recebimentos recorrentes cadastrados.</li>
-          <li>Gastos fixos do mês cadastrados.</li>
-          <li>Cartões, dívidas, cofrinhos e investimentos registrados quando existirem.</li>
+          <li>Dívidas fixas, cartões e parcelas cadastrados quando existirem.</li>
+          <li>Cofrinhos e investimentos registrados quando existirem.</li>
         </ul>
       </section>
     </>

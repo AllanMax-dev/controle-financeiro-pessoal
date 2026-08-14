@@ -9,9 +9,7 @@ import { Icon, type IconName } from "@/components/ui/icons";
 
 const navigationItems = [
   { href: "/painel", icon: "dashboard", label: "Dashboard" },
-  { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
   { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
-  { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
   { href: "/recebimentos", icon: "income", label: "Recebimentos" },
   { href: "/dividas", icon: "debt", label: "Dívidas" },
   { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
@@ -26,7 +24,7 @@ const bottomNavigationItems = [
   { href: "/painel", icon: "dashboard", label: "Início" },
   { href: "/gastos-variaveis", icon: "expense", label: "Gastos" },
   { href: "/recebimentos", icon: "income", label: "Receitas" },
-  { href: "/cartoes", icon: "card", label: "Cartões" },
+  { href: "/dividas", icon: "debt", label: "Dívidas" },
 ] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
 function hrefWithFilters(href: string, month: string | null, view: string | null): Route {
