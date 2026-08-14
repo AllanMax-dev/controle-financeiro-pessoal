@@ -69,3 +69,43 @@ test("keeps closed mobile finance rows compact", async ({ page }) => {
 
   expect(hasHorizontalOverflow).toBe(false);
 });
+
+test("reveals debt actions only after opening the item", async ({ page }) => {
+  await page.setContent(`
+    <!doctype html>
+    <html>
+      <head>
+        <style>${appCss}</style>
+      </head>
+      <body>
+        <main class="workspace-main">
+          <ul class="finance-list debt-list">
+            <li>
+              <details class="debt-details" data-debt-kind="fixed">
+                <summary><div class="finance-item-main"><strong>Aluguel</strong><b>R$ 1.000,00</b></div></summary>
+                <div class="debt-detail-body"><div class="finance-list-actions"><button>Editar</button><button>Excluir</button></div></div>
+              </details>
+            </li>
+            <li>
+              <details class="debt-details" data-debt-kind="card">
+                <summary><div class="finance-item-main"><strong>Cartão principal</strong><b>R$ 350,00</b></div></summary>
+                <div class="debt-detail-body"><div class="finance-list-actions"><button>Editar</button><button>Excluir</button></div></div>
+              </details>
+            </li>
+          </ul>
+        </main>
+      </body>
+    </html>
+  `);
+
+  for (const kind of ["fixed", "card"]) {
+    const item = page.locator(`[data-debt-kind="${kind}"]`);
+    const body = item.locator(".debt-detail-body");
+
+    await expect(body).toBeHidden();
+    await item.locator("summary").click();
+    await expect(body).toBeVisible();
+    await expect(item.getByRole("button", { name: "Editar" })).toBeVisible();
+    await expect(item.getByRole("button", { name: "Excluir" })).toBeVisible();
+  }
+});

@@ -1176,57 +1176,84 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
 
     return (
       <li key={expense.id}>
-        <div className="finance-item-main">
-          <span>
-            <strong>{expense.description}</strong>
-            <small>{expense.personEditor.displayName} · vence {dueDate ? formatDate(dueDate) : `dia ${expense.dueDay}`}</small>
-          </span>
-          <b>{formatCurrency(amount)}</b>
-        </div>
-        <ItemActions>
-          {occurrence ? (
-            <span className="finance-status" data-status={occurrence.status}>
-              {occurrence.status === "SETTLED" ? "Pago" : "Pendente"}
-            </span>
-          ) : null}
-          {occurrence?.status === "PENDING" ? (
-            <details className="inline-payment-details">
-              <summary>Pagar</summary>
-              <form action={payFixedExpenseAction} className="inline-payment-form">
-                <ReturnFields month={month} returnTo={returnTo} />
-                <input name="fixedExpenseId" type="hidden" value={expense.id} />
-                <input name="dueDate" type="hidden" value={toDateInputValue(occurrence.dueDate)} />
-                <MoneyInput defaultValue={moneyInputValue(amount)} label="Pagamento" name="amount" />
-                <TextInput defaultValue={toDateInputValue(occurrence.dueDate)} label="Data" name="paidAt" type="date" />
-                <AccountSelect accounts={options.accounts} defaultValue={occurrence.accountId} label="Conta" name="accountId" optional={false} />
-                <button className="finance-secondary" type="submit">Pagar</button>
-              </form>
-            </details>
-          ) : null}
-          <EditDetails>
-            <form action={updateFixedExpenseAction} className="finance-edit-form">
-              <ReturnFields month={month} returnTo={returnTo} />
-              <input name="fixedExpenseId" type="hidden" value={expense.id} />
-              <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
-              <TextInput defaultValue={expense.description} label="Descrição" name="description" />
-              <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
-              <TextInput defaultValue={monthInputValue(expense.startMonth)} label="Mês inicial" name="startMonth" type="month" />
-              <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
-              <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
-              <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
-              <label className="finance-field">
-                <span>Status padrão</span>
-                <select defaultValue={expense.status} name="status">
-                  <option value="PENDING">Pendente</option>
-                  <option value="SETTLED">Realizado</option>
-                </select>
-              </label>
-              <NotesField defaultValue={expense.notes} />
-              <button className="finance-secondary" type="submit">Salvar</button>
-            </form>
-          </EditDetails>
-          <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} />
-        </ItemActions>
+        <details className="debt-details">
+          <summary>
+            <div className="finance-item-main">
+              <span>
+                <strong>{expense.description}</strong>
+                <small>{expense.personEditor.displayName} · vence {dueDate ? formatDate(dueDate) : `dia ${expense.dueDay}`}</small>
+              </span>
+              <span className="purchase-amount-stack">
+                <b>{formatCurrency(amount)}</b>
+                <small>{occurrence?.status === "SETTLED" ? "Pago" : "Pendente"}</small>
+              </span>
+            </div>
+          </summary>
+          <div className="debt-detail-body">
+            <dl className="debt-metadata">
+              <div>
+                <dt>Responsável</dt>
+                <dd>{expense.personEditor.displayName}</dd>
+              </div>
+              <div>
+                <dt>Vencimento</dt>
+                <dd>{dueDate ? formatDate(dueDate) : `Dia ${expense.dueDay}`}</dd>
+              </div>
+              <div>
+                <dt>Categoria</dt>
+                <dd>{expense.category?.name ?? "Sem categoria"}</dd>
+              </div>
+              <div>
+                <dt>Conta</dt>
+                <dd>{occurrence?.account?.name ?? expense.account?.name ?? "Não definida"}</dd>
+              </div>
+            </dl>
+            <ItemActions>
+              {occurrence ? (
+                <span className="finance-status" data-status={occurrence.status}>
+                  {occurrence.status === "SETTLED" ? "Pago" : "Pendente"}
+                </span>
+              ) : null}
+              {occurrence?.status === "PENDING" ? (
+                <details className="inline-payment-details">
+                  <summary>Pagar</summary>
+                  <form action={payFixedExpenseAction} className="inline-payment-form">
+                    <ReturnFields month={month} returnTo={returnTo} />
+                    <input name="fixedExpenseId" type="hidden" value={expense.id} />
+                    <input name="dueDate" type="hidden" value={toDateInputValue(occurrence.dueDate)} />
+                    <MoneyInput defaultValue={moneyInputValue(amount)} label="Pagamento" name="amount" />
+                    <TextInput defaultValue={toDateInputValue(occurrence.dueDate)} label="Data" name="paidAt" type="date" />
+                    <AccountSelect accounts={options.accounts} defaultValue={occurrence.accountId} label="Conta" name="accountId" optional={false} />
+                    <button className="finance-secondary" type="submit">Pagar</button>
+                  </form>
+                </details>
+              ) : null}
+              <EditDetails>
+                <form action={updateFixedExpenseAction} className="finance-edit-form">
+                  <ReturnFields month={month} returnTo={returnTo} />
+                  <input name="fixedExpenseId" type="hidden" value={expense.id} />
+                  <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
+                  <TextInput defaultValue={expense.description} label="Descrição" name="description" />
+                  <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
+                  <TextInput defaultValue={monthInputValue(expense.startMonth)} label="Mês inicial" name="startMonth" type="month" />
+                  <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
+                  <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
+                  <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
+                  <label className="finance-field">
+                    <span>Status padrão</span>
+                    <select defaultValue={expense.status} name="status">
+                      <option value="PENDING">Pendente</option>
+                      <option value="SETTLED">Realizado</option>
+                    </select>
+                  </label>
+                  <NotesField defaultValue={expense.notes} />
+                  <button className="finance-secondary" type="submit">Salvar</button>
+                </form>
+              </EditDetails>
+              <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} />
+            </ItemActions>
+          </div>
+        </details>
       </li>
     );
   };
@@ -1234,7 +1261,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
     expenses.length === 0 ? (
       <p className="empty-state">Nenhum gasto fixo cadastrado.</p>
     ) : (
-      <ul className="finance-list detached-list">
+      <ul className="finance-list detached-list debt-list">
         {expenses.map(renderFixedExpense)}
       </ul>
     );
@@ -1531,31 +1558,62 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
       </section>
       <section className="purchase-section">
         <h2>Cartões cadastrados</h2>
-        <ul className="card-grid credit-card-list">
+        <ul className="finance-list detached-list debt-list credit-card-list">
           {overview.cards.map((card) => (
             <li key={card.id}>
-              <span>{card.personEditor.displayName}</span>
-              <strong>{card.name}</strong>
-              <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
-              <progress max={Number(card.limit)} value={Number(card.committed)} />
-              <ItemActions>
-                <EditDetails>
-                  <form action={updateCreditCardAction} className="finance-edit-form">
-                    <ReturnFields month={month} returnTo={returnTo} />
-                    <input name="cardId" type="hidden" value={card.id} />
-                    <PersonSelect defaultValue={card.personEditorId} people={options.people} />
-                    <TextInput defaultValue={card.name} label="Nome" name="name" />
-                    <TextInput defaultValue={card.institution} label="Instituição" name="institution" required={false} />
-                    <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
-                    <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
-                    <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
-                    <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
-                    <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
-                    <button className="finance-secondary" type="submit">Salvar</button>
-                  </form>
-                </EditDetails>
-                <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo={returnTo} />
-              </ItemActions>
+              <details className="debt-details">
+                <summary>
+                  <div className="finance-item-main">
+                    <span>
+                      <strong>{card.name}</strong>
+                      <small>{card.personEditor.displayName} · {card.institution ?? "Sem instituição"}</small>
+                    </span>
+                    <span className="purchase-amount-stack">
+                      <b>{formatCurrency(card.invoiceAmount)}</b>
+                      <small>Fatura do mês</small>
+                    </span>
+                  </div>
+                </summary>
+                <div className="debt-detail-body">
+                  <dl className="debt-metadata">
+                    <div>
+                      <dt>Responsável</dt>
+                      <dd>{card.personEditor.displayName}</dd>
+                    </div>
+                    <div>
+                      <dt>Limite</dt>
+                      <dd>{formatCurrency(card.limit)}</dd>
+                    </div>
+                    <div>
+                      <dt>Disponível</dt>
+                      <dd>{formatCurrency(card.limitAvailable)}</dd>
+                    </div>
+                    <div>
+                      <dt>Fechamento e vencimento</dt>
+                      <dd>Dias {card.closingDay} e {card.dueDay}</dd>
+                    </div>
+                  </dl>
+                  <progress max={Number(card.limit)} value={Number(card.committed)} />
+                  <ItemActions>
+                    <EditDetails>
+                      <form action={updateCreditCardAction} className="finance-edit-form">
+                        <ReturnFields month={month} returnTo={returnTo} />
+                        <input name="cardId" type="hidden" value={card.id} />
+                        <PersonSelect defaultValue={card.personEditorId} people={options.people} />
+                        <TextInput defaultValue={card.name} label="Nome" name="name" />
+                        <TextInput defaultValue={card.institution} label="Instituição" name="institution" required={false} />
+                        <MoneyInput defaultValue={moneyInputValue(card.limit)} label="Limite" name="limit" />
+                        <TextInput defaultValue={card.closingDay} label="Fechamento" name="closingDay" type="number" />
+                        <TextInput defaultValue={card.dueDay} label="Vencimento" name="dueDay" type="number" />
+                        <AccountSelect accounts={options.accounts} defaultValue={card.paymentAccountId} label="Conta de pagamento" name="paymentAccountId" />
+                        <TextInput defaultValue={card.color} label="Cor" name="color" required={false} type="color" />
+                        <button className="finance-secondary" type="submit">Salvar</button>
+                      </form>
+                    </EditDetails>
+                    <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo={returnTo} />
+                  </ItemActions>
+                </div>
+              </details>
             </li>
           ))}
         </ul>

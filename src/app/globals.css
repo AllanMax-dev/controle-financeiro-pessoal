@@ -1323,6 +1323,7 @@ textarea:focus-visible {
   font-size: 0.8rem;
 }
 
+.debt-detail-body > .finance-list-actions,
 .purchase-detail-body > .finance-list-actions {
   justify-content: flex-end;
   padding-top: 2px;
@@ -1864,17 +1865,20 @@ progress::-webkit-progress-value {
     width: 100%;
   }
 
+  .debt-details > summary,
   .purchase-details > summary {
     min-height: auto;
     padding: 10px;
   }
 
+  .debt-details > summary::after,
   .purchase-details > summary::after {
     margin-left: 6px;
     padding: 6px 8px;
     font-size: 0.74rem;
   }
 
+  .debt-details > summary .finance-item-main,
   .purchase-details > summary .finance-item-main {
     min-width: 0;
   }
@@ -1883,10 +1887,12 @@ progress::-webkit-progress-value {
     justify-items: start;
   }
 
+  .debt-detail-body,
   .purchase-detail-body {
     padding: 10px;
   }
 
+  .debt-detail-body > .finance-list-actions,
   .purchase-detail-body > .finance-list-actions {
     justify-content: flex-start;
   }
