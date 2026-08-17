@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { assertCreditCardConfigurationChange } from "../../src/modules/finance/application/credit-card-reconciliation";
+
 import {
   buildEqualSharePlan,
   buildInstallmentPlan,
@@ -7,7 +9,7 @@ import {
   buildSalaryOccurrencePlan,
   clampDayInMonth,
   creditCardFirstDueDate,
-  creditCardInstallmentStatusOnDate,
+  creditCardInstallmentIsOverdue,
   installmentDueDate,
   monthlyDueDate,
   monthBounds,
@@ -71,11 +73,12 @@ describe("finance calculations", () => {
     expect([0, 1, 2].map((index) => monthlyDueDate(firstDueDate, index).toISOString().slice(0, 10))).toEqual(["2026-07-10", "2026-08-10", "2026-09-10"]);
   });
 
-  it("marks credit card installments due today or earlier as paid by calendar", () => {
+  it("presents overdue credit card installments without marking them as paid", () => {
     const firstDueDate = new Date("2026-07-10T00:00:00.000Z");
     const today = new Date("2026-08-12T00:00:00.000Z");
 
-    expect([1, 2, 3].map((number) => creditCardInstallmentStatusOnDate(firstDueDate, number, today, "OPEN"))).toEqual(["PAID", "PAID", "OPEN"]);
+    expect([1, 2, 3].map((number) => creditCardInstallmentIsOverdue(firstDueDate, number, today, "OPEN"))).toEqual([true, true, false]);
+    expect(creditCardInstallmentIsOverdue(firstDueDate, 1, today, "PAID")).toBe(false);
   });
 
   it("clamps monthly due dates when the target month is shorter", () => {
@@ -112,6 +115,14 @@ describe("finance calculations", () => {
     expect(creditCardFirstDueDate(new Date("2026-08-03T00:00:00.000Z"), 5, 10).toISOString().slice(0, 10)).toBe("2026-08-10");
     expect(creditCardFirstDueDate(new Date("2026-08-07T00:00:00.000Z"), 5, 10).toISOString().slice(0, 10)).toBe("2026-09-10");
     expect(creditCardFirstDueDate(new Date("2026-08-12T00:00:00.000Z"), 20, 10).toISOString().slice(0, 10)).toBe("2026-09-10");
+  });
+
+  it("freezes card owner and schedule after financial history exists", () => {
+    const current = { closingDay: 5, dueDay: 10, personEditorId: "allan" };
+
+    expect(() => assertCreditCardConfigurationChange(current, { ...current, personEditorId: "mayara" }, true)).toThrow("titular");
+    expect(() => assertCreditCardConfigurationChange(current, { ...current, dueDay: 15 }, true)).toThrow("fechamento e vencimento");
+    expect(() => assertCreditCardConfigurationChange(current, { ...current, dueDay: 15 }, false)).not.toThrow();
   });
 
   it("aggregates personal totals into the couple view", () => {

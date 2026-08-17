@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import {
+  cancelCreditCardPurchaseAction,
   createAccountAction,
   createBalanceAdjustmentAction,
   createCategoryAction,
@@ -19,6 +20,7 @@ import {
   deleteBalanceAdjustmentAction,
   deleteCategoryAction,
   deleteCreditCardAction,
+  deleteCreditCardInvoicePaymentAction,
   deleteCreditCardInstallmentPaymentAction,
   deleteCreditCardPurchaseAction,
   deleteDebtAction,
@@ -31,6 +33,7 @@ import {
   deleteTransactionAction,
   deleteTransferAction,
   payDebtInstallmentAction,
+  payCreditCardInvoiceAction,
   payCreditCardInstallmentAction,
   payFixedExpenseAction,
   restoreAccountAction,
@@ -1812,8 +1815,8 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                                         ) : null}
                                       </span>
                                       <b>{formatCurrency(installment.amount)}</b>
-                                      <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
-                                        {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                                      <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : installment.isOverdue ? "OVERDUE" : "PENDING"}>
+                                        {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : installment.isOverdue ? "Vencida" : "Aberta"}
                                       </span>
                                       {installment.status === "OPEN" ? (
                                         <details className="inline-payment-details">
@@ -1841,16 +1844,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                                                 <NotesField defaultValue={linkedPayment.notes} />
                                                 <button className="finance-secondary" type="submit">Salvar pagamento</button>
                                               </form>
-                                            ) : (
-                                              <form action={payCreditCardInstallmentAction} className="finance-edit-form">
-                                                <ReturnFields month={month} returnTo={returnTo} />
-                                                <input name="installmentId" type="hidden" value={installment.id} />
-                                                <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
-                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
-                                                <NotesField />
-                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
-                                              </form>
-                                            )}
+                                            ) : <small>Pagamento registrado na fatura.</small>}
                                           </EditDetails>
                                           {linkedPayment ? (
                                             <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo={returnTo} />
@@ -1888,6 +1882,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                                     <button className="finance-secondary" type="submit">Salvar</button>
                                   </form>
                                 </EditDetails>
+                                <DeleteForm action={cancelCreditCardPurchaseAction} buttonLabel="Cancelar compra" confirmDescription="A compra continuará no histórico e deixará de consumir limite." confirmTitle="Cancelar esta compra?" idName="purchaseId" idValue={purchase.id} month={month} returnTo={returnTo} summaryLabel="Cancelar" />
                                 <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo={returnTo} />
                               </ItemActions>
                             </div>
@@ -2023,6 +2018,36 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
               <strong>{card.name}</strong>
               <small>Fatura {formatCurrency(card.invoiceAmount)} · disponível {formatCurrency(card.limitAvailable)}</small>
               <progress max={Number(card.limit)} value={Number(card.committed)} />
+              {card.invoiceId && money(card.invoiceAmount).greaterThan(card.invoicePaidAmount) ? (
+                <details className="inline-payment-details">
+                  <summary>Pagar fatura</summary>
+                  <form action={payCreditCardInvoiceAction} className="inline-payment-form">
+                    <ReturnFields month={month} returnTo="/cartoes" />
+                    <input name="invoiceId" type="hidden" value={card.invoiceId} />
+                    <MoneyInput defaultValue={moneyInputValue(money(card.invoiceAmount).minus(card.invoicePaidAmount))} label="Valor" name="amount" />
+                    <TextInput defaultValue={toDateInputValue(card.invoiceDueDate)} label="Data" name="paidAt" type="date" />
+                    <AccountSelect accounts={options.accounts.filter(({ personEditorId }) => personEditorId === card.personEditorId)} defaultValue={card.paymentAccountId} label="Conta" name="accountId" optional={false} />
+                    <NotesField />
+                    <button className="finance-secondary" type="submit">Registrar pagamento</button>
+                  </form>
+                </details>
+              ) : null}
+              {card.invoicePayments.filter(({ creditCardInstallmentId }) => !creditCardInstallmentId).map((payment) => (
+                <ItemActions key={payment.id}>
+                  <EditDetails>
+                    <form action={updateCreditCardInvoicePaymentAction} className="finance-edit-form">
+                      <ReturnFields month={month} returnTo="/cartoes" />
+                      <input name="paymentId" type="hidden" value={payment.id} />
+                      <MoneyInput defaultValue={moneyInputValue(payment.amount)} label="Valor pago" name="amount" />
+                      <TextInput defaultValue={toDateInputValue(payment.paidAt)} label="Data" name="paidAt" type="date" />
+                      <AccountSelect accounts={options.accounts.filter(({ personEditorId }) => personEditorId === card.personEditorId)} defaultValue={payment.accountId} label="Conta" name="accountId" optional={false} />
+                      <NotesField defaultValue={payment.notes} />
+                      <button className="finance-secondary" type="submit">Salvar pagamento</button>
+                    </form>
+                  </EditDetails>
+                  <DeleteForm action={deleteCreditCardInvoicePaymentAction} confirmDescription="A fatura e suas parcelas serão reabertas conforme o valor restante." confirmTitle="Estornar este pagamento?" idName="paymentId" idValue={payment.id} month={month} returnTo="/cartoes" summaryLabel="Estornar" />
+                </ItemActions>
+              ))}
               <ItemActions>
                 <EditDetails>
                   <form action={updateCreditCardAction} className="finance-edit-form">
@@ -2137,8 +2162,8 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                         ) : null}
                                       </span>
                                       <b>{formatCurrency(installment.amount)}</b>
-                                      <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : "PENDING"}>
-                                        {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : "Aberta"}
+                                      <span className="finance-status" data-status={installment.status === "PAID" ? "SETTLED" : installment.status === "CANCELED" ? "CANCELED" : installment.isOverdue ? "OVERDUE" : "PENDING"}>
+                                        {installment.status === "PAID" ? "Paga" : installment.status === "CANCELED" ? "Cancelada" : installment.isOverdue ? "Vencida" : "Aberta"}
                                       </span>
                                       {installment.status === "OPEN" ? (
                                         <details className="inline-payment-details">
@@ -2166,16 +2191,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                                 <NotesField defaultValue={linkedPayment.notes} />
                                                 <button className="finance-secondary" type="submit">Salvar pagamento</button>
                                               </form>
-                                            ) : (
-                                              <form action={payCreditCardInstallmentAction} className="finance-edit-form">
-                                                <ReturnFields month={month} returnTo="/cartoes" />
-                                                <input name="installmentId" type="hidden" value={installment.id} />
-                                                <TextInput defaultValue={toDateInputValue(installmentDueDate)} label="Data" name="paidAt" type="date" />
-                                                <AccountSelect accounts={cardPaymentAccounts} defaultValue={defaultPaymentAccountId} label="Conta" name="accountId" optional={false} />
-                                                <NotesField />
-                                                <button className="finance-secondary" type="submit">Salvar pagamento</button>
-                                              </form>
-                                            )}
+                                            ) : <small>Pagamento registrado na fatura.</small>}
                                           </EditDetails>
                                           {linkedPayment ? (
                                             <DeleteForm action={deleteCreditCardInstallmentPaymentAction} idName="installmentId" idValue={installment.id} month={month} returnTo="/cartoes" />
@@ -2213,6 +2229,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                                     <button className="finance-secondary" type="submit">Salvar</button>
                                   </form>
                                 </EditDetails>
+                                <DeleteForm action={cancelCreditCardPurchaseAction} buttonLabel="Cancelar compra" confirmDescription="A compra continuará no histórico e deixará de consumir limite." confirmTitle="Cancelar esta compra?" idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" summaryLabel="Cancelar" />
                                 <DeleteForm action={deleteCreditCardPurchaseAction} idName="purchaseId" idValue={purchase.id} month={month} returnTo="/cartoes" />
                               </ItemActions>
                             </div>

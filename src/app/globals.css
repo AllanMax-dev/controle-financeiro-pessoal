@@ -1384,6 +1384,11 @@ textarea:focus-visible {
   color: var(--primary);
 }
 
+.finance-status[data-status="OVERDUE"] {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .finance-status[data-status="CANCELED"] {
   border-color: var(--border);
   background: var(--surface-muted);

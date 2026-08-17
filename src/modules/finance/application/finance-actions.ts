@@ -22,6 +22,7 @@ import {
   monthStartFromInput,
 } from "@/modules/finance/domain/finance-calculations";
 import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
+import { assertCreditCardConfigurationChange, assertCreditCardPurchaseHasNoPayments, reconcileCreditCardInvoice, reconcileCreditCardInvoices } from "@/modules/finance/application/credit-card-reconciliation";
 import {
   appendAudit,
   archiveInvestment,
@@ -91,12 +92,13 @@ function assertFirstDueDateAfterPurchase(purchaseDate: Date, firstDueDate: Date)
 
 function creditCardFirstDueDateFromForm(formData: FormData, purchaseDate: Date, card: { closingDay: number; dueDay: number }) {
   const explicitFirstDueDate = optionalText(formData, "firstDueDate");
+  const calculatedFirstDueDate = creditCardFirstDueDate(purchaseDate, card.closingDay, card.dueDay);
 
-  if (explicitFirstDueDate) {
-    return dateFromInput(explicitFirstDueDate);
+  if (explicitFirstDueDate && dateFromInput(explicitFirstDueDate).getTime() !== calculatedFirstDueDate.getTime()) {
+    throw new Error("A primeira parcela deve seguir os dias de fechamento e vencimento do cartao.");
   }
 
-  return creditCardFirstDueDate(purchaseDate, card.closingDay, card.dueDay);
+  return calculatedFirstDueDate;
 }
 
 async function automaticSplitFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
@@ -154,34 +156,6 @@ async function cardPurchaseResponsibilityFromForm(formData: FormData, workspaceI
     personEditorId: shares[0]!.personEditorId,
     split: { explicit: true, shares },
   };
-}
-
-async function recalculateCreditCardInvoices(transaction: Prisma.TransactionClient, workspaceId: string, invoiceIds: string[]) {
-  for (const invoiceId of [...new Set(invoiceIds)]) {
-    const amount = money((await transaction.creditCardInstallment.aggregate({
-      where: { invoiceId, status: { not: "CANCELED" }, workspaceId },
-      _sum: { amount: true },
-    }))._sum.amount ?? 0);
-    const paidByPayments = money((await transaction.creditCardInvoicePayment.aggregate({
-      where: { invoiceId, workspaceId },
-      _sum: { amount: true },
-    }))._sum.amount ?? 0);
-    const cappedPaidAmount = paidByPayments.greaterThan(amount) ? amount : paidByPayments;
-
-    if (amount.isZero() && cappedPaidAmount.isZero()) {
-      const { count } = await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId } });
-      assertExactlyOne(count, "Fatura não encontrada ou já removida.");
-    } else {
-      await transaction.creditCardInvoice.updateMany({
-        where: { id: invoiceId, workspaceId },
-        data: {
-          amount,
-          paidAmount: cappedPaidAmount,
-          status: cappedPaidAmount.greaterThanOrEqualTo(amount) ? "PAID" : "OPEN",
-        },
-      });
-    }
-  }
 }
 
 function returnTo(formData: FormData, fallback: string) {
@@ -500,7 +474,7 @@ export async function createCreditCardAction(formData: FormData) {
 export async function createCreditCardPurchaseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const card = await getDatabase().creditCard.findFirstOrThrow({
-    where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
+    where: { active: true, id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
   const categoryId = optionalText(formData, "categoryId");
@@ -602,7 +576,7 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
       });
     }
 
-    await recalculateCreditCardInvoices(transaction, access.workspaceId, newInvoiceIds);
+    await reconcileCreditCardInvoices(transaction, newInvoiceIds);
     await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "create", {
       installmentCount,
       totalAmount,
@@ -631,12 +605,6 @@ export async function payCreditCardInvoiceAction(formData: FormData) {
 
     await assertAccountForPerson(transaction, access.workspaceId, invoice.personEditorId, accountId, true);
 
-    const nextPaidAmount = money(invoice.paidAmount.plus(amount));
-
-    if (nextPaidAmount.greaterThan(invoice.amount)) {
-      throw new Error("Pagamento maior que o valor pendente da fatura.");
-    }
-
     await transaction.creditCardInvoicePayment.create({
       data: {
         accountId,
@@ -649,34 +617,7 @@ export async function payCreditCardInvoiceAction(formData: FormData) {
         workspaceId: access.workspaceId,
       },
     });
-    await transaction.creditCardInvoice.update({
-      where: { id: invoice.id },
-      data: {
-        paidAmount: nextPaidAmount,
-        status: nextPaidAmount.greaterThanOrEqualTo(invoice.amount) ? "PAID" : invoice.status,
-      },
-    });
-
-    if (nextPaidAmount.greaterThanOrEqualTo(invoice.amount)) {
-      const invoiceInstallments = await transaction.creditCardInstallment.findMany({
-        where: { invoiceId: invoice.id, status: "OPEN", workspaceId: access.workspaceId },
-        select: { id: true },
-      });
-      const invoiceInstallmentIds = invoiceInstallments.map((installment) => installment.id);
-
-      await transaction.creditCardInstallment.updateMany({
-        where: { id: { in: invoiceInstallmentIds }, workspaceId: access.workspaceId },
-        data: { status: "PAID" },
-      });
-      await transaction.creditCardInstallmentShare.updateMany({
-        where: { installmentId: { in: invoiceInstallmentIds }, status: "OPEN", workspaceId: access.workspaceId },
-        data: { status: "PAID" },
-      });
-      await transaction.transaction.updateMany({
-        where: { creditCardInstallmentId: { in: invoiceInstallmentIds }, status: "PENDING", workspaceId: access.workspaceId },
-        data: { accountId, settledAt: paidAt, status: "SETTLED" },
-      });
-    }
+    await reconcileCreditCardInvoices(transaction, [invoice.id]);
 
     await transaction.auditLog.create({
       data: {
@@ -707,8 +648,8 @@ export async function payCreditCardInstallmentAction(formData: FormData) {
       throw new Error("Parcela sem fatura vinculada.");
     }
 
-    if (installment.status !== "OPEN" && installment.status !== "PAID") {
-      throw new Error("Apenas parcelas abertas ou pagas sem registro podem ser ajustadas.");
+    if (installment.status !== "OPEN") {
+      throw new Error("Apenas parcelas abertas podem receber um pagamento.");
     }
 
     const existingPayment = await transaction.creditCardInvoicePayment.findFirst({
@@ -729,16 +670,6 @@ export async function payCreditCardInstallmentAction(formData: FormData) {
     await assertAccountForPerson(transaction, access.workspaceId, installment.invoice.personEditorId, accountId, true);
 
     const amount = money(installment.amount);
-    const paidBefore = money(
-      (await transaction.creditCardInvoicePayment.aggregate({
-        where: { invoiceId: installment.invoiceId, workspaceId: access.workspaceId },
-        _sum: { amount: true },
-      }))._sum.amount ?? 0,
-    );
-
-    if (paidBefore.plus(amount).greaterThan(installment.invoice.amount)) {
-      throw new Error("Pagamento maior que o valor pendente da fatura.");
-    }
 
     await transaction.creditCardInvoicePayment.create({
       data: {
@@ -753,19 +684,7 @@ export async function payCreditCardInstallmentAction(formData: FormData) {
         workspaceId: access.workspaceId,
       },
     });
-    await transaction.creditCardInstallment.updateMany({
-      where: { id: installment.id, status: "OPEN", workspaceId: access.workspaceId },
-      data: { status: "PAID" },
-    });
-    await transaction.creditCardInstallmentShare.updateMany({
-      where: { installmentId: installment.id, status: "OPEN", workspaceId: access.workspaceId },
-      data: { status: "PAID" },
-    });
-    await transaction.transaction.updateMany({
-      where: { creditCardInstallmentId: installment.id, workspaceId: access.workspaceId },
-      data: { settledAt: paidAt, status: "SETTLED" },
-    });
-    await recalculateCreditCardInvoices(transaction, access.workspaceId, [installment.invoiceId]);
+    await reconcileCreditCardInvoices(transaction, [installment.invoiceId]);
     await transaction.auditLog.create({
       data: {
         action: "pay",
@@ -1676,30 +1595,39 @@ export async function updateCreditCardAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "cardId");
   const personEditorId = text(formData, "personEditorId");
+  const closingDay = integer(formData, "closingDay", 1, 31);
+  const dueDay = integer(formData, "dueDay", 1, 31);
   await assertPerson(access.workspaceId, personEditorId);
   const paymentAccountId = optionalText(formData, "paymentAccountId");
   await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, paymentAccountId);
-  const { count } = await getDatabase().creditCard.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      closingDay: integer(formData, "closingDay", 1, 31),
-      color: optionalText(formData, "color"),
-      dueDay: integer(formData, "dueDay", 1, 31),
-      institution: optionalText(formData, "institution"),
-      limit: parseMoneyInput(text(formData, "limit")),
-      name: text(formData, "name"),
-      paymentAccountId,
-      personEditorId,
-      updatedByEditorId: access.editorId,
-      version: { increment: 1 },
-    },
+
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.creditCard.findFirstOrThrow({
+      where: { id, workspaceId: access.workspaceId },
+      include: { _count: { select: { invoices: true, purchases: true } } },
+    });
+    const hasHistory = current._count.invoices > 0 || current._count.purchases > 0;
+    assertCreditCardConfigurationChange(current, { closingDay, dueDay, personEditorId }, hasHistory);
+
+    const { count } = await transaction.creditCard.updateMany({
+      where: { id, workspaceId: access.workspaceId },
+      data: {
+        closingDay,
+        color: optionalText(formData, "color"),
+        dueDay,
+        institution: optionalText(formData, "institution"),
+        limit: parseMoneyInput(text(formData, "limit")),
+        name: text(formData, "name"),
+        paymentAccountId,
+        personEditorId,
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
+    });
+    assertExactlyOne(count, "Cartao nao encontrado.");
+    await appendAudit(transaction, access, "CreditCard", id, "update", { before: current });
   });
 
-  if (count !== 1) {
-    throw new Error("Cartao nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "CreditCard", id, "update");
   refreshAndRedirect(returnTo(formData, "/cartoes"));
 }
 
@@ -1729,7 +1657,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const purchaseId = text(formData, "purchaseId");
   const card = await getDatabase().creditCard.findFirstOrThrow({
-    where: { id: text(formData, "cardId"), workspaceId: access.workspaceId },
+    where: { active: true, id: text(formData, "cardId"), workspaceId: access.workspaceId },
     select: { closingDay: true, dueDay: true, id: true, personEditorId: true },
   });
   const categoryId = optionalText(formData, "categoryId");
@@ -1754,18 +1682,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     });
     oldInvoiceIds.push(...currentInstallments.map(({ invoiceId }) => invoiceId).filter((invoiceId): invoiceId is string => Boolean(invoiceId)));
     const installmentIds = currentInstallments.map((installment) => installment.id);
-    const paymentCount = installmentIds.length > 0
-      ? await transaction.creditCardInvoicePayment.count({
-        where: {
-          OR: [{ creditCardInstallmentId: { in: installmentIds } }, { invoiceId: { in: oldInvoiceIds } }],
-          workspaceId: access.workspaceId,
-        },
-      })
-      : 0;
-
-    if (paymentCount > 0) {
-      throw new Error("Nao e possivel editar uma compra com fatura ou parcelas pagas. Exclua ou ajuste os pagamentos antes de alterar a estrutura.");
-    }
+    await assertCreditCardPurchaseHasNoPayments(transaction, access.workspaceId, installmentIds, oldInvoiceIds);
 
     const deletedTransactions = await transaction.transaction.deleteMany({
       where: { creditCardInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
@@ -1797,7 +1714,10 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
       throw new Error("Compra nao encontrada.");
     }
 
-    await recalculateCreditCardInvoices(transaction, access.workspaceId, oldInvoiceIds);
+    await reconcileCreditCardInvoices(transaction, oldInvoiceIds);
+    await transaction.creditCardInvoice.deleteMany({
+      where: { amount: 0, id: { in: oldInvoiceIds }, paidAmount: 0, workspaceId: access.workspaceId },
+    });
 
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const dueDate = monthlyDueDate(firstDueDate, installment.number - 1);
@@ -1868,7 +1788,7 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
       });
     }
 
-    await recalculateCreditCardInvoices(transaction, access.workspaceId, newInvoiceIds);
+    await reconcileCreditCardInvoices(transaction, newInvoiceIds);
     await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "update", { before: currentPurchase });
   });
 
@@ -1889,18 +1809,7 @@ export async function deleteCreditCardPurchaseAction(formData: FormData) {
     });
     const invoiceIds = [...new Set(installments.map(({ invoiceId }) => invoiceId).filter((invoiceId): invoiceId is string => Boolean(invoiceId)))];
     const installmentIds = installments.map((installment) => installment.id);
-    const paymentCount = installmentIds.length > 0
-      ? await transaction.creditCardInvoicePayment.count({
-        where: {
-          OR: [{ creditCardInstallmentId: { in: installmentIds } }, { invoiceId: { in: invoiceIds } }],
-          workspaceId: access.workspaceId,
-        },
-      })
-      : 0;
-
-    if (paymentCount > 0) {
-      throw new Error("Nao e possivel excluir uma compra com fatura ou parcelas pagas. Exclua ou ajuste os pagamentos antes de remover a compra.");
-    }
+    await assertCreditCardPurchaseHasNoPayments(transaction, access.workspaceId, installmentIds, invoiceIds);
 
     await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "delete", { before: purchase, reason: "unpaid" });
     const deletedTransactions = await transaction.transaction.deleteMany({
@@ -1917,30 +1826,38 @@ export async function deleteCreditCardPurchaseAction(formData: FormData) {
     assertExactlyOne(deletedPurchase.count, "Compra não encontrada.");
 
     for (const invoiceId of invoiceIds) {
-      const amount = money((await transaction.creditCardInstallment.aggregate({
-        where: { invoiceId, workspaceId: access.workspaceId },
-        _sum: { amount: true },
-      }))._sum.amount ?? 0);
-      const paidAmount = money((await transaction.creditCardInvoicePayment.aggregate({
-        where: { invoiceId, workspaceId: access.workspaceId },
-        _sum: { amount: true },
-      }))._sum.amount ?? 0);
+      const reconciled = await reconcileCreditCardInvoice(transaction, invoiceId);
 
-      if (amount.isZero() && paidAmount.isZero()) {
+      if (reconciled.amount.isZero() && reconciled.paidAmount.isZero()) {
         const { count } = await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId: access.workspaceId } });
         assertExactlyOne(count, "Fatura não encontrada ou já removida.");
-      } else {
-        const cappedPaidAmount = paidAmount.greaterThan(amount) ? amount : paidAmount;
-        await transaction.creditCardInvoice.updateMany({
-          where: { id: invoiceId, workspaceId: access.workspaceId },
-          data: {
-            amount,
-            paidAmount: cappedPaidAmount,
-            status: cappedPaidAmount.greaterThanOrEqualTo(amount) ? "PAID" : "OPEN",
-          },
-        });
       }
     }
+  });
+
+  refreshAndRedirect(returnTo(formData, "/cartoes"));
+}
+
+export async function cancelCreditCardPurchaseAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const purchaseId = text(formData, "purchaseId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    const purchase = await transaction.creditCardPurchase.findFirstOrThrow({
+      where: { id: purchaseId, workspaceId: access.workspaceId },
+      include: { installments: { select: { id: true, invoiceId: true } } },
+    });
+    const installmentIds = purchase.installments.map(({ id }) => id);
+    const invoiceIds = [...new Set(purchase.installments.map(({ invoiceId }) => invoiceId).filter((invoiceId): invoiceId is string => Boolean(invoiceId)))];
+    await assertCreditCardPurchaseHasNoPayments(transaction, access.workspaceId, installmentIds, invoiceIds);
+
+    await transaction.creditCardPurchase.update({ where: { id: purchase.id }, data: { canceledAt: new Date() } });
+    await transaction.creditCardInstallment.updateMany({
+      where: { id: { in: installmentIds }, workspaceId: access.workspaceId },
+      data: { status: "CANCELED" },
+    });
+    await reconcileCreditCardInvoices(transaction, invoiceIds);
+    await appendAudit(transaction, access, "CreditCardPurchase", purchase.id, "cancel", { before: purchase });
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -1964,18 +1881,6 @@ export async function updateCreditCardInvoicePaymentAction(formData: FormData) {
       throw new Error("Pagamento de parcela deve manter o valor exato da parcela.");
     }
 
-    const paidWithoutCurrent = money(
-      (await transaction.creditCardInvoicePayment.aggregate({
-        where: { invoiceId: payment.invoiceId, id: { not: payment.id }, workspaceId: access.workspaceId },
-        _sum: { amount: true },
-      }))._sum.amount ?? 0,
-    );
-    const nextPaidAmount = money(paidWithoutCurrent.plus(amount));
-
-    if (nextPaidAmount.greaterThan(payment.invoice.amount)) {
-      throw new Error("Pagamento maior que o valor da fatura.");
-    }
-
     await transaction.creditCardInvoicePayment.updateMany({
       where: { id: payment.id, workspaceId: access.workspaceId },
       data: {
@@ -1985,19 +1890,7 @@ export async function updateCreditCardInvoicePaymentAction(formData: FormData) {
         paidAt,
       },
     });
-    if (payment.creditCardInstallmentId) {
-      await transaction.transaction.updateMany({
-        where: { creditCardInstallmentId: payment.creditCardInstallmentId, workspaceId: access.workspaceId },
-        data: { accountId, settledAt: paidAt, status: "SETTLED" },
-      });
-    }
-    await transaction.creditCardInvoice.update({
-      where: { id: payment.invoiceId },
-      data: {
-        paidAmount: nextPaidAmount,
-        status: nextPaidAmount.greaterThanOrEqualTo(payment.invoice.amount) ? "PAID" : "OPEN",
-      },
-    });
+    await reconcileCreditCardInvoices(transaction, [payment.invoiceId]);
     await appendAudit(transaction, access, "CreditCardInvoicePayment", paymentId, "update", { before: payment });
   });
 
@@ -2020,40 +1913,13 @@ export async function deleteCreditCardInvoicePaymentAction(formData: FormData) {
     const deletedPayment = await transaction.creditCardInvoicePayment.deleteMany({ where: { id: payment.id, workspaceId: access.workspaceId } });
     assertExactlyOne(deletedPayment.count, "Pagamento da fatura não encontrado.");
 
+    await reconcileCreditCardInvoices(transaction, [payment.invoiceId]);
+
     if (payment.creditCardInstallmentId) {
-      await transaction.creditCardInstallment.updateMany({
-        where: { id: payment.creditCardInstallmentId, workspaceId: access.workspaceId },
-        data: { status: "OPEN" },
-      });
-      await transaction.creditCardInstallmentShare.updateMany({
-        where: { installmentId: payment.creditCardInstallmentId, workspaceId: access.workspaceId },
-        data: { status: "OPEN" },
-      });
-      await transaction.transaction.updateMany({
-        where: { creditCardInstallmentId: payment.creditCardInstallmentId, workspaceId: access.workspaceId },
-        data: { settledAt: null, status: "PENDING" },
-      });
-      await recalculateCreditCardInvoices(transaction, access.workspaceId, [payment.invoiceId]);
       await appendAudit(transaction, access, "CreditCardInstallment", payment.creditCardInstallmentId, "reopen", {
         reason: "payment_reversed",
       });
-
-      return;
     }
-
-    const nextPaidAmount = money(
-      (await transaction.creditCardInvoicePayment.aggregate({
-        where: { invoiceId: payment.invoiceId, workspaceId: access.workspaceId },
-        _sum: { amount: true },
-      }))._sum.amount ?? 0,
-    );
-    await transaction.creditCardInvoice.update({
-      where: { id: payment.invoiceId },
-      data: {
-        paidAmount: nextPaidAmount,
-        status: nextPaidAmount.greaterThanOrEqualTo(payment.invoice.amount) ? "PAID" : "OPEN",
-      },
-    });
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -2081,19 +1947,7 @@ export async function deleteCreditCardInstallmentPaymentAction(formData: FormDat
       assertExactlyOne(deletedPayment.count, "Pagamento da parcela não encontrado.");
     }
 
-    await transaction.creditCardInstallment.updateMany({
-      where: { id: installment.id, workspaceId: access.workspaceId },
-      data: { status: "OPEN" },
-    });
-    await transaction.creditCardInstallmentShare.updateMany({
-      where: { installmentId: installment.id, workspaceId: access.workspaceId },
-      data: { status: "OPEN" },
-    });
-    await transaction.transaction.updateMany({
-      where: { creditCardInstallmentId: installment.id, workspaceId: access.workspaceId },
-      data: { settledAt: null, status: "PENDING" },
-    });
-    await recalculateCreditCardInvoices(transaction, access.workspaceId, invoiceIds);
+    await reconcileCreditCardInvoices(transaction, invoiceIds);
     await appendAudit(transaction, access, "CreditCardInstallment", installment.id, "reopen", {
       before: installment,
       reason: "payment_reversed",

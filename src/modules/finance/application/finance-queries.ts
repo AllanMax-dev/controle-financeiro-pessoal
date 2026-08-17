@@ -5,7 +5,7 @@ import {
   buildSalaryOccurrencePlan,
   buildPersonTotal,
   clampDayInMonth,
-  creditCardInstallmentStatusOnDate,
+  creditCardInstallmentIsOverdue,
   fixedExpenseDueDate,
   monthBounds,
   sumPersonTotals,
@@ -167,7 +167,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     cards,
     cardInstallments,
     cardPurchases,
-    allOpenCardInstallments,
+    cardInvoiceBalances,
     invoices,
     goals,
     goalMovementTotals,
@@ -261,13 +261,13 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
       take: 40,
     }),
-    database.creditCardInstallment.findMany({
-      where: { invoice: { is: { status: { not: "PAID" } } }, status: "OPEN", workspaceId },
-      select: { amount: true, cardId: true, number: true, purchase: { select: { firstDueDate: true } } },
+    database.creditCardInvoice.findMany({
+      where: { workspaceId },
+      select: { amount: true, cardId: true, paidAmount: true },
     }),
     database.creditCardInvoice.findMany({
       where: { month: start, workspaceId },
-      include: { card: true, personEditor: true },
+      include: { card: true, payments: { orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }] }, personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { dueDate: "asc" }],
     }),
     database.savingsGoal.findMany({
@@ -319,28 +319,28 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   }
 
   const cardInstallmentsWithCalendarStatus = cardInstallments.map((installment) => {
-    const status = creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, installment.status);
+    const isOverdue = creditCardInstallmentIsOverdue(installment.purchase.firstDueDate, installment.number, today, installment.status);
 
     return {
       ...installment,
-      status,
+      isOverdue,
       shares: installment.shares.map((share) => ({
         ...share,
-        status: creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, share.status),
+        isOverdue: creditCardInstallmentIsOverdue(installment.purchase.firstDueDate, installment.number, today, share.status),
       })),
     };
   });
   const cardPurchasesWithCalendarStatus = cardPurchases.map((purchase) => ({
     ...purchase,
     installments: purchase.installments.map((installment) => {
-      const status = creditCardInstallmentStatusOnDate(purchase.firstDueDate, installment.number, today, installment.status);
+      const isOverdue = creditCardInstallmentIsOverdue(purchase.firstDueDate, installment.number, today, installment.status);
 
       return {
         ...installment,
-        status,
+        isOverdue,
         shares: installment.shares.map((share) => ({
           ...share,
-          status: creditCardInstallmentStatusOnDate(purchase.firstDueDate, installment.number, today, share.status),
+          isOverdue: creditCardInstallmentIsOverdue(purchase.firstDueDate, installment.number, today, share.status),
         })),
       };
     }),
@@ -507,11 +507,9 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   const cardsWithInvoices = cards.map((card) => {
     const invoice = invoices.find(({ cardId }) => cardId === card.id);
     const committed = sumMoney(
-      allOpenCardInstallments
-        .filter((installment) =>
-          installment.cardId === card.id &&
-          creditCardInstallmentStatusOnDate(installment.purchase.firstDueDate, installment.number, today, "OPEN") === "OPEN")
-        .map(({ amount }) => amount),
+      cardInvoiceBalances
+        .filter((invoiceBalance) => invoiceBalance.cardId === card.id)
+        .map((invoiceBalance) => money(invoiceBalance.amount).minus(invoiceBalance.paidAmount)),
     );
 
     return {
@@ -521,6 +519,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       invoiceAmount: invoice?.amount ?? money(0),
       invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
       invoicePaidAmount: invoice?.paidAmount ?? money(0),
+      invoicePayments: invoice?.payments ?? [],
       invoiceStatus: invoice?.status ?? "OPEN",
       limitAvailable: money(card.limit.minus(committed)),
     };

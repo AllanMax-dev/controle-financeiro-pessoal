@@ -52,17 +52,13 @@ export function monthlyDueDate(firstDueDate: Date, index: number) {
 
 export type CreditCardInstallmentCalendarStatus = "OPEN" | "PAID" | "CANCELED";
 
-export function creditCardInstallmentStatusOnDate(
+export function creditCardInstallmentIsOverdue(
   firstDueDate: Date,
   installmentNumber: number,
   today: Date,
   currentStatus: CreditCardInstallmentCalendarStatus,
-): CreditCardInstallmentCalendarStatus {
-  if (currentStatus !== "OPEN") {
-    return currentStatus;
-  }
-
-  return monthlyDueDate(firstDueDate, installmentNumber - 1).getTime() <= today.getTime() ? "PAID" : "OPEN";
+): boolean {
+  return currentStatus === "OPEN" && monthlyDueDate(firstDueDate, installmentNumber - 1).getTime() < today.getTime();
 }
 
 export function clampDayInMonth(month: Date, day: number) {
