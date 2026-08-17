@@ -22,6 +22,28 @@ import {
   monthStartFromInput,
 } from "@/modules/finance/domain/finance-calculations";
 import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
+import {
+  appendAudit,
+  archiveInvestment,
+  archiveOrDeleteAccount,
+  archiveOrDeleteCategory,
+  archiveOrDeleteCreditCard,
+  archiveOrDeleteDebt,
+  archiveOrDeleteFixedExpense,
+  archiveOrDeleteSalary,
+  archiveOrDeleteSavingsGoal,
+  assertExactlyOne,
+  canHardDeleteAccount,
+  canHardDeleteCategory,
+  restoreAccount,
+  restoreCategory,
+  restoreCreditCard,
+  restoreDebt,
+  restoreFixedExpense,
+  restoreInvestment,
+  restoreSalary,
+  restoreSavingsGoal,
+} from "@/modules/finance/application/finance-lifecycle";
 import { money, parseMoneyInput, sumMoney } from "@/modules/shared/domain/money";
 
 type FinanceValidationClient = ReturnType<typeof getDatabase> | Prisma.TransactionClient;
@@ -44,6 +66,17 @@ function integer(formData: FormData, name: string, min: number, max: number) {
   }
 
   return value;
+}
+
+function accountType(formData: FormData) {
+  const value = text(formData, "type");
+  const allowedTypes: readonly string[] = ["CHECKING", "SAVINGS", "CASH", "DIGITAL", "INVESTMENT", "OTHER"];
+
+  if (!allowedTypes.includes(value)) {
+    throw new Error("Tipo de conta inválido.");
+  }
+
+  return value as "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "INVESTMENT" | "OTHER";
 }
 
 function monthStartFromDate(date: Date) {
@@ -136,7 +169,8 @@ async function recalculateCreditCardInvoices(transaction: Prisma.TransactionClie
     const cappedPaidAmount = paidByPayments.greaterThan(amount) ? amount : paidByPayments;
 
     if (amount.isZero() && cappedPaidAmount.isZero()) {
-      await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId } });
+      const { count } = await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId } });
+      assertExactlyOne(count, "Fatura não encontrada ou já removida.");
     } else {
       await transaction.creditCardInvoice.updateMany({
         where: { id: invoiceId, workspaceId },
@@ -266,7 +300,7 @@ export async function createAccountAction(formData: FormData) {
       institution: optionalText(formData, "institution"),
       name: text(formData, "name"),
       personEditorId,
-      type: text(formData, "type") as "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "INVESTMENT" | "OTHER",
+      type: accountType(formData),
       workspaceId: access.workspaceId,
     },
   });
@@ -429,9 +463,12 @@ export async function createDebtAction(formData: FormData) {
         }
       }
     }
+    await appendAudit(transaction, access, "Debt", debtId, "create", {
+      installmentCount,
+      totalAmount,
+    });
   });
 
-  await audit(access.workspaceId, access.editorId, "Debt", debtId, "create");
   refreshAndRedirect(returnTo(formData, "/dividas"));
 }
 
@@ -566,9 +603,12 @@ export async function createCreditCardPurchaseAction(formData: FormData) {
     }
 
     await recalculateCreditCardInvoices(transaction, access.workspaceId, newInvoiceIds);
+    await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "create", {
+      installmentCount,
+      totalAmount,
+    });
   });
 
-  await audit(access.workspaceId, access.editorId, "CreditCardPurchase", purchaseId, "create");
   refreshAndRedirect(returnTo(formData, "/cartoes"));
 }
 
@@ -744,9 +784,11 @@ export async function createSavingsGoalAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
+  const accountId = optionalText(formData, "accountId");
+  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const goal = await getDatabase().savingsGoal.create({
     data: {
-      accountId: optionalText(formData, "accountId"),
+      accountId,
       createdByEditorId: access.editorId,
       deadline: optionalText(formData, "deadline") ? dateFromInput(text(formData, "deadline")) : null,
       description: optionalText(formData, "description"),
@@ -814,9 +856,11 @@ export async function createInvestmentAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
+  const accountId = optionalText(formData, "accountId");
+  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const investment = await getDatabase().investment.create({
     data: {
-      accountId: optionalText(formData, "accountId"),
+      accountId,
       amount: parseMoneyInput(text(formData, "amount")),
       createdByEditorId: access.editorId,
       institution: optionalText(formData, "institution"),
@@ -895,35 +939,6 @@ export async function createBalanceAdjustmentAction(formData: FormData) {
   refreshAndRedirect(returnTo(formData, "/bancos"));
 }
 
-async function recalculateInvoicesAfterPaymentDeletion(invoiceIds: string[]) {
-  const database = getDatabase();
-
-  for (const invoiceId of [...new Set(invoiceIds)]) {
-    const invoice = await database.creditCardInvoice.findUnique({
-      where: { id: invoiceId },
-      select: { amount: true, id: true },
-    });
-
-    if (!invoice) {
-      continue;
-    }
-
-    const aggregate = await database.creditCardInvoicePayment.aggregate({
-      where: { invoiceId },
-      _sum: { amount: true },
-    });
-    const paidAmount = money(aggregate._sum.amount ?? 0);
-
-    await database.creditCardInvoice.update({
-      where: { id: invoice.id },
-      data: {
-        paidAmount,
-        status: paidAmount.greaterThanOrEqualTo(invoice.amount) ? "PAID" : "OPEN",
-      },
-    });
-  }
-}
-
 export async function updateBalanceAdjustmentAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "adjustmentId");
@@ -955,8 +970,10 @@ export async function deleteBalanceAdjustmentAction(formData: FormData) {
   const id = text(formData, "adjustmentId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "BalanceAdjustment", workspaceId: access.workspaceId } });
-    await transaction.balanceAdjustment.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    const current = await transaction.balanceAdjustment.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    await appendAudit(transaction, access, "BalanceAdjustment", id, "delete", { before: current });
+    const { count } = await transaction.balanceAdjustment.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    assertExactlyOne(count, "Ajuste não encontrado.");
   });
 
   refreshAndRedirect(returnTo(formData, "/bancos"));
@@ -966,20 +983,24 @@ export async function updateCategoryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "categoryId");
   const kind = text(formData, "kind") === "INCOME" ? "INCOME" : "EXPENSE";
-  const { count } = await getDatabase().category.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      color: optionalText(formData, "color"),
-      kind,
-      name: text(formData, "name"),
-    },
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.category.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+
+    if (!(await canHardDeleteCategory(transaction, access.workspaceId, id)) && current.kind !== kind) {
+      throw new Error("O tipo de uma categoria já utilizada não pode ser alterado.");
+    }
+
+    const { count } = await transaction.category.updateMany({
+      where: { active: true, id, workspaceId: access.workspaceId },
+      data: {
+        color: optionalText(formData, "color"),
+        kind,
+        name: text(formData, "name"),
+      },
+    });
+    assertExactlyOne(count, "Categoria não encontrada ou arquivada.");
+    await appendAudit(transaction, access, "Category", id, "update", { before: current });
   });
-
-  if (count !== 1) {
-    throw new Error("Categoria nao encontrada.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "Category", id, "update");
   refreshAndRedirect(returnTo(formData, "/categorias"));
 }
 
@@ -988,8 +1009,18 @@ export async function deleteCategoryAction(formData: FormData) {
   const id = text(formData, "categoryId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Category", workspaceId: access.workspaceId } });
-    await transaction.category.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    await archiveOrDeleteCategory(transaction, access, id);
+  });
+
+  refreshAndRedirect(returnTo(formData, "/categorias"));
+}
+
+export async function restoreCategoryAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "categoryId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreCategory(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/categorias"));
@@ -1000,50 +1031,60 @@ export async function updateAccountAction(formData: FormData) {
   const id = text(formData, "accountId");
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
-  const { count } = await getDatabase().financialAccount.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      color: optionalText(formData, "color"),
-      initialBalance: parseMoneyInput(text(formData, "initialBalance", "0")),
-      institution: optionalText(formData, "institution"),
-      name: text(formData, "name"),
-      personEditorId,
-      type: text(formData, "type") as "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "INVESTMENT" | "OTHER",
-      updatedByEditorId: access.editorId,
-      version: { increment: 1 },
-    },
+  const initialBalance = parseMoneyInput(text(formData, "initialBalance", "0"));
+  const type = accountType(formData);
+
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.financialAccount.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    const hasHistory = !(await canHardDeleteAccount(transaction, access.workspaceId, id));
+
+    if (hasHistory && current.personEditorId !== personEditorId) {
+      throw new Error("O titular de uma conta com histórico não pode ser alterado.");
+    }
+    if (hasHistory && !money(current.initialBalance).equals(initialBalance)) {
+      throw new Error("O saldo inicial de uma conta com histórico não pode ser alterado. Use um ajuste de saldo.");
+    }
+    if (hasHistory && current.type !== type) {
+      throw new Error("O tipo de uma conta com histórico não pode ser alterado.");
+    }
+
+    const { count } = await transaction.financialAccount.updateMany({
+      where: { active: true, id, workspaceId: access.workspaceId },
+      data: {
+        color: optionalText(formData, "color"),
+        initialBalance,
+        institution: optionalText(formData, "institution"),
+        name: text(formData, "name"),
+        personEditorId,
+        type,
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
+    });
+    assertExactlyOne(count, "Conta não encontrada ou arquivada.");
+    await appendAudit(transaction, access, "FinancialAccount", id, "update", { before: current });
   });
-
-  if (count !== 1) {
-    throw new Error("Conta nao encontrada.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "FinancialAccount", id, "update");
   refreshAndRedirect(returnTo(formData, "/bancos"));
 }
 
 export async function deleteAccountAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "accountId");
-  const affectedInvoiceIds: string[] = [];
 
   await getDatabase().$transaction(async (transaction) => {
-    const payments = await transaction.creditCardInvoicePayment.findMany({
-      where: { accountId: id, workspaceId: access.workspaceId },
-      select: { invoiceId: true },
-    });
-    affectedInvoiceIds.push(...payments.map(({ invoiceId }) => invoiceId));
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "FinancialAccount", workspaceId: access.workspaceId } });
-    await transaction.transfer.deleteMany({
-      where: {
-        workspaceId: access.workspaceId,
-        OR: [{ sourceAccountId: id }, { destinationAccountId: id }],
-      },
-    });
-    await transaction.creditCardInvoicePayment.deleteMany({ where: { accountId: id, workspaceId: access.workspaceId } });
-    await transaction.financialAccount.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    await archiveOrDeleteAccount(transaction, access, id);
   });
-  await recalculateInvoicesAfterPaymentDeletion(affectedInvoiceIds);
+
+  refreshAndRedirect(returnTo(formData, "/bancos"));
+}
+
+export async function restoreAccountAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "accountId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreAccount(transaction, access, id);
+  });
 
   refreshAndRedirect(returnTo(formData, "/bancos"));
 }
@@ -1091,20 +1132,24 @@ export async function deleteTransactionAction(formData: FormData) {
   const id = text(formData, "transactionId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const transactionRecord = await transaction.transaction.findFirst({
+    const transactionRecord = await transaction.transaction.findFirstOrThrow({
       where: { id, workspaceId: access.workspaceId },
-      select: { debtInstallmentId: true },
     });
 
-    if (transactionRecord?.debtInstallmentId) {
+    if (transactionRecord.debtInstallmentId) {
       await transaction.debtInstallment.updateMany({
         where: { id: transactionRecord.debtInstallmentId, workspaceId: access.workspaceId },
         data: { paidAt: null, status: "PENDING" },
       });
+      await transaction.debtInstallmentShare.updateMany({
+        where: { installmentId: transactionRecord.debtInstallmentId, workspaceId: access.workspaceId },
+        data: { paidAt: null, status: "PENDING" },
+      });
     }
 
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Transaction", workspaceId: access.workspaceId } });
-    await transaction.transaction.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    await appendAudit(transaction, access, "Transaction", id, "delete", { before: transactionRecord });
+    const { count } = await transaction.transaction.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    assertExactlyOne(count, "Lançamento não encontrado.");
   });
 
   refreshAndRedirect(returnTo(formData, "/gastos-variaveis"));
@@ -1149,18 +1194,18 @@ export async function deleteFixedExpenseAction(formData: FormData) {
   const id = text(formData, "fixedExpenseId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const transactions = await transaction.transaction.findMany({
-      where: { fixedExpenseId: id, workspaceId: access.workspaceId },
-      select: { id: true },
-    });
-    const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
+    await archiveOrDeleteFixedExpense(transaction, access, id);
+  });
 
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "FixedExpense", workspaceId: access.workspaceId } });
-    if (transactionIds.length > 0) {
-      await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
-    }
-    await transaction.transaction.deleteMany({ where: { fixedExpenseId: id, workspaceId: access.workspaceId } });
-    await transaction.fixedExpense.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+  refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
+}
+
+export async function restoreFixedExpenseAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "fixedExpenseId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreFixedExpense(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -1205,18 +1250,18 @@ export async function deleteSalaryAction(formData: FormData) {
   const id = text(formData, "salaryId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const transactions = await transaction.transaction.findMany({
-      where: { salaryId: id, workspaceId: access.workspaceId },
-      select: { id: true },
-    });
-    const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
+    await archiveOrDeleteSalary(transaction, access, id);
+  });
 
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Salary", workspaceId: access.workspaceId } });
-    if (transactionIds.length > 0) {
-      await transaction.auditLog.deleteMany({ where: { entityId: { in: transactionIds }, entityType: "Transaction", workspaceId: access.workspaceId } });
-    }
-    await transaction.transaction.deleteMany({ where: { salaryId: id, workspaceId: access.workspaceId } });
-    await transaction.salary.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+  refreshAndRedirect(returnTo(formData, "/recebimentos"));
+}
+
+export async function restoreSalaryAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "salaryId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreSalary(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
@@ -1481,12 +1526,18 @@ export async function deleteDebtInstallmentPaymentAction(formData: FormData) {
   await getDatabase().$transaction(async (transaction) => {
     const installment = await transaction.debtInstallment.findFirstOrThrow({
       where: { id: installmentId, workspaceId: access.workspaceId },
-      include: { transaction: { select: { id: true } } },
+      include: { transaction: true },
     });
 
     if (installment.transaction) {
-      await transaction.auditLog.deleteMany({ where: { entityId: installment.transaction.id, entityType: "Transaction", workspaceId: access.workspaceId } });
-      await transaction.transaction.deleteMany({ where: { id: installment.transaction.id, workspaceId: access.workspaceId } });
+      await appendAudit(transaction, access, "Transaction", installment.transaction.id, "delete", {
+        before: installment.transaction,
+        reason: "debt_payment_reversed",
+      });
+      const { count } = await transaction.transaction.deleteMany({
+        where: { id: installment.transaction.id, workspaceId: access.workspaceId },
+      });
+      assertExactlyOne(count, "Pagamento da parcela não encontrado.");
     }
 
     await transaction.debtInstallment.update({
@@ -1496,6 +1547,9 @@ export async function deleteDebtInstallmentPaymentAction(formData: FormData) {
     await transaction.debtInstallmentShare.updateMany({
       where: { installmentId: installment.id, workspaceId: access.workspaceId },
       data: { paidAt: null, status: "PENDING" },
+    });
+    await appendAudit(transaction, access, "DebtInstallment", installment.id, "reopen", {
+      reason: "payment_reversed",
     });
   });
 
@@ -1516,6 +1570,7 @@ export async function updateDebtAction(formData: FormData) {
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
 
   await getDatabase().$transaction(async (transaction) => {
+    const currentDebt = await transaction.debt.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
     const currentInstallments = await transaction.debtInstallment.findMany({
       where: { debtId: id, workspaceId: access.workspaceId },
       select: { id: true },
@@ -1550,7 +1605,10 @@ export async function updateDebtAction(formData: FormData) {
       throw new Error("Divida nao encontrada.");
     }
 
-    await transaction.debtInstallment.deleteMany({ where: { debtId: id, workspaceId: access.workspaceId } });
+    const deletedInstallments = await transaction.debtInstallment.deleteMany({ where: { debtId: id, workspaceId: access.workspaceId } });
+    if (deletedInstallments.count !== currentInstallments.length) {
+      throw new Error("A dívida foi alterada durante a edição. Tente novamente.");
+    }
     for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
       const installmentId = randomUUID();
       const dueDate = installmentDueDate(firstDueDate, installment.number - 1, frequency);
@@ -1586,9 +1644,9 @@ export async function updateDebtAction(formData: FormData) {
         }
       }
     }
+    await appendAudit(transaction, access, "Debt", id, "update", { before: currentDebt });
   });
 
-  await audit(access.workspaceId, access.editorId, "Debt", id, "update");
   refreshAndRedirect(returnTo(formData, "/dividas"));
 }
 
@@ -1597,25 +1655,18 @@ export async function deleteDebtAction(formData: FormData) {
   const id = text(formData, "debtId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const installments = await transaction.debtInstallment.findMany({
-      where: { debtId: id, workspaceId: access.workspaceId },
-      select: { id: true },
-    });
-    const installmentIds = installments.map((installment) => installment.id);
+    await archiveOrDeleteDebt(transaction, access, id);
+  });
 
-    if (installmentIds.length > 0) {
-      const transactions = await transaction.transaction.findMany({
-        where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
-        select: { id: true },
-      });
-      const transactionIds = transactions.map((transactionRecord) => transactionRecord.id);
+  refreshAndRedirect(returnTo(formData, "/dividas"));
+}
 
-      if (transactionIds.length > 0) {
-        throw new Error("Nao e possivel excluir uma divida com parcelas pagas. Exclua ou ajuste os pagamentos antes de remover a divida.");
-      }
-    }
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Debt", workspaceId: access.workspaceId } });
-    await transaction.debt.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+export async function restoreDebtAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "debtId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreDebt(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/dividas"));
@@ -1657,26 +1708,18 @@ export async function deleteCreditCardAction(formData: FormData) {
   const id = text(formData, "cardId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const installmentIds = await transaction.creditCardInstallment.findMany({
-      where: { cardId: id, workspaceId: access.workspaceId },
-      select: { id: true },
-    });
-    const paymentCount = await transaction.creditCardInvoicePayment.count({
-      where: { invoice: { cardId: id }, workspaceId: access.workspaceId },
-    });
+    await archiveOrDeleteCreditCard(transaction, access, id);
+  });
 
-    if (paymentCount > 0) {
-      throw new Error("Nao e possivel excluir um cartao com pagamentos registrados. Remova ou ajuste os pagamentos antes de remover o cartao.");
-    }
+  refreshAndRedirect(returnTo(formData, "/cartoes"));
+}
 
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "CreditCard", workspaceId: access.workspaceId } });
-    await transaction.transaction.deleteMany({
-      where: { creditCardInstallmentId: { in: installmentIds.map(({ id }) => id) }, workspaceId: access.workspaceId },
-    });
-    await transaction.creditCardInstallment.deleteMany({ where: { cardId: id, workspaceId: access.workspaceId } });
-    await transaction.creditCardInvoice.deleteMany({ where: { cardId: id, workspaceId: access.workspaceId } });
-    await transaction.creditCardPurchase.deleteMany({ where: { cardId: id, workspaceId: access.workspaceId } });
-    await transaction.creditCard.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+export async function restoreCreditCardAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "cardId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreCreditCard(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -1702,6 +1745,9 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
   const newInvoiceIds: string[] = [];
 
   await getDatabase().$transaction(async (transaction) => {
+    const currentPurchase = await transaction.creditCardPurchase.findFirstOrThrow({
+      where: { id: purchaseId, workspaceId: access.workspaceId },
+    });
     const currentInstallments = await transaction.creditCardInstallment.findMany({
       where: { purchaseId, workspaceId: access.workspaceId },
       select: { id: true, invoiceId: true },
@@ -1721,10 +1767,16 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
       throw new Error("Nao e possivel editar uma compra com fatura ou parcelas pagas. Exclua ou ajuste os pagamentos antes de alterar a estrutura.");
     }
 
-    await transaction.transaction.deleteMany({
+    const deletedTransactions = await transaction.transaction.deleteMany({
       where: { creditCardInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
     });
-    await transaction.creditCardInstallment.deleteMany({ where: { purchaseId, workspaceId: access.workspaceId } });
+    if (deletedTransactions.count !== currentInstallments.length) {
+      throw new Error("A compra possui lançamentos inconsistentes e não pode ser editada.");
+    }
+    const deletedInstallments = await transaction.creditCardInstallment.deleteMany({ where: { purchaseId, workspaceId: access.workspaceId } });
+    if (deletedInstallments.count !== currentInstallments.length) {
+      throw new Error("A compra foi alterada durante a edição. Tente novamente.");
+    }
 
     const { count } = await transaction.creditCardPurchase.updateMany({
       where: { id: purchaseId, workspaceId: access.workspaceId },
@@ -1817,9 +1869,9 @@ export async function updateCreditCardPurchaseAction(formData: FormData) {
     }
 
     await recalculateCreditCardInvoices(transaction, access.workspaceId, newInvoiceIds);
+    await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "update", { before: currentPurchase });
   });
 
-  await audit(access.workspaceId, access.editorId, "CreditCardPurchase", purchaseId, "update");
   refreshAndRedirect(returnTo(formData, "/cartoes"));
 }
 
@@ -1828,6 +1880,9 @@ export async function deleteCreditCardPurchaseAction(formData: FormData) {
   const purchaseId = text(formData, "purchaseId");
 
   await getDatabase().$transaction(async (transaction) => {
+    const purchase = await transaction.creditCardPurchase.findFirstOrThrow({
+      where: { id: purchaseId, workspaceId: access.workspaceId },
+    });
     const installments = await transaction.creditCardInstallment.findMany({
       where: { purchaseId, workspaceId: access.workspaceId },
       select: { id: true, invoiceId: true },
@@ -1847,12 +1902,19 @@ export async function deleteCreditCardPurchaseAction(formData: FormData) {
       throw new Error("Nao e possivel excluir uma compra com fatura ou parcelas pagas. Exclua ou ajuste os pagamentos antes de remover a compra.");
     }
 
-    await transaction.auditLog.deleteMany({ where: { entityId: purchaseId, entityType: "CreditCardPurchase", workspaceId: access.workspaceId } });
-    await transaction.transaction.deleteMany({
+    await appendAudit(transaction, access, "CreditCardPurchase", purchaseId, "delete", { before: purchase, reason: "unpaid" });
+    const deletedTransactions = await transaction.transaction.deleteMany({
       where: { creditCardInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId },
     });
-    await transaction.creditCardInstallment.deleteMany({ where: { purchaseId, workspaceId: access.workspaceId } });
-    await transaction.creditCardPurchase.deleteMany({ where: { id: purchaseId, workspaceId: access.workspaceId } });
+    if (deletedTransactions.count !== installments.length) {
+      throw new Error("A compra possui lançamentos inconsistentes e não pode ser excluída.");
+    }
+    const deletedInstallments = await transaction.creditCardInstallment.deleteMany({ where: { purchaseId, workspaceId: access.workspaceId } });
+    if (deletedInstallments.count !== installments.length) {
+      throw new Error("A compra foi alterada durante a exclusão. Tente novamente.");
+    }
+    const deletedPurchase = await transaction.creditCardPurchase.deleteMany({ where: { id: purchaseId, workspaceId: access.workspaceId } });
+    assertExactlyOne(deletedPurchase.count, "Compra não encontrada.");
 
     for (const invoiceId of invoiceIds) {
       const amount = money((await transaction.creditCardInstallment.aggregate({
@@ -1865,7 +1927,8 @@ export async function deleteCreditCardPurchaseAction(formData: FormData) {
       }))._sum.amount ?? 0);
 
       if (amount.isZero() && paidAmount.isZero()) {
-        await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId: access.workspaceId } });
+        const { count } = await transaction.creditCardInvoice.deleteMany({ where: { id: invoiceId, workspaceId: access.workspaceId } });
+        assertExactlyOne(count, "Fatura não encontrada ou já removida.");
       } else {
         const cappedPaidAmount = paidAmount.greaterThan(amount) ? amount : paidAmount;
         await transaction.creditCardInvoice.updateMany({
@@ -1935,9 +1998,9 @@ export async function updateCreditCardInvoicePaymentAction(formData: FormData) {
         status: nextPaidAmount.greaterThanOrEqualTo(payment.invoice.amount) ? "PAID" : "OPEN",
       },
     });
+    await appendAudit(transaction, access, "CreditCardInvoicePayment", paymentId, "update", { before: payment });
   });
 
-  await audit(access.workspaceId, access.editorId, "CreditCardInvoicePayment", paymentId, "update");
   refreshAndRedirect(returnTo(formData, "/cartoes"));
 }
 
@@ -1950,7 +2013,12 @@ export async function deleteCreditCardInvoicePaymentAction(formData: FormData) {
       where: { id: paymentId, workspaceId: access.workspaceId },
       include: { invoice: true },
     });
-    await transaction.creditCardInvoicePayment.deleteMany({ where: { id: payment.id, workspaceId: access.workspaceId } });
+    await appendAudit(transaction, access, "CreditCardInvoicePayment", payment.id, "delete", {
+      before: payment,
+      reason: "payment_reversed",
+    });
+    const deletedPayment = await transaction.creditCardInvoicePayment.deleteMany({ where: { id: payment.id, workspaceId: access.workspaceId } });
+    assertExactlyOne(deletedPayment.count, "Pagamento da fatura não encontrado.");
 
     if (payment.creditCardInstallmentId) {
       await transaction.creditCardInstallment.updateMany({
@@ -1966,6 +2034,9 @@ export async function deleteCreditCardInvoicePaymentAction(formData: FormData) {
         data: { settledAt: null, status: "PENDING" },
       });
       await recalculateCreditCardInvoices(transaction, access.workspaceId, [payment.invoiceId]);
+      await appendAudit(transaction, access, "CreditCardInstallment", payment.creditCardInstallmentId, "reopen", {
+        reason: "payment_reversed",
+      });
 
       return;
     }
@@ -1995,12 +2066,19 @@ export async function deleteCreditCardInstallmentPaymentAction(formData: FormDat
   await getDatabase().$transaction(async (transaction) => {
     const installment = await transaction.creditCardInstallment.findFirstOrThrow({
       where: { id: installmentId, workspaceId: access.workspaceId },
-      include: { invoicePayment: { select: { id: true } } },
+      include: { invoicePayment: true },
     });
     const invoiceIds = installment.invoiceId ? [installment.invoiceId] : [];
 
     if (installment.invoicePayment) {
-      await transaction.creditCardInvoicePayment.deleteMany({ where: { id: installment.invoicePayment.id, workspaceId: access.workspaceId } });
+      await appendAudit(transaction, access, "CreditCardInvoicePayment", installment.invoicePayment.id, "delete", {
+        before: installment.invoicePayment,
+        reason: "installment_payment_reversed",
+      });
+      const deletedPayment = await transaction.creditCardInvoicePayment.deleteMany({
+        where: { id: installment.invoicePayment.id, workspaceId: access.workspaceId },
+      });
+      assertExactlyOne(deletedPayment.count, "Pagamento da parcela não encontrado.");
     }
 
     await transaction.creditCardInstallment.updateMany({
@@ -2016,6 +2094,10 @@ export async function deleteCreditCardInstallmentPaymentAction(formData: FormDat
       data: { settledAt: null, status: "PENDING" },
     });
     await recalculateCreditCardInvoices(transaction, access.workspaceId, invoiceIds);
+    await appendAudit(transaction, access, "CreditCardInstallment", installment.id, "reopen", {
+      before: installment,
+      reason: "payment_reversed",
+    });
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -2026,10 +2108,12 @@ export async function updateSavingsGoalAction(formData: FormData) {
   const id = text(formData, "goalId");
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
+  const accountId = optionalText(formData, "accountId");
+  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const { count } = await getDatabase().savingsGoal.updateMany({
     where: { id, workspaceId: access.workspaceId },
     data: {
-      accountId: optionalText(formData, "accountId"),
+      accountId,
       deadline: optionalText(formData, "deadline") ? dateFromInput(text(formData, "deadline")) : null,
       description: optionalText(formData, "description"),
       name: text(formData, "name"),
@@ -2051,8 +2135,18 @@ export async function deleteSavingsGoalAction(formData: FormData) {
   const id = text(formData, "goalId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "SavingsGoal", workspaceId: access.workspaceId } });
-    await transaction.savingsGoal.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    await archiveOrDeleteSavingsGoal(transaction, access, id);
+  });
+
+  refreshAndRedirect(returnTo(formData, "/cofrinhos"));
+}
+
+export async function restoreSavingsGoalAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "goalId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreSavingsGoal(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/cofrinhos"));
@@ -2103,8 +2197,12 @@ export async function deleteSavingsGoalMovementAction(formData: FormData) {
   const movementId = text(formData, "movementId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: movementId, entityType: "SavingsGoalMovement", workspaceId: access.workspaceId } });
-    await transaction.savingsGoalMovement.deleteMany({ where: { id: movementId, workspaceId: access.workspaceId } });
+    const movement = await transaction.savingsGoalMovement.findFirstOrThrow({
+      where: { id: movementId, workspaceId: access.workspaceId },
+    });
+    await appendAudit(transaction, access, "SavingsGoalMovement", movementId, "delete", { before: movement });
+    const { count } = await transaction.savingsGoalMovement.deleteMany({ where: { id: movementId, workspaceId: access.workspaceId } });
+    assertExactlyOne(count, "Movimentação não encontrada.");
   });
 
   refreshAndRedirect(returnTo(formData, "/cofrinhos"));
@@ -2115,10 +2213,12 @@ export async function updateInvestmentAction(formData: FormData) {
   const id = text(formData, "investmentId");
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
+  const accountId = optionalText(formData, "accountId");
+  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const { count } = await getDatabase().investment.updateMany({
     where: { id, workspaceId: access.workspaceId },
     data: {
-      accountId: optionalText(formData, "accountId"),
+      accountId,
       amount: parseMoneyInput(text(formData, "amount")),
       institution: optionalText(formData, "institution"),
       name: text(formData, "name"),
@@ -2141,8 +2241,18 @@ export async function deleteInvestmentAction(formData: FormData) {
   const id = text(formData, "investmentId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Investment", workspaceId: access.workspaceId } });
-    await transaction.investment.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    await archiveInvestment(transaction, access, id);
+  });
+
+  refreshAndRedirect(returnTo(formData, "/investimentos"));
+}
+
+export async function restoreInvestmentAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "investmentId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    await restoreInvestment(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/investimentos"));
@@ -2195,8 +2305,10 @@ export async function deleteTransferAction(formData: FormData) {
   const id = text(formData, "transferId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await transaction.auditLog.deleteMany({ where: { entityId: id, entityType: "Transfer", workspaceId: access.workspaceId } });
-    await transaction.transfer.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    const transfer = await transaction.transfer.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    await appendAudit(transaction, access, "Transfer", id, "delete", { before: transfer });
+    const { count } = await transaction.transfer.deleteMany({ where: { id, workspaceId: access.workspaceId } });
+    assertExactlyOne(count, "Transferência não encontrada.");
   });
 
   refreshAndRedirect(returnTo(formData, "/transferencias"));
@@ -2206,20 +2318,20 @@ export async function archiveFixedExpenseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "fixedExpenseId");
   const endedAt = monthStartFromInput(text(formData, "month"));
-  const { count } = await getDatabase().fixedExpense.updateMany({
-    where: { active: true, id, workspaceId: access.workspaceId },
-    data: {
-      active: false,
-      endedAt,
-      updatedByEditorId: access.editorId,
-    },
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.fixedExpense.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    const { count } = await transaction.fixedExpense.updateMany({
+      where: { active: true, id, workspaceId: access.workspaceId },
+      data: {
+        active: false,
+        endedAt,
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
+    });
+    assertExactlyOne(count, "Recorrência não encontrada ou já encerrada.");
+    await appendAudit(transaction, access, "FixedExpense", id, "archive", { before: current, endedAt });
   });
-
-  if (count !== 1) {
-    throw new Error("Recorrência não encontrada ou já encerrada.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "FixedExpense", id, "archive");
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
 }
 
@@ -2227,19 +2339,19 @@ export async function archiveSalaryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "salaryId");
   const archivedAt = monthStartFromInput(text(formData, "month"));
-  const { count } = await getDatabase().salary.updateMany({
-    where: { active: true, id, workspaceId: access.workspaceId },
-    data: {
-      active: false,
-      archivedAt,
-      updatedByEditorId: access.editorId,
-    },
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.salary.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    const { count } = await transaction.salary.updateMany({
+      where: { active: true, id, workspaceId: access.workspaceId },
+      data: {
+        active: false,
+        archivedAt,
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
+    });
+    assertExactlyOne(count, "Salário não encontrado ou já encerrado.");
+    await appendAudit(transaction, access, "Salary", id, "archive", { archivedAt, before: current });
   });
-
-  if (count !== 1) {
-    throw new Error("Salário não encontrado ou já encerrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "Salary", id, "archive");
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
 }

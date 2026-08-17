@@ -33,6 +33,14 @@ import {
   payDebtInstallmentAction,
   payCreditCardInstallmentAction,
   payFixedExpenseAction,
+  restoreAccountAction,
+  restoreCategoryAction,
+  restoreCreditCardAction,
+  restoreDebtAction,
+  restoreFixedExpenseAction,
+  restoreInvestmentAction,
+  restoreSalaryAction,
+  restoreSavingsGoalAction,
   updateAccountAction,
   updateBalanceAdjustmentAction,
   updateCategoryAction,
@@ -325,6 +333,16 @@ function DeleteForm({
   );
 }
 
+function RestoreForm({ action, idName, idValue, month, returnTo }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string }) {
+  return (
+    <form action={action}>
+      <ReturnFields month={month} returnTo={returnTo} />
+      <input name={idName} type="hidden" value={idValue} />
+      <button className="finance-secondary" type="submit">Restaurar</button>
+    </form>
+  );
+}
+
 function getActiveTotal(overview: Overview) {
   return overview.activeView === "casal"
     ? overview.coupleTotal
@@ -553,7 +571,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
   const activeTotal = getActiveTotal(overview);
   const accountGroups = getVisiblePeople(overview)
     .map((person) => {
-      const accounts = overview.accounts.filter((account) => account.personEditorId === person.id);
+      const accounts = overview.accounts.filter((account) => account.active && account.personEditorId === person.id);
 
       return {
         investments: accounts.filter((account) => account.type === "INVESTMENT"),
@@ -562,6 +580,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
       };
     })
     .filter((group) => group.operational.length > 0 || group.investments.length > 0);
+  const archivedAccounts = overview.accounts.filter((account) => !account.active);
   const renderAccountItem = (account: (typeof overview.accounts)[number]) => {
     const accountAdjustments = overview.balanceAdjustments.filter((adjustment) => adjustment.accountId === account.id);
 
@@ -637,7 +656,17 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
               </div>
             ) : null}
           </EditDetails>
-          <DeleteForm action={deleteAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
+          <DeleteForm
+            action={deleteAccountAction}
+            buttonLabel="Confirmar"
+            confirmDescription="Contas com histórico serão arquivadas; somente contas nunca usadas serão excluídas."
+            confirmTitle="Arquivar ou excluir esta conta?"
+            idName="accountId"
+            idValue={account.id}
+            month={month}
+            returnTo="/bancos"
+            summaryLabel="Arquivar"
+          />
         </ItemActions>
       </li>
     );
@@ -691,6 +720,22 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
           ))}
         </div>
       </section>
+      {archivedAccounts.length > 0 ? (
+        <section className="compact-card">
+          <h2>Contas arquivadas</h2>
+          <ul className="finance-list account-list">
+            {archivedAccounts.map((account) => (
+              <li key={account.id}>
+                <div className="finance-item-main">
+                  <span><strong>{account.name}</strong><small>{account.personEditor.displayName} · histórico preservado</small></span>
+                  <b>{formatCurrency(account.balance)}</b>
+                </div>
+                <RestoreForm action={restoreAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <CreatePanel title="Nova conta">
         <form action={createAccountAction} className="finance-form">
           <ReturnFields month={month} returnTo="/bancos" />
@@ -880,7 +925,17 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           <button className="finance-secondary" type="submit">Salvar</button>
         </form>
       </EditDetails>
-      <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
+      <DeleteForm
+        action={deleteFixedExpenseAction}
+        buttonLabel="Confirmar"
+        confirmDescription="Recorrências com lançamentos serão encerradas e manterão todo o histórico."
+        confirmTitle="Encerrar ou excluir este gasto?"
+        idName="fixedExpenseId"
+        idValue={expense.id}
+        month={month}
+        returnTo="/despesas-fixas"
+        summaryLabel="Encerrar"
+      />
     </ItemActions>
   </li>
   );
@@ -953,6 +1008,22 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           renderRecurringList(overview.fixedExpenses)
         )}
       </section>
+      {overview.archivedFixedExpenses.length > 0 ? (
+        <section className="compact-card">
+          <h2>Gastos fixos encerrados</h2>
+          <ul className="finance-list detached-list">
+            {overview.archivedFixedExpenses.map((expense) => (
+              <li key={expense.id}>
+                <div className="finance-item-main">
+                  <span><strong>{expense.description}</strong><small>{expense.personEditor.displayName} · histórico preservado</small></span>
+                  <b>{formatCurrency(expense.amount)}</b>
+                </div>
+                <RestoreForm action={restoreFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -1090,12 +1161,38 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
-              <DeleteForm action={deleteSalaryAction} idName="salaryId" idValue={salary.id} month={month} returnTo="/recebimentos" />
+              <DeleteForm
+                action={deleteSalaryAction}
+                buttonLabel="Confirmar"
+                confirmDescription="Salários com recebimentos serão encerrados e manterão o histórico."
+                confirmTitle="Encerrar ou excluir este salário?"
+                idName="salaryId"
+                idValue={salary.id}
+                month={month}
+                returnTo="/recebimentos"
+                summaryLabel="Encerrar"
+              />
             </ItemActions>
           </li>
         ))}
       </ul>
       </details>
+      {overview.archivedSalaries.length > 0 ? (
+        <section className="compact-card">
+          <h2>Salários encerrados</h2>
+          <ul className="finance-list detached-list">
+            {overview.archivedSalaries.map((salary) => (
+              <li key={salary.id}>
+                <div className="finance-item-main">
+                  <span><strong>{salary.description}</strong><small>{salary.personEditor.displayName} · histórico preservado</small></span>
+                  <b>{formatCurrency(salary.amount)}</b>
+                </div>
+                <RestoreForm action={restoreSalaryAction} idName="salaryId" idValue={salary.id} month={month} returnTo="/recebimentos" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -1250,7 +1347,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
-              <DeleteForm action={deleteFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} />
+              <DeleteForm action={deleteFixedExpenseAction} buttonLabel="Confirmar" confirmDescription="O histórico pago será preservado." confirmTitle="Encerrar ou excluir este gasto?" idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} summaryLabel="Encerrar" />
             </ItemActions>
           </div>
         </details>
@@ -1530,7 +1627,17 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <button className="finance-secondary" type="submit">Salvar</button>
                           </form>
                         </EditDetails>
-                        <DeleteForm action={deleteDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo={returnTo} />
+                        <DeleteForm
+                          action={deleteDebtAction}
+                          buttonLabel="Confirmar"
+                          confirmDescription="Dívidas com pagamentos serão encerradas sem apagar parcelas ou lançamentos pagos."
+                          confirmTitle="Encerrar ou excluir esta dívida?"
+                          idName="debtId"
+                          idValue={debt.id}
+                          month={month}
+                          returnTo={returnTo}
+                          summaryLabel="Encerrar"
+                        />
                       </ItemActions>
                     </div>
                   </details>
@@ -1610,7 +1717,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         <button className="finance-secondary" type="submit">Salvar</button>
                       </form>
                     </EditDetails>
-                    <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo={returnTo} />
+                    <DeleteForm action={deleteCreditCardAction} buttonLabel="Confirmar" confirmDescription="Compras e faturas existentes serão preservadas." confirmTitle="Arquivar ou excluir este cartão?" idName="cardId" idValue={card.id} month={month} returnTo={returnTo} summaryLabel="Arquivar" />
                   </ItemActions>
                 </div>
               </details>
@@ -1795,6 +1902,22 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           </div>
         )}
       </section>
+      {overview.archivedDebts.length > 0 ? (
+        <section className="compact-card">
+          <h2>Dívidas encerradas</h2>
+          <ul className="finance-list detached-list debt-list">
+            {overview.archivedDebts.map((debt) => (
+              <li key={debt.id}>
+                <div className="finance-item-main">
+                  <span><strong>{debt.description}</strong><small>{debt.personEditor.displayName} · pagamentos preservados</small></span>
+                  <b>{formatCurrency(debt.totalAmount)}</b>
+                </div>
+                <RestoreForm action={restoreDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo={returnTo} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -1916,7 +2039,17 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                     <button className="finance-secondary" type="submit">Salvar</button>
                   </form>
                 </EditDetails>
-                <DeleteForm action={deleteCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
+                <DeleteForm
+                  action={deleteCreditCardAction}
+                  buttonLabel="Confirmar"
+                  confirmDescription="Cartões com compras ou faturas serão arquivados e manterão o histórico."
+                  confirmTitle="Arquivar ou excluir este cartão?"
+                  idName="cardId"
+                  idValue={card.id}
+                  month={month}
+                  returnTo="/cartoes"
+                  summaryLabel="Arquivar"
+                />
               </ItemActions>
             </li>
           ))}
@@ -2094,6 +2227,22 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
           </div>
         )}
       </section>
+      {overview.archivedCards.length > 0 ? (
+        <section className="compact-card">
+          <h2>Cartões arquivados</h2>
+          <ul className="finance-list detached-list">
+            {overview.archivedCards.map((card) => (
+              <li key={card.id}>
+                <div className="finance-item-main">
+                  <span><strong>{card.name}</strong><small>{card.personEditor.displayName} · faturas preservadas</small></span>
+                  <b>{formatCurrency(card.invoiceAmount)}</b>
+                </div>
+                <RestoreForm action={restoreCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -2137,11 +2286,37 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
-              <DeleteForm action={deleteSavingsGoalAction} idName="goalId" idValue={goal.id} month={month} returnTo="/cofrinhos" />
+              <DeleteForm
+                action={deleteSavingsGoalAction}
+                buttonLabel="Confirmar"
+                confirmDescription="Cofrinhos movimentados serão arquivados; apenas cofrinhos vazios serão excluídos."
+                confirmTitle="Arquivar ou excluir este cofrinho?"
+                idName="goalId"
+                idValue={goal.id}
+                month={month}
+                returnTo="/cofrinhos"
+                summaryLabel="Arquivar"
+              />
             </ItemActions>
           </li>
         ))}
       </ul>
+      {overview.archivedGoals.length > 0 ? (
+        <section className="compact-card">
+          <h2>Cofrinhos arquivados</h2>
+          <ul className="finance-list detached-list">
+            {overview.archivedGoals.map((goal) => (
+              <li key={goal.id}>
+                <div className="finance-item-main">
+                  <span><strong>{goal.name}</strong><small>{goal.personEditor.displayName} · movimentações preservadas</small></span>
+                  <b>{formatCurrency(goal.currentAmount)}</b>
+                </div>
+                <RestoreForm action={restoreSavingsGoalAction} idName="goalId" idValue={goal.id} month={month} returnTo="/cofrinhos" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <form action={createSavingsGoalMovementAction} className="finance-form compact-card">
         <ReturnFields month={month} returnTo="/cofrinhos" />
         <h2>Movimentar cofrinho</h2>
@@ -2245,11 +2420,37 @@ export function InvestmentsPageContent({ month, options, overview }: { month: st
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
-              <DeleteForm action={deleteInvestmentAction} idName="investmentId" idValue={investment.id} month={month} returnTo="/investimentos" />
+              <DeleteForm
+                action={deleteInvestmentAction}
+                buttonLabel="Arquivar"
+                confirmDescription="O valor e a data de referência serão mantidos como histórico financeiro."
+                confirmTitle="Arquivar este investimento?"
+                idName="investmentId"
+                idValue={investment.id}
+                month={month}
+                returnTo="/investimentos"
+                summaryLabel="Arquivar"
+              />
             </ItemActions>
           </li>
         ))}
       </ul>
+      {overview.archivedInvestments.length > 0 ? (
+        <section className="compact-card">
+          <h2>Investimentos arquivados</h2>
+          <ul className="finance-list detached-list">
+            {overview.archivedInvestments.map((investment) => (
+              <li key={investment.id}>
+                <div className="finance-item-main">
+                  <span><strong>{investment.name}</strong><small>{investment.personEditor.displayName} · posição em {formatDate(investment.referenceDate)}</small></span>
+                  <b>{formatCurrency(investment.amount)}</b>
+                </div>
+                <RestoreForm action={restoreInvestmentAction} idName="investmentId" idValue={investment.id} month={month} returnTo="/investimentos" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -2334,11 +2535,37 @@ export function CategoriesPageContent({ month, options }: { month: string; optio
                       <button className="finance-secondary" type="submit">Salvar</button>
                     </form>
                   </EditDetails>
-                  <DeleteForm action={deleteCategoryAction} idName="categoryId" idValue={category.id} month={month} returnTo="/categorias" />
+                  <DeleteForm
+                    action={deleteCategoryAction}
+                    buttonLabel="Confirmar"
+                    confirmDescription="Categorias utilizadas serão arquivadas e continuarão nos lançamentos históricos."
+                    confirmTitle="Arquivar ou excluir esta categoria?"
+                    idName="categoryId"
+                    idValue={category.id}
+                    month={month}
+                    returnTo="/categorias"
+                    summaryLabel="Arquivar"
+                  />
                 </ItemActions>
               </li>
             ))}
           </ul>
+          {options.archivedCategories.length > 0 ? (
+            <>
+              <h2>Categorias arquivadas</h2>
+              <ul className="finance-list category-list">
+                {options.archivedCategories.map((category) => (
+                  <li key={category.id}>
+                    <div className="finance-item-main">
+                      <span><strong>{category.name}</strong><small>{category.kind === "INCOME" ? "Receita" : "Despesa"} · histórico preservado</small></span>
+                      <i style={{ background: category.color ?? "#357a68" }} />
+                    </div>
+                    <RestoreForm action={restoreCategoryAction} idName="categoryId" idValue={category.id} month={month} returnTo="/categorias" />
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </article>
         <details className="finance-panel finance-create-sheet category-create-panel" id="finance-create">
           <summary>

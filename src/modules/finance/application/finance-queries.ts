@@ -50,7 +50,7 @@ export async function getPeople(workspaceId: string): Promise<PersonOption[]> {
 
 export async function getFinanceOptions(workspaceId: string) {
   const database = getDatabase();
-  const [people, accounts, categories, cards, goals] = await Promise.all([
+  const [people, accounts, allCategories, cards, goals] = await Promise.all([
     getPeople(workspaceId),
     database.financialAccount.findMany({
       where: { active: true, workspaceId },
@@ -64,9 +64,9 @@ export async function getFinanceOptions(workspaceId: string) {
       },
     }),
     database.category.findMany({
-      where: { active: true, workspaceId },
+      where: { workspaceId },
       orderBy: [{ kind: "asc" }, { name: "asc" }],
-      select: { color: true, id: true, kind: true, name: true },
+      select: { active: true, color: true, id: true, kind: true, name: true },
     }),
     database.creditCard.findMany({
       where: { active: true, workspaceId },
@@ -80,7 +80,14 @@ export async function getFinanceOptions(workspaceId: string) {
     }),
   ]);
 
-  return { accounts, cards, categories, goals, people };
+  return {
+    accounts,
+    archivedCategories: allCategories.filter(({ active }) => !active),
+    cards,
+    categories: allCategories.filter(({ active }) => active),
+    goals,
+    people,
+  };
 }
 
 async function getAccountBalances(workspaceId: string) {
@@ -151,8 +158,11 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     categories,
     transactions,
     fixedExpenses,
+    archivedFixedExpenses,
     salaries,
+    archivedSalaries,
     debts,
+    archivedDebts,
     debtInstallments,
     cards,
     cardInstallments,
@@ -163,6 +173,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     goalMovementTotals,
     visibleGoalMovements,
     investments,
+    archivedInvestments,
     transfers,
     balanceAdjustments,
   ] = await Promise.all([
@@ -177,23 +188,31 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     database.fixedExpense.findMany({
       where: {
-        active: true,
         startMonth: { lt: end },
         workspaceId,
-        OR: [{ endedAt: null }, { endedAt: { gte: start } }],
+        OR: [{ active: true }, { endedAt: { gte: start } }],
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ dueDay: "asc" }, { description: "asc" }],
     }),
+    database.fixedExpense.findMany({
+      where: { active: false, workspaceId },
+      include: { account: true, category: true, personEditor: true },
+      orderBy: [{ endedAt: "desc" }, { description: "asc" }],
+    }),
     database.salary.findMany({
       where: {
-        active: true,
         startMonth: { lt: end },
         workspaceId,
-        OR: [{ archivedAt: null }, { archivedAt: { gte: start } }],
+        OR: [{ active: true }, { archivedAt: { gte: start } }],
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ paymentDay: "asc" }, { description: "asc" }],
+    }),
+    database.salary.findMany({
+      where: { active: false, workspaceId },
+      include: { account: true, category: true, personEditor: true },
+      orderBy: [{ archivedAt: "desc" }, { description: "asc" }],
     }),
     database.debt.findMany({
       where: {
@@ -203,8 +222,18 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
       orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
     }),
+    database.debt.findMany({
+      where: { active: false, workspaceId },
+      include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
+      orderBy: [{ canceledAt: "desc" }, { description: "asc" }],
+    }),
     database.debtInstallment.findMany({
-      where: { dueDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
+      where: {
+        debt: { OR: [{ active: true }, { canceledAt: { gte: start } }] },
+        dueDate: { gte: start, lt: end },
+        status: { not: "CANCELED" },
+        workspaceId,
+      },
       include: { debt: true, personEditor: true, shares: { include: { personEditor: true } }, transaction: { select: { id: true } } },
       orderBy: [{ dueDate: "asc" }, { number: "asc" }],
     }),
@@ -258,6 +287,11 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     }),
     database.investment.findMany({
       where: { active: true, workspaceId },
+      include: { personEditor: true },
+      orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
+    }),
+    database.investment.findMany({
+      where: { active: false, workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
     }),
@@ -498,24 +532,30 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   return {
     accounts: accounts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     activeView,
+    archivedCards: cardsWithInvoices.filter(({ active, personEditorId }) => !active && personIsVisible(personEditorId)),
     cardInstallments: cardInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     cardCoupleTotal,
     cardPurchases: cardPurchasesWithCalendarStatus.filter(purchaseIsVisible),
     cardTotalsByPerson,
-    cards: cardsWithInvoices.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    cards: cardsWithInvoices.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
     categories,
     coupleTotal,
     balanceAdjustments: balanceAdjustments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    archivedDebts: archivedDebts.filter(debtIsVisible),
+    archivedFixedExpenses: archivedFixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    archivedInvestments: archivedInvestments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    archivedSalaries: archivedSalaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     debts: debts.filter(debtIsVisible),
     debtInstallments: debtInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     fixedExpenseOccurrences: fixedExpenseOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    fixedExpenses: fixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    fixedExpenses: fixedExpenses.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
     goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    goals: goalsWithTotals.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    archivedGoals: goalsWithTotals.filter(({ personEditorId, status }) => status === "ARCHIVED" && personIsVisible(personEditorId)),
+    goals: goalsWithTotals.filter(({ personEditorId, status }) => status !== "ARCHIVED" && personIsVisible(personEditorId)),
     investments: investments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     month,
     people,
-    salaries: salaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    salaries: salaries.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
     salaryOccurrences: salaryOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     transactions: transactions.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     transfers: transfers.filter(
