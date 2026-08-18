@@ -21,18 +21,10 @@ export async function GET(
   }
 
   const response = NextResponse.redirect(new URL("/painel", request.url));
-  const options = accessCookieOptions(session.expiresAt);
-  response.headers.append(
-    "Set-Cookie",
-    [
-      `${ACCESS_COOKIE_NAME}=${session.sessionToken}`,
-      `Path=${options.path}`,
-      `Expires=${options.expires.toUTCString()}`,
-      "HttpOnly",
-      options.secure ? "Secure" : null,
-      `SameSite=${options.sameSite}`,
-      `Priority=${options.priority}`,
-    ].filter(Boolean).join("; "),
+  response.cookies.set(
+    ACCESS_COOKIE_NAME,
+    session.sessionToken,
+    accessCookieOptions(session.expiresAt),
   );
 
   return response;

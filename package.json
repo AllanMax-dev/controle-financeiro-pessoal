@@ -19,7 +19,7 @@
     "test:e2e": "playwright test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
+    "prisma:deploy": "node scripts/resolve-failed-integrity-migration.mjs && prisma migrate deploy",
     "seed": "prisma db seed",
     "access:create": "tsx scripts/create-access-link.ts",
     "access:revoke": "tsx scripts/revoke-access.ts",
