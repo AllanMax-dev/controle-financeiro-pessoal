@@ -477,7 +477,7 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
           <article className="snapshot-card" key={card.id} style={{ "--tone": personColors[index % personColors.length] } as CSSProperties}>
             <span>{card.name}</span>
             <strong>{formatCurrency(card.total.available)}</strong>
-            <small>Saldo disponível</small>
+            <small>Saldo ao fim do período</small>
             <dl>
               <div>
                 <dt>Gastos</dt>
@@ -691,7 +691,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
       <PersonTabs month={month} overview={overview} />
       <section className="card-month-summary" aria-label="Resumo de dinheiro e investimentos">
         <article className="card-month-card">
-          <span>Dinheiro disponível</span>
+          <span>Dinheiro ao fim do período</span>
           <strong>{formatCurrency(activeTotal.available)}</strong>
           <small>Contas de uso diário, sem investimentos</small>
         </article>

@@ -26,6 +26,12 @@ export type PersonOption = {
 
 export type DashboardView = "casal" | string;
 
+type FinanceSection = "accounts" | "balanceAdjustments" | "cards" | "categories" | "debts" | "fixedExpenses" | "goals" | "investments" | "salaries" | "transactions" | "transfers";
+
+const allFinanceSections = new Set<FinanceSection>([
+  "accounts", "balanceAdjustments", "cards", "categories", "debts", "fixedExpenses", "goals", "investments", "salaries", "transactions", "transfers",
+]);
+
 export function selectedMonthParam(value: string | string[] | undefined, fallback: string) {
   const month = Array.isArray(value) ? value[0] : value;
 
@@ -90,7 +96,7 @@ export async function getFinanceOptions(workspaceId: string) {
   };
 }
 
-async function getAccountBalances(workspaceId: string) {
+async function getAccountBalances(workspaceId: string, periodEnd?: Date) {
   const database = getDatabase();
   const [accounts, transactions, transfers, adjustments, invoicePayments] = await Promise.all([
     database.financialAccount.findMany({
@@ -99,23 +105,31 @@ async function getAccountBalances(workspaceId: string) {
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
     }),
     database.transaction.findMany({
-      where: { affectsBalance: true, status: "SETTLED", workspaceId },
+      where: {
+        affectsBalance: true,
+        status: "SETTLED",
+        workspaceId,
+        OR: periodEnd ? [{ settledAt: { lt: periodEnd } }, { competenceDate: { lt: periodEnd }, settledAt: null }] : undefined,
+      },
       select: { accountId: true, amount: true, type: true },
     }),
     database.transfer.findMany({
-      where: { status: "SETTLED", workspaceId },
+      where: { status: "SETTLED", transferDate: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
       select: { amount: true, destinationAccountId: true, sourceAccountId: true },
     }),
     database.balanceAdjustment.findMany({
-      where: { workspaceId },
+      where: { effectiveAt: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
       select: { accountId: true, difference: true },
     }),
     database.creditCardInvoicePayment.findMany({
-      where: { workspaceId },
+      where: { paidAt: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
       select: { accountId: true, amount: true },
     }),
   ]);
-  const balances = new Map(accounts.map((account) => [account.id, money(account.initialBalance)]));
+  const balances = new Map(accounts.map((account) => [
+    account.id,
+    periodEnd && account.createdAt >= periodEnd ? money(0) : money(account.initialBalance),
+  ]));
 
   for (const transaction of transactions) {
     if (!transaction.accountId) {
@@ -148,7 +162,7 @@ async function getAccountBalances(workspaceId: string) {
   }));
 }
 
-export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+async function buildFinanceOverview(workspaceId: string, month: string, view: DashboardView, timeZone: string, sections: ReadonlySet<FinanceSection>) {
   const database = getDatabase();
   const { end, start } = monthBounds(month);
   const today = calendarDateInTimeZone(new Date(), timeZone);
@@ -178,14 +192,14 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     balanceAdjustments,
   ] = await Promise.all([
     getPeople(workspaceId),
-    getAccountBalances(workspaceId),
-    database.category.findMany({ where: { workspaceId }, orderBy: { name: "asc" } }),
-    database.transaction.findMany({
+    sections.has("accounts") ? getAccountBalances(workspaceId, end) : Promise.resolve([]),
+    sections.has("categories") ? database.category.findMany({ where: { workspaceId }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    sections.has("transactions") ? database.transaction.findMany({
       where: { competenceDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
-    }),
-    database.fixedExpense.findMany({
+    }) : Promise.resolve([]),
+    sections.has("fixedExpenses") ? database.fixedExpense.findMany({
       where: {
         startMonth: { lt: end },
         workspaceId,
@@ -193,13 +207,13 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ dueDay: "asc" }, { description: "asc" }],
-    }),
-    database.fixedExpense.findMany({
+    }) : Promise.resolve([]),
+    sections.has("fixedExpenses") ? database.fixedExpense.findMany({
       where: { active: false, workspaceId },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ endedAt: "desc" }, { description: "asc" }],
-    }),
-    database.salary.findMany({
+    }) : Promise.resolve([]),
+    sections.has("salaries") ? database.salary.findMany({
       where: {
         startMonth: { lt: end },
         workspaceId,
@@ -207,26 +221,26 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ paymentDay: "asc" }, { description: "asc" }],
-    }),
-    database.salary.findMany({
+    }) : Promise.resolve([]),
+    sections.has("salaries") ? database.salary.findMany({
       where: { active: false, workspaceId },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ archivedAt: "desc" }, { description: "asc" }],
-    }),
-    database.debt.findMany({
+    }) : Promise.resolve([]),
+    sections.has("debts") ? database.debt.findMany({
       where: {
         active: true,
         workspaceId,
       },
       include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
       orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
-    }),
-    database.debt.findMany({
+    }) : Promise.resolve([]),
+    sections.has("debts") ? database.debt.findMany({
       where: { active: false, workspaceId },
       include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
       orderBy: [{ canceledAt: "desc" }, { description: "asc" }],
-    }),
-    database.debtInstallment.findMany({
+    }) : Promise.resolve([]),
+    sections.has("debts") ? database.debtInstallment.findMany({
       where: {
         debt: { OR: [{ active: true }, { canceledAt: { gte: start } }] },
         dueDate: { gte: start, lt: end },
@@ -235,18 +249,18 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       },
       include: { debt: true, personEditor: true, shares: { include: { personEditor: true } }, transaction: { select: { id: true } } },
       orderBy: [{ dueDate: "asc" }, { number: "asc" }],
-    }),
-    database.creditCard.findMany({
+    }) : Promise.resolve([]),
+    sections.has("cards") ? database.creditCard.findMany({
       where: { workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }),
-    database.creditCardInstallment.findMany({
+    }) : Promise.resolve([]),
+    sections.has("cards") ? database.creditCardInstallment.findMany({
       where: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
       include: { card: true, personEditor: true, purchase: true, shares: { include: { personEditor: true } } },
       orderBy: [{ dueMonth: "asc" }, { createdAt: "asc" }],
-    }),
-    database.creditCardPurchase.findMany({
+    }) : Promise.resolve([]),
+    sections.has("cards") ? database.creditCardPurchase.findMany({
       where: {
         installments: { some: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId } },
         workspaceId,
@@ -258,54 +272,50 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         personEditor: true,
       },
       orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
-      take: 40,
-    }),
-    database.creditCardInvoice.findMany({
+    }) : Promise.resolve([]),
+    sections.has("cards") ? database.creditCardInvoice.findMany({
       where: { workspaceId },
       select: { amount: true, cardId: true, paidAmount: true },
-    }),
-    database.creditCardInvoice.findMany({
+    }) : Promise.resolve([]),
+    sections.has("cards") ? database.creditCardInvoice.findMany({
       where: { month: start, workspaceId },
       include: { card: true, payments: { orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }] }, personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { dueDate: "asc" }],
-    }),
-    database.savingsGoal.findMany({
+    }) : Promise.resolve([]),
+    sections.has("goals") ? database.savingsGoal.findMany({
       where: { workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }),
-    database.savingsGoalMovement.findMany({
+    }) : Promise.resolve([]),
+    sections.has("goals") ? database.savingsGoalMovement.findMany({
       where: { workspaceId },
       select: { amount: true, goalId: true, type: true },
-    }),
-    database.savingsGoalMovement.findMany({
+    }) : Promise.resolve([]),
+    sections.has("goals") ? database.savingsGoalMovement.findMany({
       where: { movementDate: { gte: start, lt: end }, workspaceId },
       include: { account: true, goal: true, personEditor: true },
       orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }],
-      take: 40,
-    }),
-    database.investment.findMany({
+    }) : Promise.resolve([]),
+    sections.has("investments") ? database.investment.findMany({
       where: { active: true, workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }),
-    database.investment.findMany({
+    }) : Promise.resolve([]),
+    sections.has("investments") ? database.investment.findMany({
       where: { active: false, workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }),
-    database.transfer.findMany({
+    }) : Promise.resolve([]),
+    sections.has("transfers") ? database.transfer.findMany({
       where: { transferDate: { gte: start, lt: end }, workspaceId },
       include: { destinationAccount: true, sourceAccount: true },
       orderBy: [{ transferDate: "desc" }],
-      take: 20,
-    }),
-    database.balanceAdjustment.findMany({
+    }) : Promise.resolve([]),
+    sections.has("balanceAdjustments") ? database.balanceAdjustment.findMany({
       where: { effectiveAt: { gte: start, lt: end }, workspaceId },
       include: { account: true, personEditor: true },
       orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
-      take: 20,
-    }),
+    }) : Promise.resolve([]),
   ]);
   const goalTotals = new Map<string, Decimal>();
 
@@ -568,6 +578,54 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     ),
     totalsByPerson,
   };
+}
+
+function pageSections(...sections: FinanceSection[]) {
+  return new Set<FinanceSection>(sections);
+}
+
+export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, allFinanceSections);
+}
+
+export async function getDashboardData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, allFinanceSections);
+}
+
+export async function getDebtsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("cards", "debts", "fixedExpenses", "transactions"));
+}
+
+export async function getCardsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("cards"));
+}
+
+export async function getAccountsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("accounts", "balanceAdjustments", "investments"));
+}
+
+export async function getReceiptsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("salaries", "transactions"));
+}
+
+export async function getFixedExpensesPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("fixedExpenses", "transactions"));
+}
+
+export async function getSavingsGoalsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("goals"));
+}
+
+export async function getInvestmentsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("investments"));
+}
+
+export async function getTransactionsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("transactions"));
+}
+
+export async function getTransfersPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
+  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("transfers"));
 }
 
 export async function getAccountCurrentBalance(workspaceId: string, accountId: string) {

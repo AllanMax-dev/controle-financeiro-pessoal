@@ -52,6 +52,9 @@ jobs:
       - name: Apply Migrations
         run: npx prisma migrate deploy
 
+      - name: Seed
+        run: npm run seed
+
       - name: Check Encoding
         run: npm run check:encoding
 
@@ -63,6 +66,12 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Check Financial Invariants
+        run: npm run test:invariants
+
+      - name: Run Read-Only Database Baseline
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f docs/database-integrity-audit.sql
 
       - name: Build
         run: npm run build

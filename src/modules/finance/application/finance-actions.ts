@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { getDatabase } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
@@ -15,11 +16,9 @@ import {
   buildInstallmentSharePlan,
   addMonths,
   creditCardFirstDueDate,
-  dateFromInput,
   installmentDueDate,
   clampDayInMonth,
   monthlyDueDate,
-  monthStartFromInput,
 } from "@/modules/finance/domain/finance-calculations";
 import { assertCreditCardConfigurationChange, assertCreditCardPurchaseHasNoPayments, reconcileCreditCardInvoice, reconcileCreditCardInvoices } from "@/modules/finance/application/credit-card-reconciliation";
 import { assertDebtIntegrity, assertDebtStructureMutable, cancelDebtFutureInstallments, payDebtInstallment, undoDebtInstallmentPayment } from "@/modules/finance/application/debt-finance";
@@ -61,43 +60,70 @@ import {
   restoreSalary,
   restoreSavingsGoal,
 } from "@/modules/finance/application/finance-lifecycle";
-import { money, parseMoneyInput, sumMoney } from "@/modules/shared/domain/money";
+import {
+  colorSchema,
+  dateInputSchema,
+  identifierSchema,
+  moneyInputSchema,
+  monthInputSchema,
+  positiveMoneyInputSchema,
+  versionSchema,
+} from "@/modules/shared/application/form-schemas";
+import { money, sumMoney } from "@/modules/shared/domain/money";
 
 type FinanceValidationClient = ReturnType<typeof getDatabase> | Prisma.TransactionClient;
 
 function text(formData: FormData, name: string, fallback = "") {
   const value = formData.get(name);
+  const parsed = z.string().trim().parse(typeof value === "string" ? value : fallback);
 
-  return typeof value === "string" ? value.trim() : fallback;
+  if (parsed && name.endsWith("Id")) {
+    identifierSchema.parse(parsed);
+  }
+
+  return parsed;
 }
 
 function optionalText(formData: FormData, name: string) {
   return text(formData, name) || null;
 }
 
+function optionalColor(formData: FormData) {
+  const value = optionalText(formData, "color");
+
+  return value ? colorSchema.parse(value) : null;
+}
+
 function integer(formData: FormData, name: string, min: number, max: number) {
-  const value = Number(text(formData, name));
-
-  if (!Number.isInteger(value) || value < min || value > max) {
-    throw new Error("Valor numérico inválido.");
-  }
-
-  return value;
+  return z.coerce.number().int().min(min).max(max).parse(text(formData, name));
 }
 
 function expectedVersion(formData: FormData) {
-  return integer(formData, "version", 1, 2_147_483_647);
+  return versionSchema.max(2_147_483_647).parse(text(formData, "version"));
+}
+
+function dateFromInput(value: string) {
+  return dateInputSchema.parse(value);
+}
+
+function monthStartFromInput(value: string) {
+  return monthInputSchema.parse(value);
+}
+
+function parseMoneyInput(value: string) {
+  return money(positiveMoneyInputSchema.parse(value));
+}
+
+function parseNonNegativeMoneyInput(value: string) {
+  return money(moneyInputSchema.refine((parsed) => Number(parsed) >= 0, "O valor não pode ser negativo.").parse(value));
+}
+
+function enumValue<const Values extends readonly [string, ...string[]]>(formData: FormData, name: string, values: Values) {
+  return z.enum(values).parse(text(formData, name));
 }
 
 function accountType(formData: FormData) {
-  const value = text(formData, "type");
-  const allowedTypes: readonly string[] = ["CHECKING", "SAVINGS", "CASH", "DIGITAL", "INVESTMENT", "OTHER"];
-
-  if (!allowedTypes.includes(value)) {
-    throw new Error("Tipo de conta inválido.");
-  }
-
-  return value as "CHECKING" | "SAVINGS" | "CASH" | "DIGITAL" | "INVESTMENT" | "OTHER";
+  return enumValue(formData, "type", ["CHECKING", "SAVINGS", "CASH", "DIGITAL", "INVESTMENT", "OTHER"]);
 }
 
 function monthStartFromDate(date: Date) {
@@ -126,7 +152,10 @@ function creditCardFirstDueDateFromForm(formData: FormData, purchaseDate: Date, 
 }
 
 async function automaticSplitFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
-  if (text(formData, "splitMode") !== "EQUAL") {
+  const rawSplitMode = text(formData, "splitMode");
+  const splitMode = rawSplitMode ? z.enum(["OWNER", "EQUAL"]).parse(rawSplitMode) : "OWNER";
+
+  if (splitMode !== "EQUAL") {
     return { explicit: false, shares: [{ amount: totalAmount, personEditorId: fallbackPersonEditorId }] };
   }
 
@@ -148,7 +177,12 @@ async function automaticSplitFromForm(formData: FormData, workspaceId: string, f
 
 async function cardPurchaseResponsibilityFromForm(formData: FormData, workspaceId: string, fallbackPersonEditorId: string, totalAmount: ReturnType<typeof money>) {
   const responsibilityTarget = text(formData, "responsibilityTarget") || text(formData, "personEditorId") || fallbackPersonEditorId;
-  const wantsCoupleSplit = responsibilityTarget === "COUPLE" || text(formData, "splitMode") === "EQUAL";
+  if (responsibilityTarget !== "COUPLE") {
+    identifierSchema.parse(responsibilityTarget);
+  }
+  const rawSplitMode = text(formData, "splitMode");
+  const splitMode = rawSplitMode ? z.enum(["OWNER", "EQUAL"]).parse(rawSplitMode) : "OWNER";
+  const wantsCoupleSplit = responsibilityTarget === "COUPLE" || splitMode === "EQUAL";
 
   if (!wantsCoupleSplit) {
     return {
@@ -240,7 +274,7 @@ export async function createCategoryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const target = returnTo(formData, "/categorias");
   const name = text(formData, "name");
-  const kind = text(formData, "kind") === "INCOME" ? "INCOME" : "EXPENSE";
+  const kind = enumValue(formData, "kind", ["INCOME", "EXPENSE"]);
 
   if (name.length < 2) {
     throw new Error("Informe a categoria.");
@@ -248,7 +282,7 @@ export async function createCategoryAction(formData: FormData) {
 
   const category = await getDatabase().category.create({
     data: {
-      color: optionalText(formData, "color") ?? "#357a68",
+      color: optionalColor(formData) ?? "#357a68",
       createdByEditorId: access.editorId,
       kind,
       name,
@@ -267,9 +301,9 @@ export async function createAccountAction(formData: FormData) {
   const target = returnTo(formData, "/bancos");
   const account = await getDatabase().financialAccount.create({
     data: {
-      color: optionalText(formData, "color") ?? "#357a68",
+      color: optionalColor(formData) ?? "#357a68",
       createdByEditorId: access.editorId,
-      initialBalance: parseMoneyInput(text(formData, "initialBalance", "0")),
+      initialBalance: parseNonNegativeMoneyInput(text(formData, "initialBalance", "0")),
       institution: optionalText(formData, "institution"),
       name: text(formData, "name"),
       personEditorId,
@@ -286,8 +320,8 @@ export async function createTransactionAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
-  const type = text(formData, "type") === "INCOME" ? "INCOME" : "EXPENSE";
-  const status = text(formData, "status") === "SETTLED" ? "SETTLED" : "PENDING";
+  const type = enumValue(formData, "type", ["INCOME", "EXPENSE"]);
+  const status = enumValue(formData, "status", ["SETTLED", "PENDING"]);
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
   await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId, status === "SETTLED");
@@ -357,7 +391,7 @@ export async function createSalaryAction(formData: FormData) {
       categoryId,
       createdByEditorId: access.editorId,
       description: text(formData, "description"),
-      frequency: text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY",
+      frequency: enumValue(formData, "frequency", ["FORTNIGHTLY", "MONTHLY"]),
       notes: optionalText(formData, "notes"),
       paymentDay: integer(formData, "paymentDay", 1, 31),
       personEditorId,
@@ -377,7 +411,7 @@ export async function createDebtAction(formData: FormData) {
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 240);
   const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
-  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const frequency = enumValue(formData, "frequency", ["FORTNIGHTLY", "MONTHLY"]);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
@@ -453,11 +487,11 @@ export async function createCreditCardAction(formData: FormData) {
   const card = await getDatabase().creditCard.create({
     data: {
       closingDay: integer(formData, "closingDay", 1, 31),
-      color: optionalText(formData, "color") ?? "#357a68",
+      color: optionalColor(formData) ?? "#357a68",
       createdByEditorId: access.editorId,
       dueDay: integer(formData, "dueDay", 1, 31),
       institution: optionalText(formData, "institution"),
-      limit: parseMoneyInput(text(formData, "limit")),
+      limit: parseNonNegativeMoneyInput(text(formData, "limit")),
       name: text(formData, "name"),
       paymentAccountId,
       personEditorId,
@@ -725,7 +759,7 @@ export async function createSavingsGoalMovementAction(formData: FormData) {
   const amount = parseMoneyInput(text(formData, "amount"));
   const goalId = text(formData, "goalId");
   const movementDate = dateFromInput(text(formData, "movementDate"));
-  const type = text(formData, "type") === "WITHDRAWAL" ? "WITHDRAWAL" : "DEPOSIT";
+  const type = enumValue(formData, "type", ["WITHDRAWAL", "DEPOSIT"]);
 
   await getDatabase().$transaction(async (transaction) => {
     await createSavingsGoalMovement(transaction, access, {
@@ -749,7 +783,7 @@ export async function createInvestmentAction(formData: FormData) {
   const investment = await getDatabase().investment.create({
     data: {
       accountId,
-      amount: parseMoneyInput(text(formData, "amount")),
+      amount: parseNonNegativeMoneyInput(text(formData, "amount")),
       createdByEditorId: access.editorId,
       institution: optionalText(formData, "institution"),
       name: text(formData, "name"),
@@ -789,7 +823,7 @@ export async function createBalanceAdjustmentAction(formData: FormData) {
       accountId: text(formData, "accountId"),
       effectiveAt: dateFromInput(text(formData, "effectiveAt")),
       notes: optionalText(formData, "notes"),
-      targetBalance: parseMoneyInput(text(formData, "targetBalance")),
+      targetBalance: parseNonNegativeMoneyInput(text(formData, "targetBalance")),
     });
   });
 
@@ -804,7 +838,7 @@ export async function updateBalanceAdjustmentAction(formData: FormData) {
       adjustmentId: id,
       effectiveAt: dateFromInput(text(formData, "effectiveAt")),
       notes: optionalText(formData, "notes"),
-      targetBalance: parseMoneyInput(text(formData, "targetBalance")),
+      targetBalance: parseNonNegativeMoneyInput(text(formData, "targetBalance")),
     });
   });
 
@@ -825,7 +859,7 @@ export async function deleteBalanceAdjustmentAction(formData: FormData) {
 export async function updateCategoryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "categoryId");
-  const kind = text(formData, "kind") === "INCOME" ? "INCOME" : "EXPENSE";
+  const kind = enumValue(formData, "kind", ["INCOME", "EXPENSE"]);
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.category.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
 
@@ -836,7 +870,7 @@ export async function updateCategoryAction(formData: FormData) {
     const { count } = await transaction.category.updateMany({
       where: { active: true, id, workspaceId: access.workspaceId },
       data: {
-        color: optionalText(formData, "color"),
+        color: optionalColor(formData),
         kind,
         name: text(formData, "name"),
       },
@@ -874,7 +908,7 @@ export async function updateAccountAction(formData: FormData) {
   const id = text(formData, "accountId");
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
-  const initialBalance = parseMoneyInput(text(formData, "initialBalance", "0"));
+  const initialBalance = parseNonNegativeMoneyInput(text(formData, "initialBalance", "0"));
   const type = accountType(formData);
   const version = expectedVersion(formData);
 
@@ -895,7 +929,7 @@ export async function updateAccountAction(formData: FormData) {
     const { count } = await transaction.financialAccount.updateMany({
       where: { active: true, id, version, workspaceId: access.workspaceId },
       data: {
-        color: optionalText(formData, "color"),
+        color: optionalColor(formData),
         initialBalance,
         institution: optionalText(formData, "institution"),
         name: text(formData, "name"),
@@ -938,8 +972,8 @@ export async function updateTransactionAction(formData: FormData) {
   const id = text(formData, "transactionId");
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
-  const type = text(formData, "type") === "INCOME" ? "INCOME" : "EXPENSE";
-  const status = text(formData, "status") === "SETTLED" ? "SETTLED" : "PENDING";
+  const type = enumValue(formData, "type", ["INCOME", "EXPENSE"]);
+  const status = enumValue(formData, "status", ["SETTLED", "PENDING"]);
   const date = dateFromInput(text(formData, "date"));
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
@@ -1063,7 +1097,7 @@ export async function updateSalaryAction(formData: FormData) {
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
   const amount = parseMoneyInput(text(formData, "amount"));
-  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const frequency = enumValue(formData, "frequency", ["FORTNIGHTLY", "MONTHLY"]);
   const paymentDay = integer(formData, "paymentDay", 1, 31);
   const startMonth = monthStartFromInput(text(formData, "startMonth"));
   await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId, true);
@@ -1232,7 +1266,7 @@ export async function refinanceDebtAction(formData: FormData) {
   const installmentCount = integer(formData, "installmentCount", 1, 240);
   const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
   const startDate = dateFromInput(text(formData, "startDate"));
-  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const frequency = enumValue(formData, "frequency", ["FORTNIGHTLY", "MONTHLY"]);
   const debtId = randomUUID();
 
   await getDatabase().$transaction(async (transaction) => {
@@ -1318,7 +1352,7 @@ export async function updateDebtAction(formData: FormData) {
   const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
   const installmentCount = integer(formData, "installmentCount", 1, 240);
   const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
-  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const frequency = enumValue(formData, "frequency", ["FORTNIGHTLY", "MONTHLY"]);
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
@@ -1441,10 +1475,10 @@ export async function updateCreditCardAction(formData: FormData) {
       where: { id, version, workspaceId: access.workspaceId },
       data: {
         closingDay,
-        color: optionalText(formData, "color"),
+        color: optionalColor(formData),
         dueDay,
         institution: optionalText(formData, "institution"),
-        limit: parseMoneyInput(text(formData, "limit")),
+        limit: parseNonNegativeMoneyInput(text(formData, "limit")),
         name: text(formData, "name"),
         paymentAccountId,
         personEditorId,
@@ -1844,7 +1878,7 @@ export async function updateSavingsGoalMovementAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const movementId = text(formData, "movementId");
   const amount = parseMoneyInput(text(formData, "amount"));
-  const type = text(formData, "type") === "WITHDRAWAL" ? "WITHDRAWAL" : "DEPOSIT";
+  const type = enumValue(formData, "type", ["WITHDRAWAL", "DEPOSIT"]);
 
   await getDatabase().$transaction(async (transaction) => {
     await updateSavingsGoalMovement(transaction, access, {
@@ -1881,7 +1915,7 @@ export async function updateInvestmentAction(formData: FormData) {
     where: { id, workspaceId: access.workspaceId },
     data: {
       accountId,
-      amount: parseMoneyInput(text(formData, "amount")),
+      amount: parseNonNegativeMoneyInput(text(formData, "amount")),
       institution: optionalText(formData, "institution"),
       name: text(formData, "name"),
       notes: optionalText(formData, "notes"),

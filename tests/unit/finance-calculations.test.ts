@@ -11,6 +11,7 @@ import {
   clampDayInMonth,
   creditCardFirstDueDate,
   creditCardInstallmentIsOverdue,
+  dateFromInput,
   installmentDueDate,
   monthlyDueDate,
   monthBounds,
@@ -24,6 +25,11 @@ describe("finance calculations", () => {
 
     expect(bounds.start.toISOString()).toBe("2026-08-01T00:00:00.000Z");
     expect(bounds.end.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  it("rejects calendar dates that do not exist", () => {
+    expect(() => dateFromInput("2026-02-31")).toThrow("Data inválida");
+    expect(dateFromInput("2026-02-28").toISOString()).toBe("2026-02-28T00:00:00.000Z");
   });
 
   it("splits debt installments without losing cents", () => {

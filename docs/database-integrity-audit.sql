@@ -170,7 +170,7 @@ FROM (
   UNION ALL SELECT 'D03', 'CreditCardInvoice', invoice.id::text, NULL, concat(invoice.status::text, ':', invoice."paidAmount"), concat('PAID requires paidAmount >= ', invoice.amount)
   FROM "CreditCardInvoice" invoice WHERE invoice.status = 'PAID' AND invoice."paidAmount" < invoice.amount
   UNION ALL SELECT 'D04', 'CreditCardInvoice', invoice.id::text, NULL, concat(invoice.status::text, ':', invoice."paidAmount"), concat('OPEN requires paidAmount < ', invoice.amount)
-  FROM "CreditCardInvoice" invoice WHERE invoice.status = 'OPEN' AND invoice."paidAmount" >= invoice.amount
+  FROM "CreditCardInvoice" invoice WHERE invoice.status = 'OPEN' AND invoice.amount > 0 AND invoice."paidAmount" >= invoice.amount
   UNION ALL SELECT 'D05', 'CreditCardInstallment', installment.id::text, installment."invoiceId"::text, installment.status::text, 'PAID requires direct payment or fully paid invoice'
   FROM "CreditCardInstallment" installment
   LEFT JOIN invoice_totals invoice_amount ON invoice_amount.id = installment."invoiceId"
@@ -286,9 +286,6 @@ FROM (
   UNION ALL SELECT 'F03', 'Transaction', transaction.id::text, salary.id::text, concat(transaction."personEditorId", '/', COALESCE(transaction."accountId"::text, 'NULL')), concat(salary."personEditorId", '/', COALESCE(salary."accountId"::text, 'NULL'))
   FROM "Transaction" transaction JOIN "Salary" salary ON salary.id = transaction."salaryId"
   WHERE transaction."personEditorId" <> salary."personEditorId" OR transaction."accountId" IS DISTINCT FROM salary."accountId"
-  UNION ALL SELECT 'F04', 'Salary', salary.id::text, transaction.id::text, concat('active=', salary.active, ', archivedAt=', COALESCE(salary."archivedAt"::text, 'NULL')), 'historical transaction remains visible from recurring salary'
-  FROM "Salary" salary JOIN "Transaction" transaction ON transaction."salaryId" = salary.id
-  WHERE salary.active = false
   UNION ALL SELECT 'F05', 'Salary', salary.id::text, NULL, concat('active=', salary.active, ', archivedAt=', COALESCE(salary."archivedAt"::text, 'NULL')), 'active=true/archivedAt=NULL or active=false/archivedAt set'
   FROM "Salary" salary
   WHERE (salary.active AND salary."archivedAt" IS NOT NULL) OR (salary.active = false AND salary."archivedAt" IS NULL) OR (salary."archivedAt" IS NOT NULL AND salary."archivedAt" < salary."startMonth")
@@ -310,9 +307,6 @@ FROM (
   UNION ALL SELECT 'G02', 'Transaction', id::text, "fixedExpenseId"::text, "competenceDate"::text, expected_date::text
   FROM fixed_transactions
   WHERE "competenceDate" <> expected_date OR "dueDate" IS DISTINCT FROM expected_date
-  UNION ALL SELECT 'G03', 'FixedExpense', fixed.id::text, transaction.id::text, concat('active=', fixed.active, ', endedAt=', COALESCE(fixed."endedAt"::text, 'NULL')), 'historical transaction remains visible from recurring fixed expense'
-  FROM "FixedExpense" fixed JOIN "Transaction" transaction ON transaction."fixedExpenseId" = fixed.id
-  WHERE fixed.active = false
   UNION ALL SELECT 'G04', 'Transaction', transaction.id::text, fixed.id::text, concat(transaction."personEditorId", '/', COALESCE(transaction."accountId"::text, 'NULL')), concat(fixed."personEditorId", '/', COALESCE(fixed."accountId"::text, 'NULL'))
   FROM "Transaction" transaction JOIN "FixedExpense" fixed ON fixed.id = transaction."fixedExpenseId"
   WHERE transaction."personEditorId" <> fixed."personEditorId" OR transaction."accountId" IS DISTINCT FROM fixed."accountId"

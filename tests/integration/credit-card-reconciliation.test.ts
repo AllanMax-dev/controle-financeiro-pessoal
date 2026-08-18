@@ -200,10 +200,11 @@ integrationTest("reconciliação de cartão com PostgreSQL real", () => {
 
   test("rejeita pagamento acima da fatura sem mascarar a divergência", async () => {
     const fixture = await createFixture([100]);
-    await createPayment(fixture, 100.01);
+    const payment = await createPayment(fixture, 100.01);
 
     await expect(database!.$transaction((transaction) => reconcileCreditCardInvoice(transaction, fixture.invoice.id)))
       .rejects.toThrow("Pagamentos excedem o valor ativo da fatura.");
+    await database!.creditCardInvoicePayment.delete({ where: { id: payment.id } });
   });
 
   test("bloqueia alteração ou exclusão estrutural sem apagar pagamentos", async () => {
@@ -217,5 +218,6 @@ integrationTest("reconciliação de cartão com PostgreSQL real", () => {
       [fixture.invoice.id],
     ))).rejects.toThrow("compra com pagamentos");
     expect(await database!.creditCardInvoicePayment.findUnique({ where: { id: payment.id } })).not.toBeNull();
+    await database!.$transaction((transaction) => reconcileCreditCardInvoice(transaction, fixture.invoice.id));
   });
 });

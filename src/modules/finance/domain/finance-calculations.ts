@@ -33,7 +33,13 @@ export function dateFromInput(value: string) {
     throw new TypeError("Data inválida.");
   }
 
-  return new Date(`${value}T00:00:00.000Z`);
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new TypeError("Data inválida.");
+  }
+
+  return date;
 }
 
 export function monthStartFromInput(value: string) {

@@ -14,7 +14,7 @@ import {
   getTransactionalAccountBalance,
   updateSavingsGoalMovement,
 } from "@/modules/finance/application/financial-consistency";
-import { getFinanceOverview } from "@/modules/finance/application/finance-queries";
+import { getFinanceOverview, getSavingsGoalsPageData } from "@/modules/finance/application/finance-queries";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -200,5 +200,54 @@ integrationTest("consistência transacional financeira com PostgreSQL real", () 
     expect(overview.coupleTotal.available.toFixed(2)).toBe("0.00");
     expect(overview.coupleTotal.investments.toFixed(2)).toBe("10000.00");
     expect(overview.coupleTotal.wealth.toFixed(2)).toBe("10000.00");
+  });
+
+  test("saldo selecionado representa o fim do período e listas visíveis não são truncadas", async () => {
+    const fixture = await createFixture("historical-balance");
+    const account = await database!.financialAccount.create({
+      data: {
+        createdAt: new Date("2025-12-01T00:00:00.000Z"),
+        initialBalance: 100,
+        name: "Conta histórica",
+        personEditorId: fixture.allan.id,
+        type: "CHECKING",
+        workspaceId: fixture.workspace.id,
+      },
+    });
+    await database!.transaction.createMany({
+      data: [
+        {
+          accountId: account.id, amount: 50, competenceDate: new Date("2026-01-10T00:00:00.000Z"), description: "Janeiro",
+          personEditorId: fixture.allan.id, settledAt: new Date("2026-01-10T00:00:00.000Z"), status: "SETTLED", type: "INCOME", workspaceId: fixture.workspace.id,
+        },
+        {
+          accountId: account.id, amount: 20, competenceDate: new Date("2026-08-10T00:00:00.000Z"), description: "Agosto",
+          personEditorId: fixture.allan.id, settledAt: new Date("2026-08-10T00:00:00.000Z"), status: "SETTLED", type: "EXPENSE", workspaceId: fixture.workspace.id,
+        },
+      ],
+    });
+    const goal = await database!.savingsGoal.create({
+      data: { name: "Muitos movimentos", personEditorId: fixture.allan.id, targetAmount: 100, workspaceId: fixture.workspace.id },
+    });
+    await database!.savingsGoalMovement.createMany({
+      data: Array.from({ length: 45 }, (_, index) => ({
+        amount: 1,
+        goalId: goal.id,
+        movementDate: new Date(`2026-08-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`),
+        personEditorId: fixture.allan.id,
+        type: "DEPOSIT" as const,
+        workspaceId: fixture.workspace.id,
+      })),
+    });
+
+    const january = await getFinanceOverview(fixture.workspace.id, "2026-01");
+    const august = await getFinanceOverview(fixture.workspace.id, "2026-08");
+    const goalsPage = await getSavingsGoalsPageData(fixture.workspace.id, "2026-08");
+
+    expect(january.coupleTotal.available.toFixed(2)).toBe("150.00");
+    expect(august.coupleTotal.available.toFixed(2)).toBe("130.00");
+    expect(goalsPage.goalMovements).toHaveLength(45);
+    expect(goalsPage.goals[0]?.currentAmount.toFixed(2)).toBe("45.00");
+    expect(august.coupleTotal.available.equals(sumMoney(august.totalsByPerson.map(({ total }) => total.available)))).toBe(true);
   });
 });
