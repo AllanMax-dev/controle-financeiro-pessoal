@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import {
   cancelCreditCardPurchaseAction,
+  cancelDebtFutureInstallmentsAction,
   createAccountAction,
   createBalanceAdjustmentAction,
   createCategoryAction,
@@ -35,7 +36,8 @@ import {
   payDebtInstallmentAction,
   payCreditCardInvoiceAction,
   payCreditCardInstallmentAction,
-  payFixedExpenseAction,
+  payFixedExpenseOccurrenceAction,
+  refinanceDebtAction,
   restoreAccountAction,
   restoreCategoryAction,
   restoreCreditCardAction,
@@ -51,6 +53,7 @@ import {
   updateCreditCardInvoicePaymentAction,
   updateCreditCardPurchaseAction,
   updateDebtAction,
+  updateDebtMetadataAction,
   updateFixedExpenseAction,
   updateInvestmentAction,
   updateSalaryAction,
@@ -58,6 +61,7 @@ import {
   updateSavingsGoalMovementAction,
   updateTransactionAction,
   updateTransferAction,
+  undoFixedExpensePaymentAction,
 } from "@/modules/finance/application/finance-actions";
 import { FinanceDashboardChart } from "@/components/finance/dashboard-chart";
 import { MonthNavigator } from "@/components/finance/month-navigator";
@@ -852,7 +856,6 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
     }))
     .filter(({ expenses }) => expenses.length > 0);
   const fixedSummaryCards = getVisiblePeople(overview).map((person) => {
-    const expenses = overview.fixedExpenses.filter((expense) => expense.personEditorId === person.id);
     const occurrences = overview.fixedExpenseOccurrences.filter((expense) => expense.personEditorId === person.id);
 
     return {
@@ -860,7 +863,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
       name: person.name,
       paid: sumMoney(occurrences.filter((expense) => expense.status === "SETTLED").map((expense) => expense.amount)),
       pending: sumMoney(occurrences.filter((expense) => expense.status === "PENDING").map((expense) => expense.amount)),
-      total: sumMoney(expenses.map((expense) => expense.amount)),
+      total: sumMoney(occurrences.map((expense) => expense.amount)),
     };
   });
   const fixedCoupleSummary = {
@@ -895,7 +898,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
       {occurrence?.status === "PENDING" ? (
         <details className="inline-payment-details">
           <summary>Pagar</summary>
-          <form action={payFixedExpenseAction} className="inline-payment-form">
+          <form action={payFixedExpenseOccurrenceAction} className="inline-payment-form">
             <ReturnFields month={month} returnTo="/despesas-fixas" />
             <input name="fixedExpenseId" type="hidden" value={expense.id} />
             <input name="dueDate" type="hidden" value={toDateInputValue(occurrence.dueDate)} />
@@ -906,6 +909,11 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           </form>
         </details>
       ) : null}
+      {occurrence?.status === "SETTLED" && occurrence.transactionId ? (
+        <DeleteForm action={undoFixedExpensePaymentAction} buttonLabel="Desfazer pagamento" confirmDescription="Somente o pagamento desta competência será removido." confirmTitle="Desfazer este pagamento?" idName="transactionId" idValue={occurrence.transactionId} month={month} returnTo="/despesas-fixas" summaryLabel="Desfazer pagamento" />
+      ) : null}
+      {expense.active ? (
+      <>
       <EditDetails>
         <form action={updateFixedExpenseAction} className="finance-edit-form">
           <ReturnFields month={month} returnTo="/despesas-fixas" />
@@ -917,13 +925,6 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
           <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
           <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
-          <label className="finance-field">
-            <span>Status padrao</span>
-            <select defaultValue={expense.status} name="status">
-              <option value="PENDING">Pendente</option>
-              <option value="SETTLED">Realizado</option>
-            </select>
-          </label>
           <NotesField defaultValue={expense.notes} />
           <button className="finance-secondary" type="submit">Salvar</button>
         </form>
@@ -939,6 +940,8 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         returnTo="/despesas-fixas"
         summaryLabel="Encerrar"
       />
+      </>
+      ) : null}
     </ItemActions>
   </li>
   );
@@ -964,13 +967,6 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
           <TextInput label="Dia de vencimento" name="dueDay" type="number" />
           <CategorySelect categories={options.categories} kind="EXPENSE" />
           <AccountSelect accounts={options.accounts} />
-          <label className="finance-field">
-            <span>Status padrão</span>
-            <select name="status">
-              <option value="PENDING">Pendente</option>
-              <option value="SETTLED">Realizado</option>
-            </select>
-          </label>
           <NotesField />
           <button className="finance-primary" type="submit">Criar recorrência</button>
         </form>
@@ -1033,7 +1029,6 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
 
 export function ReceiptsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   const salarySummaryCards = getVisiblePeople(overview).map((person) => {
-    const salaries = overview.salaries.filter((salary) => salary.personEditorId === person.id);
     const occurrences = overview.salaryOccurrences.filter((salary) => salary.personEditorId === person.id);
 
     return {
@@ -1041,7 +1036,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
       name: person.name,
       received: sumMoney(occurrences.filter((salary) => salary.status === "SETTLED").map((salary) => salary.amount)),
       receivable: sumMoney(occurrences.filter((salary) => salary.status === "PENDING").map((salary) => salary.amount)),
-      total: sumMoney(salaries.map((salary) => salary.amount)),
+      total: sumMoney(occurrences.map((salary) => salary.amount)),
     };
   });
   const salaryCoupleSummary = {
@@ -1132,7 +1127,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
         <button className="finance-secondary" type="submit">Cadastrar salário</button>
       </form>
       <ul className="finance-list detached-list">
-        {overview.salaries.map((salary) => (
+        {overview.salaries.filter(({ active }) => active).map((salary) => (
           <li key={salary.id}>
             <div className="finance-item-main">
               <span>
@@ -1317,7 +1312,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
               {occurrence?.status === "PENDING" ? (
                 <details className="inline-payment-details">
                   <summary>Pagar</summary>
-                  <form action={payFixedExpenseAction} className="inline-payment-form">
+                  <form action={payFixedExpenseOccurrenceAction} className="inline-payment-form">
                     <ReturnFields month={month} returnTo={returnTo} />
                     <input name="fixedExpenseId" type="hidden" value={expense.id} />
                     <input name="dueDate" type="hidden" value={toDateInputValue(occurrence.dueDate)} />
@@ -1328,6 +1323,11 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   </form>
                 </details>
               ) : null}
+              {occurrence?.status === "SETTLED" && occurrence.transactionId ? (
+                <DeleteForm action={undoFixedExpensePaymentAction} buttonLabel="Desfazer pagamento" confirmDescription="Somente o pagamento desta competência será removido." confirmTitle="Desfazer este pagamento?" idName="transactionId" idValue={occurrence.transactionId} month={month} returnTo={returnTo} summaryLabel="Desfazer pagamento" />
+              ) : null}
+              {expense.active ? (
+              <>
               <EditDetails>
                 <form action={updateFixedExpenseAction} className="finance-edit-form">
                   <ReturnFields month={month} returnTo={returnTo} />
@@ -1339,18 +1339,13 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   <TextInput defaultValue={expense.dueDay} label="Dia de vencimento" name="dueDay" type="number" />
                   <CategorySelect categories={options.categories} defaultValue={expense.categoryId} kind="EXPENSE" />
                   <AccountSelect accounts={options.accounts} defaultValue={expense.accountId} />
-                  <label className="finance-field">
-                    <span>Status padrão</span>
-                    <select defaultValue={expense.status} name="status">
-                      <option value="PENDING">Pendente</option>
-                      <option value="SETTLED">Realizado</option>
-                    </select>
-                  </label>
                   <NotesField defaultValue={expense.notes} />
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
               <DeleteForm action={deleteFixedExpenseAction} buttonLabel="Confirmar" confirmDescription="O histórico pago será preservado." confirmTitle="Encerrar ou excluir este gasto?" idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} summaryLabel="Encerrar" />
+              </>
+              ) : null}
             </ItemActions>
           </div>
         </details>
@@ -1406,13 +1401,6 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
               <TextInput label="Dia de vencimento" name="dueDay" type="number" />
               <CategorySelect categories={options.categories} kind="EXPENSE" />
               <AccountSelect accounts={options.accounts} />
-              <label className="finance-field">
-                <span>Status padrão</span>
-                <select name="status">
-                  <option value="PENDING">Pendente</option>
-                  <option value="SETTLED">Realizado</option>
-                </select>
-              </label>
               <NotesField />
               <button className="finance-secondary" type="submit">Criar gasto fixo</button>
             </form>
@@ -1508,6 +1496,8 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
           <ul className="finance-list detached-list debt-list">
             {monthlyDebtRows.map(({ currentInstallments, debt }) => {
               const paidCount = debt.installments.filter((installment) => installment.status === "PAID").length;
+              const hasPaymentHistory = debt.installments.some((installment) => Boolean(installment.transaction));
+              const remainingTotal = sumMoney(debt.installments.filter((installment) => installment.status === "PENDING").map((installment) => installment.amount));
               const debtSplitMode = splitModeDefault(debt.installments);
               const currentTotal = sumMoney(currentInstallments.map((installment) => installment.amount));
               const currentRootInstallments = Array.from(new Map(currentInstallments.map((installment) => [installment.rootInstallmentId, installment])).values());
@@ -1608,7 +1598,16 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                       </ul>
                       <ItemActions>
                         <EditDetails>
-                          <form action={updateDebtAction} className="finance-edit-form">
+                          {hasPaymentHistory ? (
+                            <form action={updateDebtMetadataAction} className="finance-edit-form">
+                              <ReturnFields month={month} returnTo="/dividas" />
+                              <input name="debtId" type="hidden" value={debt.id} />
+                              <TextInput defaultValue={debt.description} label="Descricao" name="description" />
+                              <NotesField defaultValue={debt.notes} />
+                              <button className="finance-secondary" type="submit">Salvar metadados</button>
+                            </form>
+                          ) : (
+                            <form action={updateDebtAction} className="finance-edit-form">
                             <ReturnFields month={month} returnTo="/dividas" />
                             <input name="debtId" type="hidden" value={debt.id} />
                             <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
@@ -1628,8 +1627,44 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <SplitModeSelect defaultValue={debtSplitMode} />
                             <NotesField defaultValue={debt.notes} />
                             <button className="finance-secondary" type="submit">Salvar</button>
-                          </form>
+                            </form>
+                          )}
                         </EditDetails>
+                        {remainingTotal.greaterThan(0) ? (
+                        <details className="inline-payment-details">
+                          <summary>Cancelar futuras</summary>
+                          <form action={cancelDebtFutureInstallmentsAction} className="inline-payment-form">
+                            <ReturnFields month={month} returnTo="/dividas" />
+                            <input name="debtId" type="hidden" value={debt.id} />
+                            <TextInput defaultValue={`${month}-01`} label="Cancelar a partir de" name="cancelFrom" type="date" />
+                            <button className="finance-secondary" type="submit">Cancelar parcelas</button>
+                          </form>
+                        </details>
+                        ) : null}
+                        {remainingTotal.greaterThan(0) ? (
+                        <details className="inline-payment-details">
+                          <summary>Refinanciar</summary>
+                          <form action={refinanceDebtAction} className="finance-edit-form">
+                            <ReturnFields month={month} returnTo="/dividas" />
+                            <input name="debtId" type="hidden" value={debt.id} />
+                            <TextInput defaultValue={`${debt.description} refinanciada`} label="Nova descricao" name="description" />
+                            <MoneyInput defaultValue={moneyInputValue(remainingTotal)} label="Novo valor" name="totalAmount" />
+                            <TextInput defaultValue={`${month}-01`} label="Data do refinanciamento" name="startDate" type="date" />
+                            <TextInput defaultValue={`${month}-15`} label="Primeiro vencimento" name="firstDueDate" type="date" />
+                            <TextInput defaultValue={debt.installmentCount - paidCount} label="Parcelas" name="installmentCount" type="number" />
+                            <label className="finance-field">
+                              <span>Frequencia</span>
+                              <select defaultValue={debt.frequency} name="frequency">
+                                <option value="MONTHLY">Mensal</option>
+                                <option value="FORTNIGHTLY">Quinzenal</option>
+                              </select>
+                            </label>
+                            <SplitModeSelect defaultValue={debtSplitMode} />
+                            <NotesField />
+                            <button className="finance-secondary" type="submit">Criar nova divida</button>
+                          </form>
+                        </details>
+                        ) : null}
                         <DeleteForm
                           action={deleteDebtAction}
                           buttonLabel="Confirmar"

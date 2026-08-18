@@ -318,7 +318,6 @@ model FixedExpense {
   description    String      @db.VarChar(160)
   amount         Decimal     @db.Decimal(19, 2)
   dueDay         Int
-  status         TransactionStatus @default(PENDING)
   active         Boolean     @default(true)
   startMonth     DateTime    @db.Date
   endedAt        DateTime?   @db.Date

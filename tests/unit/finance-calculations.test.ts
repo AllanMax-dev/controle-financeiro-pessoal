@@ -5,6 +5,7 @@ import { assertCreditCardConfigurationChange } from "../../src/modules/finance/a
 import {
   buildEqualSharePlan,
   buildInstallmentPlan,
+  buildInstallmentSharePlan,
   buildPersonTotal,
   buildSalaryOccurrencePlan,
   clampDayInMonth,
@@ -39,6 +40,20 @@ describe("finance calculations", () => {
     expect(shares).toHaveLength(2);
     expect(shares.map((share) => share.personEditorId)).toEqual(["allan", "mayara"]);
     expect(shares.map((share) => share.amount.toFixed(2))).toEqual(["50.00", "50.00"]);
+  });
+
+  it("keeps each shared installment exact when cents do not divide evenly", () => {
+    const plan = buildInstallmentSharePlan("100.00", 3, [
+      { amount: "50.00", personEditorId: "allan" },
+      { amount: "50.00", personEditorId: "mayara" },
+    ]);
+
+    expect(plan.map(({ shares }) => shares.map(({ amount }) => amount.toFixed(2)))).toEqual([
+      ["16.67", "16.67"],
+      ["16.67", "16.66"],
+      ["16.66", "16.67"],
+    ]);
+    expect(plan.map(({ shares }) => shares[0]!.amount.plus(shares[1]!.amount).toFixed(2))).toEqual(["33.34", "33.33", "33.33"]);
   });
 
   it("splits larger installments without losing cents", () => {

@@ -2,7 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 
 export type LifecycleClient = Prisma.TransactionClient;
 
-type AuditContext = {
+export type AuditContext = {
   editorId: string;
   workspaceId: string;
 };
@@ -43,8 +43,8 @@ export function assertExactlyOne(count: number, message: string) {
   }
 }
 
-function monthStart(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+function monthEnd(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0));
 }
 
 export async function canHardDeleteAccount(database: LifecycleClient, workspaceId: string, accountId: string) {
@@ -165,7 +165,7 @@ export async function archiveOrDeleteFixedExpense(
 
   const { count } = await database.fixedExpense.updateMany({
     where: { active: true, id: fixedExpenseId, workspaceId: context.workspaceId },
-    data: { active: false, endedAt: monthStart(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
+    data: { active: false, endedAt: monthEnd(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
   assertExactlyOne(count, "Gasto fixo não encontrado ou já encerrado.");
   await appendAudit(database, context, "FixedExpense", fixedExpenseId, "archive", { before: fixedExpense, reason: "has_history" });
@@ -201,7 +201,7 @@ export async function archiveOrDeleteSalary(
 
   const { count } = await database.salary.updateMany({
     where: { active: true, id: salaryId, workspaceId: context.workspaceId },
-    data: { active: false, archivedAt: monthStart(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
+    data: { active: false, archivedAt: monthEnd(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
   assertExactlyOne(count, "Salário não encontrado ou já encerrado.");
   await appendAudit(database, context, "Salary", salaryId, "archive", { before: salary, reason: "has_history" });

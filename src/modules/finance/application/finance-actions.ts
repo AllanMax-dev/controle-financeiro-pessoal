@@ -12,10 +12,10 @@ import { requireCurrentAccess } from "@/modules/access/application/require-curre
 import {
   buildEqualSharePlan,
   buildInstallmentPlan,
-  buildSalaryOccurrencePlan,
+  buildInstallmentSharePlan,
+  addMonths,
   creditCardFirstDueDate,
   dateFromInput,
-  fixedExpenseDueDate,
   installmentDueDate,
   clampDayInMonth,
   monthlyDueDate,
@@ -23,6 +23,8 @@ import {
 } from "@/modules/finance/domain/finance-calculations";
 import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
 import { assertCreditCardConfigurationChange, assertCreditCardPurchaseHasNoPayments, reconcileCreditCardInvoice, reconcileCreditCardInvoices } from "@/modules/finance/application/credit-card-reconciliation";
+import { assertDebtIntegrity, assertDebtStructureMutable, cancelDebtFutureInstallments, payDebtInstallment, undoDebtInstallmentPayment } from "@/modules/finance/application/debt-finance";
+import { confirmSalaryOccurrence, payFixedExpenseOccurrence, undoFixedExpensePayment, updateFixedExpenseRule, updateSalaryRule } from "@/modules/finance/application/recurring-finance";
 import {
   appendAudit,
   archiveInvestment,
@@ -82,6 +84,10 @@ function accountType(formData: FormData) {
 
 function monthStartFromDate(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function dayBefore(date: Date) {
+  return new Date(date.getTime() - 24 * 60 * 60 * 1000);
 }
 
 function assertFirstDueDateAfterPurchase(purchaseDate: Date, firstDueDate: Date) {
@@ -335,7 +341,6 @@ export async function createFixedExpenseAction(formData: FormData) {
       notes: optionalText(formData, "notes"),
       personEditorId,
       startMonth: monthStartFromInput(text(formData, "startMonth")),
-      status: text(formData, "status") === "SETTLED" ? "SETTLED" : "PENDING",
       workspaceId: access.workspaceId,
     },
   });
@@ -383,6 +388,7 @@ export async function createDebtAction(formData: FormData) {
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const sharePlan = split.explicit ? buildInstallmentSharePlan(totalAmount, installmentCount, split.shares) : [];
   const debtId = randomUUID();
 
   await getDatabase().$transaction(async (transaction) => {
@@ -421,12 +427,10 @@ export async function createDebtAction(formData: FormData) {
       });
 
       if (split.explicit) {
-        for (const share of split.shares) {
-          const shareAmount = buildInstallmentPlan(share.amount, installmentCount)[installment.number - 1]!.amount;
-
+        for (const share of sharePlan[installment.number - 1]!.shares) {
           await transaction.debtInstallmentShare.create({
             data: {
-              amount: shareAmount,
+              amount: share.amount,
               installmentId,
               paidAt: null,
               personEditorId: share.personEditorId,
@@ -437,6 +441,7 @@ export async function createDebtAction(formData: FormData) {
         }
       }
     }
+    await assertDebtIntegrity(transaction, access.workspaceId, debtId);
     await appendAudit(transaction, access, "Debt", debtId, "create", {
       installmentCount,
       totalAmount,
@@ -1081,39 +1086,37 @@ export async function updateFixedExpenseAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
+  const amount = parseMoneyInput(text(formData, "amount"));
+  const dueDay = integer(formData, "dueDay", 1, 31);
+  const startMonth = monthStartFromInput(text(formData, "startMonth"));
   await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
-  const { count } = await getDatabase().fixedExpense.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
+
+  await getDatabase().$transaction(async (transaction) => {
+    await updateFixedExpenseRule(transaction, access, {
       accountId,
-      amount: parseMoneyInput(text(formData, "amount")),
+      amount,
       categoryId,
       description: text(formData, "description"),
-      dueDay: integer(formData, "dueDay", 1, 31),
+      dueDay,
+      fixedExpenseId: id,
       notes: optionalText(formData, "notes"),
       personEditorId,
-      startMonth: monthStartFromInput(text(formData, "startMonth")),
-      status: text(formData, "status") === "SETTLED" ? "SETTLED" : "PENDING",
-      updatedByEditorId: access.editorId,
-      version: { increment: 1 },
-    },
+      selectedMonth: monthStartFromInput(text(formData, "month")),
+      startMonth,
+    });
   });
 
-  if (count !== 1) {
-    throw new Error("Gasto fixo nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "FixedExpense", id, "update");
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
 }
 
 export async function deleteFixedExpenseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "fixedExpenseId");
+  const effectiveAt = monthStartFromInput(text(formData, "month"));
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteFixedExpense(transaction, access, id);
+    await archiveOrDeleteFixedExpense(transaction, access, id, effectiveAt);
   });
 
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -1137,39 +1140,42 @@ export async function updateSalaryAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
+  const amount = parseMoneyInput(text(formData, "amount"));
+  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const paymentDay = integer(formData, "paymentDay", 1, 31);
+  const startMonth = monthStartFromInput(text(formData, "startMonth"));
   await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId, true);
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "INCOME");
-  const { count } = await getDatabase().salary.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
+
+  await getDatabase().$transaction(async (transaction) => {
+    if (!accountId) {
+      throw new Error("Informe a conta de recebimento.");
+    }
+    await updateSalaryRule(transaction, access, {
       accountId,
-      amount: parseMoneyInput(text(formData, "amount")),
+      amount,
       categoryId,
       description: text(formData, "description"),
-      frequency: text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY",
+      frequency,
       notes: optionalText(formData, "notes"),
-      paymentDay: integer(formData, "paymentDay", 1, 31),
+      paymentDay,
       personEditorId,
-      startMonth: monthStartFromInput(text(formData, "startMonth")),
-      updatedByEditorId: access.editorId,
-      version: { increment: 1 },
-    },
+      salaryId: id,
+      selectedMonth: monthStartFromInput(text(formData, "month")),
+      startMonth,
+    });
   });
 
-  if (count !== 1) {
-    throw new Error("Salario nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "Salary", id, "update");
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
 }
 
 export async function deleteSalaryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "salaryId");
+  const effectiveAt = monthStartFromInput(text(formData, "month"));
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteSalary(transaction, access, id);
+    await archiveOrDeleteSalary(transaction, access, id, effectiveAt);
   });
 
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
@@ -1190,84 +1196,15 @@ export async function confirmSalaryReceiptAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const salaryId = text(formData, "salaryId");
   const dueDate = dateFromInput(text(formData, "dueDate"));
-  const salary = await getDatabase().salary.findFirstOrThrow({
-    where: { active: true, id: salaryId, workspaceId: access.workspaceId },
-    select: {
-      accountId: true,
-      amount: true,
-      categoryId: true,
-      description: true,
-      frequency: true,
-      id: true,
-      notes: true,
-      paymentDay: true,
-      personEditorId: true,
-      startMonth: true,
-    },
-  });
-  const salaryMonth = new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), 1));
-  const occurrence = buildSalaryOccurrencePlan(salary.amount, salary.frequency, salaryMonth, salary.paymentDay).find(
-    (item) => item.dueDate.getTime() === dueDate.getTime(),
-  );
-
-  if (dueDate < salary.startMonth || !occurrence) {
-    throw new Error("Vencimento invalido para esse salario.");
-  }
 
   await getDatabase().$transaction(async (transaction) => {
-    await assertAccountForPerson(transaction, access.workspaceId, salary.personEditorId, salary.accountId, true);
-    await assertCategoryKind(transaction, access.workspaceId, salary.categoryId, "INCOME");
-    const transactionRecord = await transaction.transaction.upsert({
-      where: { salaryId_competenceDate: { competenceDate: dueDate, salaryId: salary.id } },
-      update: {
-        accountId: salary.accountId,
-        affectsBalance: true,
-        amount: occurrence.amount,
-        categoryId: salary.categoryId,
-        description: salary.description,
-        dueDate,
-        notes: salary.notes,
-        personEditorId: salary.personEditorId,
-        settledAt: dueDate,
-        status: "SETTLED",
-        updatedByEditorId: access.editorId,
-        version: { increment: 1 },
-      },
-      create: {
-        accountId: salary.accountId,
-        affectsBalance: true,
-        amount: occurrence.amount,
-        categoryId: salary.categoryId,
-        competenceDate: dueDate,
-        createdByEditorId: access.editorId,
-        description: salary.description,
-        dueDate,
-        notes: salary.notes,
-        personEditorId: salary.personEditorId,
-        salaryId: salary.id,
-        settledAt: dueDate,
-        status: "SETTLED",
-        type: "INCOME",
-        workspaceId: access.workspaceId,
-      },
-      select: { id: true },
-    });
-
-    await transaction.auditLog.create({
-      data: {
-        action: "confirm",
-        editorId: access.editorId,
-        entityId: transactionRecord.id,
-        entityType: "Transaction",
-        workspaceId: access.workspaceId,
-      },
-    });
+    await confirmSalaryOccurrence(transaction, access, salaryId, dueDate);
   });
 
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
 }
 
-export async function payFixedExpenseAction(formData: FormData) {
+export async function payFixedExpenseOccurrenceAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const fixedExpenseId = text(formData, "fixedExpenseId");
   const dueDate = dateFromInput(text(formData, "dueDate"));
@@ -1276,82 +1213,25 @@ export async function payFixedExpenseAction(formData: FormData) {
 
   await getDatabase().$transaction(async (transaction) => {
     const fixedExpense = await transaction.fixedExpense.findFirstOrThrow({
-      where: { active: true, id: fixedExpenseId, workspaceId: access.workspaceId },
-      select: {
-        accountId: true,
-        amount: true,
-        categoryId: true,
-        description: true,
-        dueDay: true,
-        endedAt: true,
-        id: true,
-        notes: true,
-        personEditorId: true,
-        startMonth: true,
-      },
+      where: { id: fixedExpenseId, workspaceId: access.workspaceId },
+      select: { accountId: true },
     });
-    const expectedDueDate = fixedExpenseDueDate(new Date(Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), 1)), fixedExpense.dueDay);
-
-    if (
-      dueDate.getTime() !== expectedDueDate.getTime() ||
-      dueDate < fixedExpense.startMonth ||
-      (fixedExpense.endedAt && dueDate > fixedExpense.endedAt)
-    ) {
-      throw new Error("Vencimento invalido para esse gasto fixo.");
-    }
-
-    if (!money(amount).equals(fixedExpense.amount)) {
-      throw new Error("Pagamento parcial de gasto fixo ainda nao suportado.");
-    }
-
     const accountId = text(formData, "accountId") || fixedExpense.accountId;
-    await assertAccountForPerson(transaction, access.workspaceId, fixedExpense.personEditorId, accountId, true);
-    await assertCategoryKind(transaction, access.workspaceId, fixedExpense.categoryId, "EXPENSE");
-    const transactionRecord = await transaction.transaction.upsert({
-      where: { fixedExpenseId_competenceDate: { competenceDate: dueDate, fixedExpenseId: fixedExpense.id } },
-      update: {
-        accountId,
-        affectsBalance: true,
-        amount: fixedExpense.amount,
-        categoryId: fixedExpense.categoryId,
-        description: fixedExpense.description,
-        dueDate,
-        notes: fixedExpense.notes,
-        personEditorId: fixedExpense.personEditorId,
-        settledAt: paidAt,
-        status: "SETTLED",
-        updatedByEditorId: access.editorId,
-        version: { increment: 1 },
-      },
-      create: {
-        accountId,
-        affectsBalance: true,
-        amount: fixedExpense.amount,
-        categoryId: fixedExpense.categoryId,
-        competenceDate: dueDate,
-        createdByEditorId: access.editorId,
-        description: fixedExpense.description,
-        dueDate,
-        fixedExpenseId: fixedExpense.id,
-        notes: fixedExpense.notes,
-        personEditorId: fixedExpense.personEditorId,
-        settledAt: paidAt,
-        status: "SETTLED",
-        type: "EXPENSE",
-        workspaceId: access.workspaceId,
-      },
-      select: { id: true },
-    });
 
-    await transaction.auditLog.create({
-      data: {
-        action: "pay",
-        editorId: access.editorId,
-        entityId: transactionRecord.id,
-        entityType: "Transaction",
-        workspaceId: access.workspaceId,
-      },
-    });
+    if (!accountId) {
+      throw new Error("Informe a conta de pagamento.");
+    }
+    await payFixedExpenseOccurrence(transaction, access, { accountId, amount, dueDate, fixedExpenseId, paidAt });
+  });
+
+  refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
+}
+
+export async function undoFixedExpensePaymentAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+
+  await getDatabase().$transaction(async (transaction) => {
+    await undoFixedExpensePayment(transaction, access, text(formData, "transactionId"));
   });
 
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -1365,73 +1245,12 @@ export async function payDebtInstallmentAction(formData: FormData) {
   const accountId = text(formData, "accountId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const installment = await transaction.debtInstallment.findFirstOrThrow({
-      where: { id: installmentId, workspaceId: access.workspaceId },
-      include: { debt: true },
-    });
-
-    if (installment.status === "CANCELED") {
-      throw new Error("Parcela cancelada nao pode ser paga.");
-    }
-
-    if (!money(amount).equals(installment.amount)) {
-      throw new Error("Pagamento parcial de parcela ainda nao suportado.");
-    }
-
-    await assertAccountForPerson(transaction, access.workspaceId, installment.personEditorId, accountId, true);
-    await assertCategoryKind(transaction, access.workspaceId, installment.debt.categoryId, "EXPENSE");
-    const transactionRecord = await transaction.transaction.upsert({
-      where: { debtInstallmentId: installment.id },
-      update: {
-        accountId,
-        affectsBalance: true,
-        amount: installment.amount,
-        categoryId: installment.debt.categoryId,
-        description: installment.debt.description,
-        dueDate: installment.dueDate,
-        notes: optionalText(formData, "notes"),
-        personEditorId: installment.personEditorId,
-        settledAt: paidAt,
-        status: "SETTLED",
-        updatedByEditorId: access.editorId,
-        version: { increment: 1 },
-      },
-      create: {
-        accountId,
-        affectsBalance: true,
-        amount: installment.amount,
-        categoryId: installment.debt.categoryId,
-        competenceDate: installment.dueDate,
-        createdByEditorId: access.editorId,
-        debtInstallmentId: installment.id,
-        description: installment.debt.description,
-        dueDate: installment.dueDate,
-        notes: optionalText(formData, "notes"),
-        personEditorId: installment.personEditorId,
-        settledAt: paidAt,
-        status: "SETTLED",
-        type: "EXPENSE",
-        workspaceId: access.workspaceId,
-      },
-      select: { id: true },
-    });
-
-    await transaction.debtInstallment.update({
-      where: { id: installment.id },
-      data: { paidAt, status: "PAID" },
-    });
-    await transaction.debtInstallmentShare.updateMany({
-      where: { installmentId: installment.id, workspaceId: access.workspaceId },
-      data: { paidAt, status: "PAID" },
-    });
-    await transaction.auditLog.create({
-      data: {
-        action: "pay",
-        editorId: access.editorId,
-        entityId: transactionRecord.id,
-        entityType: "Transaction",
-        workspaceId: access.workspaceId,
-      },
+    await payDebtInstallment(transaction, access, {
+      accountId,
+      amount,
+      installmentId,
+      notes: optionalText(formData, "notes"),
+      paidAt,
     });
   });
 
@@ -1443,33 +1262,125 @@ export async function deleteDebtInstallmentPaymentAction(formData: FormData) {
   const installmentId = text(formData, "installmentId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const installment = await transaction.debtInstallment.findFirstOrThrow({
-      where: { id: installmentId, workspaceId: access.workspaceId },
-      include: { transaction: true },
+    await undoDebtInstallmentPayment(transaction, access, installmentId);
+  });
+
+  refreshAndRedirect(returnTo(formData, "/dividas"));
+}
+
+export async function updateDebtMetadataAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const id = text(formData, "debtId");
+
+  await getDatabase().$transaction(async (transaction) => {
+    const current = await transaction.debt.findFirstOrThrow({ where: { active: true, id, workspaceId: access.workspaceId } });
+    const { count } = await transaction.debt.updateMany({
+      where: { active: true, id, workspaceId: access.workspaceId },
+      data: {
+        description: text(formData, "description"),
+        notes: optionalText(formData, "notes"),
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
     });
+    assertExactlyOne(count, "Divida nao encontrada.");
+    await appendAudit(transaction, access, "Debt", id, "update_metadata", { before: current });
+  });
 
-    if (installment.transaction) {
-      await appendAudit(transaction, access, "Transaction", installment.transaction.id, "delete", {
-        before: installment.transaction,
-        reason: "debt_payment_reversed",
-      });
-      const { count } = await transaction.transaction.deleteMany({
-        where: { id: installment.transaction.id, workspaceId: access.workspaceId },
-      });
-      assertExactlyOne(count, "Pagamento da parcela não encontrado.");
-    }
+  refreshAndRedirect(returnTo(formData, "/dividas"));
+}
 
-    await transaction.debtInstallment.update({
-      where: { id: installment.id },
-      data: { paidAt: null, status: "PENDING" },
+export async function cancelDebtFutureInstallmentsAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const debtId = text(formData, "debtId");
+  const cancelFrom = dateFromInput(text(formData, "cancelFrom"));
+
+  await getDatabase().$transaction(async (transaction) => {
+    await cancelDebtFutureInstallments(transaction, access, debtId, cancelFrom);
+  });
+
+  refreshAndRedirect(returnTo(formData, "/dividas"));
+}
+
+export async function refinanceDebtAction(formData: FormData) {
+  const access = await requireCurrentAccess();
+  const sourceDebtId = text(formData, "debtId");
+  const totalAmount = parseMoneyInput(text(formData, "totalAmount"));
+  const installmentCount = integer(formData, "installmentCount", 1, 240);
+  const firstDueDate = dateFromInput(text(formData, "firstDueDate"));
+  const startDate = dateFromInput(text(formData, "startDate"));
+  const frequency = text(formData, "frequency") === "FORTNIGHTLY" ? "FORTNIGHTLY" : "MONTHLY";
+  const debtId = randomUUID();
+
+  await getDatabase().$transaction(async (transaction) => {
+    const sourceDebt = await transaction.debt.findFirstOrThrow({
+      where: { active: true, id: sourceDebtId, workspaceId: access.workspaceId },
+    });
+    const split = await automaticSplitFromForm(formData, access.workspaceId, sourceDebt.personEditorId, totalAmount);
+    const sharePlan = split.explicit ? buildInstallmentSharePlan(totalAmount, installmentCount, split.shares) : [];
+    const futureInstallments = await transaction.debtInstallment.findMany({
+      where: { debtId: sourceDebt.id, status: "PENDING", transaction: { is: null }, workspaceId: access.workspaceId },
+      select: { id: true },
+    });
+    const futureInstallmentIds = futureInstallments.map(({ id }) => id);
+
+    await transaction.debtInstallment.updateMany({
+      where: { id: { in: futureInstallmentIds }, workspaceId: access.workspaceId },
+      data: { paidAt: null, status: "CANCELED" },
     });
     await transaction.debtInstallmentShare.updateMany({
-      where: { installmentId: installment.id, workspaceId: access.workspaceId },
-      data: { paidAt: null, status: "PENDING" },
+      where: { installmentId: { in: futureInstallmentIds }, workspaceId: access.workspaceId },
+      data: { paidAt: null, status: "CANCELED" },
     });
-    await appendAudit(transaction, access, "DebtInstallment", installment.id, "reopen", {
-      reason: "payment_reversed",
+    await transaction.debt.update({
+      where: { id: sourceDebt.id },
+      data: { active: false, canceledAt: startDate, updatedByEditorId: access.editorId, version: { increment: 1 } },
     });
+    await transaction.debt.create({
+      data: {
+        categoryId: sourceDebt.categoryId,
+        createdByEditorId: access.editorId,
+        description: text(formData, "description"),
+        firstDueDate,
+        frequency,
+        id: debtId,
+        installmentCount,
+        notes: optionalText(formData, "notes"),
+        personEditorId: sourceDebt.personEditorId,
+        startDate,
+        totalAmount,
+        workspaceId: access.workspaceId,
+      },
+    });
+    for (const installment of buildInstallmentPlan(totalAmount, installmentCount)) {
+      const installmentId = randomUUID();
+      await transaction.debtInstallment.create({
+        data: {
+          amount: installment.amount,
+          debtId,
+          dueDate: installmentDueDate(firstDueDate, installment.number - 1, frequency),
+          id: installmentId,
+          number: installment.number,
+          personEditorId: sourceDebt.personEditorId,
+          workspaceId: access.workspaceId,
+        },
+      });
+      if (split.explicit) {
+        for (const share of sharePlan[installment.number - 1]!.shares) {
+          await transaction.debtInstallmentShare.create({
+            data: {
+              amount: share.amount,
+              installmentId,
+              personEditorId: share.personEditorId,
+              workspaceId: access.workspaceId,
+            },
+          });
+        }
+      }
+    }
+    await assertDebtIntegrity(transaction, access.workspaceId, debtId);
+    await appendAudit(transaction, access, "Debt", sourceDebt.id, "refinance", { replacementDebtId: debtId });
+    await appendAudit(transaction, access, "Debt", debtId, "create_from_refinance", { sourceDebtId: sourceDebt.id });
   });
 
   refreshAndRedirect(returnTo(formData, "/dividas"));
@@ -1487,6 +1398,7 @@ export async function updateDebtAction(formData: FormData) {
   const categoryId = optionalText(formData, "categoryId");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
+  const sharePlan = split.explicit ? buildInstallmentSharePlan(totalAmount, installmentCount, split.shares) : [];
 
   await getDatabase().$transaction(async (transaction) => {
     const currentDebt = await transaction.debt.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
@@ -1494,14 +1406,7 @@ export async function updateDebtAction(formData: FormData) {
       where: { debtId: id, workspaceId: access.workspaceId },
       select: { id: true },
     });
-    const installmentIds = currentInstallments.map((installment) => installment.id);
-    const paymentCount = installmentIds.length > 0
-      ? await transaction.transaction.count({ where: { debtInstallmentId: { in: installmentIds }, workspaceId: access.workspaceId } })
-      : 0;
-
-    if (paymentCount > 0) {
-      throw new Error("Nao e possivel editar uma divida com parcelas pagas. Exclua ou ajuste os pagamentos antes de alterar a estrutura.");
-    }
+    await assertDebtStructureMutable(transaction, access.workspaceId, id);
 
     const { count } = await transaction.debt.updateMany({
       where: { id, workspaceId: access.workspaceId },
@@ -1547,12 +1452,10 @@ export async function updateDebtAction(formData: FormData) {
       });
 
       if (split.explicit) {
-        for (const share of split.shares) {
-          const shareAmount = buildInstallmentPlan(share.amount, installmentCount)[installment.number - 1]!.amount;
-
+        for (const share of sharePlan[installment.number - 1]!.shares) {
           await transaction.debtInstallmentShare.create({
             data: {
-              amount: shareAmount,
+              amount: share.amount,
               installmentId,
               paidAt: null,
               personEditorId: share.personEditorId,
@@ -1563,6 +1466,7 @@ export async function updateDebtAction(formData: FormData) {
         }
       }
     }
+    await assertDebtIntegrity(transaction, access.workspaceId, id);
     await appendAudit(transaction, access, "Debt", id, "update", { before: currentDebt });
   });
 
@@ -2171,7 +2075,7 @@ export async function deleteTransferAction(formData: FormData) {
 export async function archiveFixedExpenseAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "fixedExpenseId");
-  const endedAt = monthStartFromInput(text(formData, "month"));
+  const endedAt = dayBefore(addMonths(monthStartFromInput(text(formData, "month")), 1));
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.fixedExpense.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
     const { count } = await transaction.fixedExpense.updateMany({
@@ -2192,7 +2096,7 @@ export async function archiveFixedExpenseAction(formData: FormData) {
 export async function archiveSalaryAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "salaryId");
-  const archivedAt = monthStartFromInput(text(formData, "month"));
+  const archivedAt = dayBefore(addMonths(monthStartFromInput(text(formData, "month")), 1));
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.salary.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
     const { count } = await transaction.salary.updateMany({

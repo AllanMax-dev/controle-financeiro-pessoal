@@ -209,7 +209,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
     const result = await database!.$transaction((transaction) => archiveOrDeleteSalary(transaction, fixture.context, salary.id, effectiveAt));
 
     expect(result).toBe("ARCHIVED");
-    expect(await database!.salary.findUniqueOrThrow({ where: { id: salary.id } })).toMatchObject({ active: false, archivedAt: competenceDate });
+    expect(await database!.salary.findUniqueOrThrow({ where: { id: salary.id } })).toMatchObject({ active: false, archivedAt: new Date("2026-08-31T00:00:00.000Z") });
     await expectIntegrity(fixture.workspace.id, "Salary", salary.id, "archive", [financialTransaction.id]);
   });
 
@@ -244,7 +244,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
     const result = await database!.$transaction((transaction) => archiveOrDeleteFixedExpense(transaction, fixture.context, fixedExpense.id, effectiveAt));
 
     expect(result).toBe("ARCHIVED");
-    expect(await database!.fixedExpense.findUniqueOrThrow({ where: { id: fixedExpense.id } })).toMatchObject({ active: false, endedAt: competenceDate });
+    expect(await database!.fixedExpense.findUniqueOrThrow({ where: { id: fixedExpense.id } })).toMatchObject({ active: false, endedAt: new Date("2026-08-31T00:00:00.000Z") });
     await expectIntegrity(fixture.workspace.id, "FixedExpense", fixedExpense.id, "archive", [financialTransaction.id]);
   });
 

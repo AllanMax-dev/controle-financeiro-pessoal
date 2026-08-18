@@ -134,6 +134,37 @@ export function buildInstallmentPlan(total: Decimal.Value, count: number) {
   }));
 }
 
+export function buildInstallmentSharePlan(
+  total: Decimal.Value,
+  count: number,
+  shares: { amount: Decimal.Value; personEditorId: string }[],
+) {
+  if (shares.length === 0) {
+    return [];
+  }
+  if (!sumMoney(shares.map(({ amount }) => amount)).equals(total)) {
+    throw new Error("A soma das responsabilidades deve ser igual ao valor total.");
+  }
+  const installments = buildInstallmentPlan(total, count);
+  const personPlans = shares.slice(0, -1).map((share) => buildInstallmentPlan(share.amount, count));
+
+  return installments.map((installment, installmentIndex) => {
+    const allocatedShares = shares.slice(0, -1).map((share, shareIndex) => ({
+      amount: personPlans[shareIndex]![installmentIndex]!.amount,
+      personEditorId: share.personEditorId,
+    }));
+    const allocatedAmount = sumMoney(allocatedShares.map(({ amount }) => amount));
+
+    return {
+      number: installment.number,
+      shares: [
+        ...allocatedShares,
+        { amount: money(installment.amount.minus(allocatedAmount)), personEditorId: shares.at(-1)!.personEditorId },
+      ],
+    };
+  });
+}
+
 export function buildEqualSharePlan(total: Decimal.Value, personEditorIds: string[]) {
   return allocateMoney(total, personEditorIds.length).map((amount, index) => ({
     amount,

@@ -184,13 +184,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       where: { competenceDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
-      take: 80,
     }),
     database.fixedExpense.findMany({
       where: {
         startMonth: { lt: end },
         workspaceId,
-        OR: [{ active: true }, { endedAt: { gte: start } }],
+        OR: [{ endedAt: null }, { endedAt: { gte: start } }],
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ dueDay: "asc" }, { description: "asc" }],
@@ -204,7 +203,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       where: {
         startMonth: { lt: end },
         workspaceId,
-        OR: [{ active: true }, { archivedAt: { gte: start } }],
+        OR: [{ archivedAt: null }, { archivedAt: { gte: start } }],
       },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ paymentDay: "asc" }, { description: "asc" }],
@@ -370,8 +369,12 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         };
       }),
   );
-  const fixedExpenseOccurrences = fixedExpenses.map((fixedExpense) => {
+  const fixedExpenseOccurrences = fixedExpenses.flatMap((fixedExpense) => {
     const dueDate = fixedExpenseDueDate(start, fixedExpense.dueDay);
+
+    if (dueDate < fixedExpense.startMonth || (fixedExpense.endedAt && dueDate > fixedExpense.endedAt)) {
+      return [];
+    }
     const fixedExpenseTransaction = transactions.find(
       (transaction) =>
         transaction.fixedExpenseId === fixedExpense.id &&
@@ -379,7 +382,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         transaction.competenceDate.getTime() === dueDate.getTime(),
     );
 
-    return {
+    return [{
       account: fixedExpense.account,
       accountId: fixedExpense.accountId,
       amount: fixedExpenseTransaction?.amount ?? fixedExpense.amount,
@@ -394,7 +397,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
       personEditorId: fixedExpense.personEditorId,
       status: fixedExpenseTransaction?.status === "SETTLED" ? "SETTLED" : "PENDING",
       transactionId: fixedExpenseTransaction?.id ?? null,
-    };
+    }];
   });
   const debtInstallmentResponsibilities = debtInstallments.flatMap((installment) =>
     installment.shares.length > 0
@@ -547,14 +550,14 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     debts: debts.filter(debtIsVisible),
     debtInstallments: debtInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     fixedExpenseOccurrences: fixedExpenseOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    fixedExpenses: fixedExpenses.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
+    fixedExpenses: fixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     archivedGoals: goalsWithTotals.filter(({ personEditorId, status }) => status === "ARCHIVED" && personIsVisible(personEditorId)),
     goals: goalsWithTotals.filter(({ personEditorId, status }) => status !== "ARCHIVED" && personIsVisible(personEditorId)),
     investments: investments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     month,
     people,
-    salaries: salaries.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
+    salaries: salaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     salaryOccurrences: salaryOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     transactions: transactions.filter(({ personEditorId }) => personIsVisible(personEditorId)),
     transfers: transfers.filter(
