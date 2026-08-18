@@ -21,9 +21,23 @@ import {
   monthlyDueDate,
   monthStartFromInput,
 } from "@/modules/finance/domain/finance-calculations";
-import { getAccountCurrentBalance } from "@/modules/finance/application/finance-queries";
 import { assertCreditCardConfigurationChange, assertCreditCardPurchaseHasNoPayments, reconcileCreditCardInvoice, reconcileCreditCardInvoices } from "@/modules/finance/application/credit-card-reconciliation";
 import { assertDebtIntegrity, assertDebtStructureMutable, cancelDebtFutureInstallments, payDebtInstallment, undoDebtInstallmentPayment } from "@/modules/finance/application/debt-finance";
+import {
+  assertAccountForPerson,
+  assertInvestmentAccountForPerson,
+  assertOptimisticUpdate,
+  createBalanceAdjustment,
+  createSavingsGoalMovement,
+  createTransfer,
+  deleteBalanceAdjustment,
+  deleteSavingsGoalMovement,
+  deleteTransfer,
+  lockSavingsGoal,
+  updateBalanceAdjustment,
+  updateSavingsGoalMovement,
+  updateTransfer,
+} from "@/modules/finance/application/financial-consistency";
 import { confirmSalaryOccurrence, payFixedExpenseOccurrence, undoFixedExpensePayment, updateFixedExpenseRule, updateSalaryRule } from "@/modules/finance/application/recurring-finance";
 import {
   appendAudit,
@@ -69,6 +83,10 @@ function integer(formData: FormData, name: string, min: number, max: number) {
   }
 
   return value;
+}
+
+function expectedVersion(formData: FormData) {
+  return integer(formData, "version", 1, 2_147_483_647);
 }
 
 function accountType(formData: FormData) {
@@ -178,31 +196,6 @@ async function assertPerson(workspaceId: string, personEditorId: string) {
 
   if (!person) {
     throw new Error("Pessoa inválida.");
-  }
-}
-
-async function assertAccountForPerson(
-  database: FinanceValidationClient,
-  workspaceId: string,
-  personEditorId: string,
-  accountId: string | null | undefined,
-  required = false,
-) {
-  if (!accountId) {
-    if (required) {
-      throw new Error("Informe a conta.");
-    }
-
-    return;
-  }
-
-  const account = await database.financialAccount.findFirst({
-    where: { active: true, id: accountId, workspaceId },
-    select: { personEditorId: true },
-  });
-
-  if (!account || account.personEditorId !== personEditorId) {
-    throw new Error("Conta invalida para a pessoa selecionada.");
   }
 }
 
@@ -735,41 +728,12 @@ export async function createSavingsGoalMovementAction(formData: FormData) {
   const type = text(formData, "type") === "WITHDRAWAL" ? "WITHDRAWAL" : "DEPOSIT";
 
   await getDatabase().$transaction(async (transaction) => {
-    const goal = await transaction.savingsGoal.findFirstOrThrow({
-      where: { id: goalId, status: "ACTIVE", workspaceId: access.workspaceId },
-      include: { movements: { select: { amount: true, type: true } } },
-    });
-    const currentAmount = sumMoney(
-      goal.movements.map((movement) =>
-        movement.type === "DEPOSIT" ? movement.amount : money(movement.amount).negated(),
-      ),
-    );
-
-    if (type === "WITHDRAWAL" && money(currentAmount.minus(amount)).isNegative()) {
-      throw new Error("Retirada maior que o valor reservado no cofrinho.");
-    }
-
-    await transaction.savingsGoalMovement.create({
-      data: {
-        accountId: goal.accountId,
-        amount,
-        createdByEditorId: access.editorId,
-        goalId: goal.id,
-        movementDate,
-        notes: optionalText(formData, "notes"),
-        personEditorId: goal.personEditorId,
-        type,
-        workspaceId: access.workspaceId,
-      },
-    });
-    await transaction.auditLog.create({
-      data: {
-        action: type === "DEPOSIT" ? "deposit" : "withdraw",
-        editorId: access.editorId,
-        entityId: goal.id,
-        entityType: "SavingsGoal",
-        workspaceId: access.workspaceId,
-      },
+    await createSavingsGoalMovement(transaction, access, {
+      amount,
+      goalId,
+      movementDate,
+      notes: optionalText(formData, "notes"),
+      type,
     });
   });
 
@@ -781,7 +745,7 @@ export async function createInvestmentAction(formData: FormData) {
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
   const accountId = optionalText(formData, "accountId");
-  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
+  await assertInvestmentAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const investment = await getDatabase().investment.create({
     data: {
       accountId,
@@ -805,87 +769,45 @@ export async function createTransferAction(formData: FormData) {
   const sourceAccountId = text(formData, "sourceAccountId");
   const destinationAccountId = text(formData, "destinationAccountId");
 
-  if (sourceAccountId === destinationAccountId) {
-    throw new Error("A conta de destino deve ser diferente da conta de origem.");
-  }
-
-  const [source, destination] = await Promise.all([
-    getDatabase().financialAccount.findFirstOrThrow({
-      where: { id: sourceAccountId, workspaceId: access.workspaceId },
-      select: { personEditorId: true },
-    }),
-    getDatabase().financialAccount.findFirstOrThrow({
-      where: { id: destinationAccountId, workspaceId: access.workspaceId },
-      select: { personEditorId: true },
-    }),
-  ]);
-  const transfer = await getDatabase().transfer.create({
-    data: {
+  await getDatabase().$transaction(async (transaction) => {
+    await createTransfer(transaction, access, {
       amount: parseMoneyInput(text(formData, "amount")),
-      createdByEditorId: access.editorId,
       destinationAccountId,
-      destinationPersonEditorId: destination.personEditorId,
       notes: optionalText(formData, "notes"),
       sourceAccountId,
-      sourcePersonEditorId: source.personEditorId,
       transferDate: dateFromInput(text(formData, "transferDate")),
-      workspaceId: access.workspaceId,
-    },
+    });
   });
 
-  await audit(access.workspaceId, access.editorId, "Transfer", transfer.id, "create");
   refreshAndRedirect(returnTo(formData, "/transferencias"));
 }
 
 export async function createBalanceAdjustmentAction(formData: FormData) {
   const access = await requireCurrentAccess();
-  const account = await getDatabase().financialAccount.findFirstOrThrow({
-    where: { id: text(formData, "accountId"), workspaceId: access.workspaceId },
-    select: { id: true, personEditorId: true },
-  });
-  const previousBalance = await getAccountCurrentBalance(access.workspaceId, account.id);
-  const targetBalance = parseMoneyInput(text(formData, "targetBalance"));
-  const adjustment = await getDatabase().balanceAdjustment.create({
-    data: {
-      accountId: account.id,
-      createdByEditorId: access.editorId,
-      difference: money(targetBalance.minus(previousBalance)),
+  await getDatabase().$transaction(async (transaction) => {
+    await createBalanceAdjustment(transaction, access, {
+      accountId: text(formData, "accountId"),
       effectiveAt: dateFromInput(text(formData, "effectiveAt")),
       notes: optionalText(formData, "notes"),
-      personEditorId: account.personEditorId,
-      previousBalance,
-      targetBalance,
-      workspaceId: access.workspaceId,
-    },
+      targetBalance: parseMoneyInput(text(formData, "targetBalance")),
+    });
   });
 
-  await audit(access.workspaceId, access.editorId, "BalanceAdjustment", adjustment.id, "create");
   refreshAndRedirect(returnTo(formData, "/bancos"));
 }
 
 export async function updateBalanceAdjustmentAction(formData: FormData) {
   const access = await requireCurrentAccess();
   const id = text(formData, "adjustmentId");
-  const current = await getDatabase().balanceAdjustment.findFirstOrThrow({
-    where: { id, workspaceId: access.workspaceId },
-    select: { previousBalance: true },
-  });
-  const targetBalance = parseMoneyInput(text(formData, "targetBalance"));
-  const { count } = await getDatabase().balanceAdjustment.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      difference: money(targetBalance.minus(current.previousBalance)),
+  await getDatabase().$transaction(async (transaction) => {
+    await updateBalanceAdjustment(transaction, access, {
+      adjustmentId: id,
       effectiveAt: dateFromInput(text(formData, "effectiveAt")),
       notes: optionalText(formData, "notes"),
-      targetBalance,
-    },
+      targetBalance: parseMoneyInput(text(formData, "targetBalance")),
+    });
   });
 
-  if (count !== 1) {
-    throw new Error("Ajuste nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "BalanceAdjustment", id, "update");
   refreshAndRedirect(returnTo(formData, "/bancos"));
 }
 
@@ -894,10 +816,7 @@ export async function deleteBalanceAdjustmentAction(formData: FormData) {
   const id = text(formData, "adjustmentId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const current = await transaction.balanceAdjustment.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
-    await appendAudit(transaction, access, "BalanceAdjustment", id, "delete", { before: current });
-    const { count } = await transaction.balanceAdjustment.deleteMany({ where: { id, workspaceId: access.workspaceId } });
-    assertExactlyOne(count, "Ajuste não encontrado.");
+    await deleteBalanceAdjustment(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/bancos"));
@@ -957,6 +876,7 @@ export async function updateAccountAction(formData: FormData) {
   await assertPerson(access.workspaceId, personEditorId);
   const initialBalance = parseMoneyInput(text(formData, "initialBalance", "0"));
   const type = accountType(formData);
+  const version = expectedVersion(formData);
 
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.financialAccount.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
@@ -973,7 +893,7 @@ export async function updateAccountAction(formData: FormData) {
     }
 
     const { count } = await transaction.financialAccount.updateMany({
-      where: { active: true, id, workspaceId: access.workspaceId },
+      where: { active: true, id, version, workspaceId: access.workspaceId },
       data: {
         color: optionalText(formData, "color"),
         initialBalance,
@@ -985,7 +905,7 @@ export async function updateAccountAction(formData: FormData) {
         version: { increment: 1 },
       },
     });
-    assertExactlyOne(count, "Conta não encontrada ou arquivada.");
+    assertOptimisticUpdate(count);
     await appendAudit(transaction, access, "FinancialAccount", id, "update", { before: current });
   });
   refreshAndRedirect(returnTo(formData, "/bancos"));
@@ -996,7 +916,7 @@ export async function deleteAccountAction(formData: FormData) {
   const id = text(formData, "accountId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteAccount(transaction, access, id);
+    await archiveOrDeleteAccount(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/bancos"));
@@ -1007,7 +927,7 @@ export async function restoreAccountAction(formData: FormData) {
   const id = text(formData, "accountId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await restoreAccount(transaction, access, id);
+    await restoreAccount(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/bancos"));
@@ -1023,31 +943,32 @@ export async function updateTransactionAction(formData: FormData) {
   const date = dateFromInput(text(formData, "date"));
   const accountId = optionalText(formData, "accountId");
   const categoryId = optionalText(formData, "categoryId");
-  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId, status === "SETTLED");
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, type);
-  const { count } = await getDatabase().transaction.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      accountId,
-      amount: parseMoneyInput(text(formData, "amount")),
-      categoryId,
-      competenceDate: date,
-      description: text(formData, "description"),
-      notes: optionalText(formData, "notes"),
-      personEditorId,
-      settledAt: status === "SETTLED" ? date : null,
-      status,
-      type,
-      updatedByEditorId: access.editorId,
-      version: { increment: 1 },
-    },
+  const version = expectedVersion(formData);
+
+  await getDatabase().$transaction(async (transaction) => {
+    await assertAccountForPerson(transaction, access.workspaceId, personEditorId, accountId, status === "SETTLED");
+    const current = await transaction.transaction.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
+    const { count } = await transaction.transaction.updateMany({
+      where: { id, version, workspaceId: access.workspaceId },
+      data: {
+        accountId,
+        amount: parseMoneyInput(text(formData, "amount")),
+        categoryId,
+        competenceDate: date,
+        description: text(formData, "description"),
+        notes: optionalText(formData, "notes"),
+        personEditorId,
+        settledAt: status === "SETTLED" ? date : null,
+        status,
+        type,
+        updatedByEditorId: access.editorId,
+        version: { increment: 1 },
+      },
+    });
+    assertOptimisticUpdate(count);
+    await appendAudit(transaction, access, "Transaction", id, "update", { before: current });
   });
-
-  if (count !== 1) {
-    throw new Error("Lancamento nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "Transaction", id, "update");
   refreshAndRedirect(returnTo(formData, type === "INCOME" ? "/recebimentos" : "/gastos-variaveis"));
 }
 
@@ -1099,6 +1020,7 @@ export async function updateFixedExpenseAction(formData: FormData) {
       categoryId,
       description: text(formData, "description"),
       dueDay,
+      expectedVersion: expectedVersion(formData),
       fixedExpenseId: id,
       notes: optionalText(formData, "notes"),
       personEditorId,
@@ -1116,7 +1038,7 @@ export async function deleteFixedExpenseAction(formData: FormData) {
   const effectiveAt = monthStartFromInput(text(formData, "month"));
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteFixedExpense(transaction, access, id, effectiveAt);
+    await archiveOrDeleteFixedExpense(transaction, access, id, effectiveAt, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -1127,7 +1049,7 @@ export async function restoreFixedExpenseAction(formData: FormData) {
   const id = text(formData, "fixedExpenseId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await restoreFixedExpense(transaction, access, id);
+    await restoreFixedExpense(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -1156,6 +1078,7 @@ export async function updateSalaryAction(formData: FormData) {
       amount,
       categoryId,
       description: text(formData, "description"),
+      expectedVersion: expectedVersion(formData),
       frequency,
       notes: optionalText(formData, "notes"),
       paymentDay,
@@ -1175,7 +1098,7 @@ export async function deleteSalaryAction(formData: FormData) {
   const effectiveAt = monthStartFromInput(text(formData, "month"));
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteSalary(transaction, access, id, effectiveAt);
+    await archiveOrDeleteSalary(transaction, access, id, effectiveAt, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
@@ -1186,7 +1109,7 @@ export async function restoreSalaryAction(formData: FormData) {
   const id = text(formData, "salaryId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await restoreSalary(transaction, access, id);
+    await restoreSalary(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/recebimentos"));
@@ -1275,7 +1198,7 @@ export async function updateDebtMetadataAction(formData: FormData) {
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.debt.findFirstOrThrow({ where: { active: true, id, workspaceId: access.workspaceId } });
     const { count } = await transaction.debt.updateMany({
-      where: { active: true, id, workspaceId: access.workspaceId },
+      where: { active: true, id, version: expectedVersion(formData), workspaceId: access.workspaceId },
       data: {
         description: text(formData, "description"),
         notes: optionalText(formData, "notes"),
@@ -1283,7 +1206,7 @@ export async function updateDebtMetadataAction(formData: FormData) {
         version: { increment: 1 },
       },
     });
-    assertExactlyOne(count, "Divida nao encontrada.");
+    assertOptimisticUpdate(count);
     await appendAudit(transaction, access, "Debt", id, "update_metadata", { before: current });
   });
 
@@ -1296,7 +1219,7 @@ export async function cancelDebtFutureInstallmentsAction(formData: FormData) {
   const cancelFrom = dateFromInput(text(formData, "cancelFrom"));
 
   await getDatabase().$transaction(async (transaction) => {
-    await cancelDebtFutureInstallments(transaction, access, debtId, cancelFrom);
+    await cancelDebtFutureInstallments(transaction, access, debtId, cancelFrom, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/dividas"));
@@ -1332,10 +1255,11 @@ export async function refinanceDebtAction(formData: FormData) {
       where: { installmentId: { in: futureInstallmentIds }, workspaceId: access.workspaceId },
       data: { paidAt: null, status: "CANCELED" },
     });
-    await transaction.debt.update({
-      where: { id: sourceDebt.id },
+    const archivedSource = await transaction.debt.updateMany({
+      where: { id: sourceDebt.id, version: expectedVersion(formData), workspaceId: access.workspaceId },
       data: { active: false, canceledAt: startDate, updatedByEditorId: access.editorId, version: { increment: 1 } },
     });
+    assertOptimisticUpdate(archivedSource.count);
     await transaction.debt.create({
       data: {
         categoryId: sourceDebt.categoryId,
@@ -1399,6 +1323,7 @@ export async function updateDebtAction(formData: FormData) {
   await assertCategoryKind(getDatabase(), access.workspaceId, categoryId, "EXPENSE");
   const split = await automaticSplitFromForm(formData, access.workspaceId, personEditorId, totalAmount);
   const sharePlan = split.explicit ? buildInstallmentSharePlan(totalAmount, installmentCount, split.shares) : [];
+  const version = expectedVersion(formData);
 
   await getDatabase().$transaction(async (transaction) => {
     const currentDebt = await transaction.debt.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
@@ -1409,7 +1334,7 @@ export async function updateDebtAction(formData: FormData) {
     await assertDebtStructureMutable(transaction, access.workspaceId, id);
 
     const { count } = await transaction.debt.updateMany({
-      where: { id, workspaceId: access.workspaceId },
+      where: { id, version, workspaceId: access.workspaceId },
       data: {
         categoryId,
         description: text(formData, "description"),
@@ -1425,9 +1350,7 @@ export async function updateDebtAction(formData: FormData) {
       },
     });
 
-    if (count !== 1) {
-      throw new Error("Divida nao encontrada.");
-    }
+    assertOptimisticUpdate(count);
 
     const deletedInstallments = await transaction.debtInstallment.deleteMany({ where: { debtId: id, workspaceId: access.workspaceId } });
     if (deletedInstallments.count !== currentInstallments.length) {
@@ -1478,7 +1401,7 @@ export async function deleteDebtAction(formData: FormData) {
   const id = text(formData, "debtId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteDebt(transaction, access, id);
+    await archiveOrDeleteDebt(transaction, access, id, new Date(), expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/dividas"));
@@ -1489,7 +1412,7 @@ export async function restoreDebtAction(formData: FormData) {
   const id = text(formData, "debtId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await restoreDebt(transaction, access, id);
+    await restoreDebt(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/dividas"));
@@ -1503,9 +1426,10 @@ export async function updateCreditCardAction(formData: FormData) {
   const dueDay = integer(formData, "dueDay", 1, 31);
   await assertPerson(access.workspaceId, personEditorId);
   const paymentAccountId = optionalText(formData, "paymentAccountId");
-  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, paymentAccountId);
+  const version = expectedVersion(formData);
 
   await getDatabase().$transaction(async (transaction) => {
+    await assertAccountForPerson(transaction, access.workspaceId, personEditorId, paymentAccountId);
     const current = await transaction.creditCard.findFirstOrThrow({
       where: { id, workspaceId: access.workspaceId },
       include: { _count: { select: { invoices: true, purchases: true } } },
@@ -1514,7 +1438,7 @@ export async function updateCreditCardAction(formData: FormData) {
     assertCreditCardConfigurationChange(current, { closingDay, dueDay, personEditorId }, hasHistory);
 
     const { count } = await transaction.creditCard.updateMany({
-      where: { id, workspaceId: access.workspaceId },
+      where: { id, version, workspaceId: access.workspaceId },
       data: {
         closingDay,
         color: optionalText(formData, "color"),
@@ -1528,7 +1452,7 @@ export async function updateCreditCardAction(formData: FormData) {
         version: { increment: 1 },
       },
     });
-    assertExactlyOne(count, "Cartao nao encontrado.");
+    assertOptimisticUpdate(count);
     await appendAudit(transaction, access, "CreditCard", id, "update", { before: current });
   });
 
@@ -1540,7 +1464,7 @@ export async function deleteCreditCardAction(formData: FormData) {
   const id = text(formData, "cardId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await archiveOrDeleteCreditCard(transaction, access, id);
+    await archiveOrDeleteCreditCard(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -1551,7 +1475,7 @@ export async function restoreCreditCardAction(formData: FormData) {
   const id = text(formData, "cardId");
 
   await getDatabase().$transaction(async (transaction) => {
-    await restoreCreditCard(transaction, access, id);
+    await restoreCreditCard(transaction, access, id, expectedVersion(formData));
   });
 
   refreshAndRedirect(returnTo(formData, "/cartoes"));
@@ -1867,24 +1791,30 @@ export async function updateSavingsGoalAction(formData: FormData) {
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
   const accountId = optionalText(formData, "accountId");
-  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
-  const { count } = await getDatabase().savingsGoal.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
-      accountId,
-      deadline: optionalText(formData, "deadline") ? dateFromInput(text(formData, "deadline")) : null,
-      description: optionalText(formData, "description"),
-      name: text(formData, "name"),
-      personEditorId,
-      targetAmount: parseMoneyInput(text(formData, "targetAmount")),
-    },
+
+  await getDatabase().$transaction(async (transaction) => {
+    await lockSavingsGoal(transaction, access.workspaceId, id);
+    const current = await transaction.savingsGoal.findFirstOrThrow({
+      where: { id, workspaceId: access.workspaceId },
+      include: { _count: { select: { movements: true } } },
+    });
+    await assertAccountForPerson(transaction, access.workspaceId, personEditorId, accountId);
+    if (current._count.movements > 0 && (current.personEditorId !== personEditorId || current.accountId !== accountId)) {
+      throw new Error("A pessoa e a conta de um cofrinho movimentado não podem ser alteradas.");
+    }
+    await transaction.savingsGoal.update({
+      where: { id },
+      data: {
+        accountId,
+        deadline: optionalText(formData, "deadline") ? dateFromInput(text(formData, "deadline")) : null,
+        description: optionalText(formData, "description"),
+        name: text(formData, "name"),
+        personEditorId,
+        targetAmount: parseMoneyInput(text(formData, "targetAmount")),
+      },
+    });
+    await appendAudit(transaction, access, "SavingsGoal", id, "update", { before: current });
   });
-
-  if (count !== 1) {
-    throw new Error("Cofrinho nao encontrado.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "SavingsGoal", id, "update");
   refreshAndRedirect(returnTo(formData, "/cofrinhos"));
 }
 
@@ -1917,36 +1847,15 @@ export async function updateSavingsGoalMovementAction(formData: FormData) {
   const type = text(formData, "type") === "WITHDRAWAL" ? "WITHDRAWAL" : "DEPOSIT";
 
   await getDatabase().$transaction(async (transaction) => {
-    const movement = await transaction.savingsGoalMovement.findFirstOrThrow({
-      where: { id: movementId, workspaceId: access.workspaceId },
-      include: { goal: true },
-    });
-    const siblingMovements = await transaction.savingsGoalMovement.findMany({
-      where: { goalId: movement.goalId, id: { not: movement.id }, workspaceId: access.workspaceId },
-      select: { amount: true, type: true },
-    });
-    const currentWithoutMovement = sumMoney(
-      siblingMovements.map((sibling) =>
-        sibling.type === "DEPOSIT" ? sibling.amount : money(sibling.amount).negated(),
-      ),
-    );
-
-    if (type === "WITHDRAWAL" && money(currentWithoutMovement.minus(amount)).isNegative()) {
-      throw new Error("Retirada maior que o valor reservado no cofrinho.");
-    }
-
-    await transaction.savingsGoalMovement.updateMany({
-      where: { id: movement.id, workspaceId: access.workspaceId },
-      data: {
-        amount,
-        movementDate: dateFromInput(text(formData, "movementDate")),
-        notes: optionalText(formData, "notes"),
-        type,
-      },
+    await updateSavingsGoalMovement(transaction, access, {
+      amount,
+      movementDate: dateFromInput(text(formData, "movementDate")),
+      movementId,
+      notes: optionalText(formData, "notes"),
+      type,
     });
   });
 
-  await audit(access.workspaceId, access.editorId, "SavingsGoalMovement", movementId, "update");
   refreshAndRedirect(returnTo(formData, "/cofrinhos"));
 }
 
@@ -1955,12 +1864,7 @@ export async function deleteSavingsGoalMovementAction(formData: FormData) {
   const movementId = text(formData, "movementId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const movement = await transaction.savingsGoalMovement.findFirstOrThrow({
-      where: { id: movementId, workspaceId: access.workspaceId },
-    });
-    await appendAudit(transaction, access, "SavingsGoalMovement", movementId, "delete", { before: movement });
-    const { count } = await transaction.savingsGoalMovement.deleteMany({ where: { id: movementId, workspaceId: access.workspaceId } });
-    assertExactlyOne(count, "Movimentação não encontrada.");
+    await deleteSavingsGoalMovement(transaction, access, movementId);
   });
 
   refreshAndRedirect(returnTo(formData, "/cofrinhos"));
@@ -1972,7 +1876,7 @@ export async function updateInvestmentAction(formData: FormData) {
   const personEditorId = text(formData, "personEditorId");
   await assertPerson(access.workspaceId, personEditorId);
   const accountId = optionalText(formData, "accountId");
-  await assertAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
+  await assertInvestmentAccountForPerson(getDatabase(), access.workspaceId, personEditorId, accountId);
   const { count } = await getDatabase().investment.updateMany({
     where: { id, workspaceId: access.workspaceId },
     data: {
@@ -2022,39 +1926,18 @@ export async function updateTransferAction(formData: FormData) {
   const sourceAccountId = text(formData, "sourceAccountId");
   const destinationAccountId = text(formData, "destinationAccountId");
 
-  if (sourceAccountId === destinationAccountId) {
-    throw new Error("A conta de destino deve ser diferente da conta de origem.");
-  }
-
-  const [source, destination] = await Promise.all([
-    getDatabase().financialAccount.findFirstOrThrow({
-      where: { id: sourceAccountId, workspaceId: access.workspaceId },
-      select: { personEditorId: true },
-    }),
-    getDatabase().financialAccount.findFirstOrThrow({
-      where: { id: destinationAccountId, workspaceId: access.workspaceId },
-      select: { personEditorId: true },
-    }),
-  ]);
-  const { count } = await getDatabase().transfer.updateMany({
-    where: { id, workspaceId: access.workspaceId },
-    data: {
+  await getDatabase().$transaction(async (transaction) => {
+    await updateTransfer(transaction, access, {
       amount: parseMoneyInput(text(formData, "amount")),
       destinationAccountId,
-      destinationPersonEditorId: destination.personEditorId,
+      expectedVersion: expectedVersion(formData),
       notes: optionalText(formData, "notes"),
       sourceAccountId,
-      sourcePersonEditorId: source.personEditorId,
       transferDate: dateFromInput(text(formData, "transferDate")),
-      version: { increment: 1 },
-    },
+      transferId: id,
+    });
   });
 
-  if (count !== 1) {
-    throw new Error("Transferencia nao encontrada.");
-  }
-
-  await audit(access.workspaceId, access.editorId, "Transfer", id, "update");
   refreshAndRedirect(returnTo(formData, "/transferencias"));
 }
 
@@ -2063,10 +1946,7 @@ export async function deleteTransferAction(formData: FormData) {
   const id = text(formData, "transferId");
 
   await getDatabase().$transaction(async (transaction) => {
-    const transfer = await transaction.transfer.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
-    await appendAudit(transaction, access, "Transfer", id, "delete", { before: transfer });
-    const { count } = await transaction.transfer.deleteMany({ where: { id, workspaceId: access.workspaceId } });
-    assertExactlyOne(count, "Transferência não encontrada.");
+    await deleteTransfer(transaction, access, id);
   });
 
   refreshAndRedirect(returnTo(formData, "/transferencias"));
@@ -2079,7 +1959,7 @@ export async function archiveFixedExpenseAction(formData: FormData) {
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.fixedExpense.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
     const { count } = await transaction.fixedExpense.updateMany({
-      where: { active: true, id, workspaceId: access.workspaceId },
+      where: { active: true, id, version: expectedVersion(formData), workspaceId: access.workspaceId },
       data: {
         active: false,
         endedAt,
@@ -2087,7 +1967,7 @@ export async function archiveFixedExpenseAction(formData: FormData) {
         version: { increment: 1 },
       },
     });
-    assertExactlyOne(count, "Recorrência não encontrada ou já encerrada.");
+    assertOptimisticUpdate(count);
     await appendAudit(transaction, access, "FixedExpense", id, "archive", { before: current, endedAt });
   });
   refreshAndRedirect(returnTo(formData, "/despesas-fixas"));
@@ -2100,7 +1980,7 @@ export async function archiveSalaryAction(formData: FormData) {
   await getDatabase().$transaction(async (transaction) => {
     const current = await transaction.salary.findFirstOrThrow({ where: { id, workspaceId: access.workspaceId } });
     const { count } = await transaction.salary.updateMany({
-      where: { active: true, id, workspaceId: access.workspaceId },
+      where: { active: true, id, version: expectedVersion(formData), workspaceId: access.workspaceId },
       data: {
         active: false,
         archivedAt,
@@ -2108,7 +1988,7 @@ export async function archiveSalaryAction(formData: FormData) {
         version: { increment: 1 },
       },
     });
-    assertExactlyOne(count, "Salário não encontrado ou já encerrado.");
+    assertOptimisticUpdate(count);
     await appendAudit(transaction, access, "Salary", id, "archive", { archivedAt, before: current });
   });
   refreshAndRedirect(returnTo(formData, "/recebimentos"));

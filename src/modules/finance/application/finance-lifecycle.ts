@@ -9,6 +9,8 @@ export type AuditContext = {
 
 type LifecycleResult = "ARCHIVED" | "DELETED" | "RESTORED";
 
+const OPTIMISTIC_LOCK_ERROR = "Este registro foi alterado em outro dispositivo. Atualize a página antes de salvar novamente.";
+
 function auditMetadata(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -40,6 +42,12 @@ export function assertExactlyOne(count: number, message: string) {
 
   if (count !== 1) {
     throw new Error(message);
+  }
+}
+
+function assertLifecycleVersion(count: number) {
+  if (count !== 1) {
+    throw new Error(OPTIMISTIC_LOCK_ERROR);
   }
 }
 
@@ -81,6 +89,7 @@ export async function archiveOrDeleteAccount(
   database: LifecycleClient,
   context: AuditContext,
   accountId: string,
+  expectedVersion: number,
 ): Promise<LifecycleResult> {
   const account = await database.financialAccount.findFirstOrThrow({
     where: { id: accountId, workspaceId: context.workspaceId },
@@ -88,27 +97,27 @@ export async function archiveOrDeleteAccount(
 
   if (await canHardDeleteAccount(database, context.workspaceId, accountId)) {
     await appendAudit(database, context, "FinancialAccount", accountId, "delete", { before: account, reason: "unused" });
-    const { count } = await database.financialAccount.deleteMany({ where: { id: accountId, workspaceId: context.workspaceId } });
-    assertExactlyOne(count, "Conta não encontrada.");
+    const { count } = await database.financialAccount.deleteMany({ where: { id: accountId, version: expectedVersion, workspaceId: context.workspaceId } });
+    assertLifecycleVersion(count);
     return "DELETED";
   }
 
   const { count } = await database.financialAccount.updateMany({
-    where: { active: true, id: accountId, workspaceId: context.workspaceId },
+    where: { active: true, id: accountId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: false, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Conta não encontrada ou já arquivada.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "FinancialAccount", accountId, "archive", { before: account, reason: "has_history" });
   return "ARCHIVED";
 }
 
-export async function restoreAccount(database: LifecycleClient, context: AuditContext, accountId: string): Promise<LifecycleResult> {
+export async function restoreAccount(database: LifecycleClient, context: AuditContext, accountId: string, expectedVersion: number): Promise<LifecycleResult> {
   const account = await database.financialAccount.findFirstOrThrow({ where: { id: accountId, workspaceId: context.workspaceId } });
   const { count } = await database.financialAccount.updateMany({
-    where: { active: false, id: accountId, workspaceId: context.workspaceId },
+    where: { active: false, id: accountId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: true, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Conta não encontrada ou já ativa.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "FinancialAccount", accountId, "restore", { before: account });
   return "RESTORED";
 }
@@ -151,34 +160,35 @@ export async function archiveOrDeleteFixedExpense(
   database: LifecycleClient,
   context: AuditContext,
   fixedExpenseId: string,
-  effectiveAt = new Date(),
+  effectiveAt: Date,
+  expectedVersion: number,
 ): Promise<LifecycleResult> {
   const fixedExpense = await database.fixedExpense.findFirstOrThrow({ where: { id: fixedExpenseId, workspaceId: context.workspaceId } });
   const transactionCount = await database.transaction.count({ where: { fixedExpenseId, workspaceId: context.workspaceId } });
 
   if (transactionCount === 0) {
     await appendAudit(database, context, "FixedExpense", fixedExpenseId, "delete", { before: fixedExpense, reason: "unused" });
-    const { count } = await database.fixedExpense.deleteMany({ where: { id: fixedExpenseId, workspaceId: context.workspaceId } });
-    assertExactlyOne(count, "Gasto fixo não encontrado.");
+    const { count } = await database.fixedExpense.deleteMany({ where: { id: fixedExpenseId, version: expectedVersion, workspaceId: context.workspaceId } });
+    assertLifecycleVersion(count);
     return "DELETED";
   }
 
   const { count } = await database.fixedExpense.updateMany({
-    where: { active: true, id: fixedExpenseId, workspaceId: context.workspaceId },
+    where: { active: true, id: fixedExpenseId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: false, endedAt: monthEnd(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Gasto fixo não encontrado ou já encerrado.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "FixedExpense", fixedExpenseId, "archive", { before: fixedExpense, reason: "has_history" });
   return "ARCHIVED";
 }
 
-export async function restoreFixedExpense(database: LifecycleClient, context: AuditContext, fixedExpenseId: string): Promise<LifecycleResult> {
+export async function restoreFixedExpense(database: LifecycleClient, context: AuditContext, fixedExpenseId: string, expectedVersion: number): Promise<LifecycleResult> {
   const fixedExpense = await database.fixedExpense.findFirstOrThrow({ where: { id: fixedExpenseId, workspaceId: context.workspaceId } });
   const { count } = await database.fixedExpense.updateMany({
-    where: { active: false, id: fixedExpenseId, workspaceId: context.workspaceId },
+    where: { active: false, id: fixedExpenseId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: true, endedAt: null, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Gasto fixo não encontrado ou já ativo.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "FixedExpense", fixedExpenseId, "restore", { before: fixedExpense });
   return "RESTORED";
 }
@@ -187,39 +197,40 @@ export async function archiveOrDeleteSalary(
   database: LifecycleClient,
   context: AuditContext,
   salaryId: string,
-  effectiveAt = new Date(),
+  effectiveAt: Date,
+  expectedVersion: number,
 ): Promise<LifecycleResult> {
   const salary = await database.salary.findFirstOrThrow({ where: { id: salaryId, workspaceId: context.workspaceId } });
   const transactionCount = await database.transaction.count({ where: { salaryId, workspaceId: context.workspaceId } });
 
   if (transactionCount === 0) {
     await appendAudit(database, context, "Salary", salaryId, "delete", { before: salary, reason: "unused" });
-    const { count } = await database.salary.deleteMany({ where: { id: salaryId, workspaceId: context.workspaceId } });
-    assertExactlyOne(count, "Salário não encontrado.");
+    const { count } = await database.salary.deleteMany({ where: { id: salaryId, version: expectedVersion, workspaceId: context.workspaceId } });
+    assertLifecycleVersion(count);
     return "DELETED";
   }
 
   const { count } = await database.salary.updateMany({
-    where: { active: true, id: salaryId, workspaceId: context.workspaceId },
+    where: { active: true, id: salaryId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: false, archivedAt: monthEnd(effectiveAt), updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Salário não encontrado ou já encerrado.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "Salary", salaryId, "archive", { before: salary, reason: "has_history" });
   return "ARCHIVED";
 }
 
-export async function restoreSalary(database: LifecycleClient, context: AuditContext, salaryId: string): Promise<LifecycleResult> {
+export async function restoreSalary(database: LifecycleClient, context: AuditContext, salaryId: string, expectedVersion: number): Promise<LifecycleResult> {
   const salary = await database.salary.findFirstOrThrow({ where: { id: salaryId, workspaceId: context.workspaceId } });
   const { count } = await database.salary.updateMany({
-    where: { active: false, id: salaryId, workspaceId: context.workspaceId },
+    where: { active: false, id: salaryId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: true, archivedAt: null, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Salário não encontrado ou já ativo.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "Salary", salaryId, "restore", { before: salary });
   return "RESTORED";
 }
 
-export async function archiveOrDeleteCreditCard(database: LifecycleClient, context: AuditContext, cardId: string): Promise<LifecycleResult> {
+export async function archiveOrDeleteCreditCard(database: LifecycleClient, context: AuditContext, cardId: string, expectedVersion: number): Promise<LifecycleResult> {
   const card = await database.creditCard.findFirstOrThrow({ where: { id: cardId, workspaceId: context.workspaceId } });
   const [purchaseCount, installmentCount, invoiceCount] = await Promise.all([
     database.creditCardPurchase.count({ where: { cardId, workspaceId: context.workspaceId } }),
@@ -229,27 +240,27 @@ export async function archiveOrDeleteCreditCard(database: LifecycleClient, conte
 
   if (purchaseCount + installmentCount + invoiceCount === 0) {
     await appendAudit(database, context, "CreditCard", cardId, "delete", { before: card, reason: "unused" });
-    const { count } = await database.creditCard.deleteMany({ where: { id: cardId, workspaceId: context.workspaceId } });
-    assertExactlyOne(count, "Cartão não encontrado.");
+    const { count } = await database.creditCard.deleteMany({ where: { id: cardId, version: expectedVersion, workspaceId: context.workspaceId } });
+    assertLifecycleVersion(count);
     return "DELETED";
   }
 
   const { count } = await database.creditCard.updateMany({
-    where: { active: true, id: cardId, workspaceId: context.workspaceId },
+    where: { active: true, id: cardId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: false, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Cartão não encontrado ou já arquivado.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "CreditCard", cardId, "archive", { before: card, reason: "has_history" });
   return "ARCHIVED";
 }
 
-export async function restoreCreditCard(database: LifecycleClient, context: AuditContext, cardId: string): Promise<LifecycleResult> {
+export async function restoreCreditCard(database: LifecycleClient, context: AuditContext, cardId: string, expectedVersion: number): Promise<LifecycleResult> {
   const card = await database.creditCard.findFirstOrThrow({ where: { id: cardId, workspaceId: context.workspaceId } });
   const { count } = await database.creditCard.updateMany({
-    where: { active: false, id: cardId, workspaceId: context.workspaceId },
+    where: { active: false, id: cardId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: true, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Cartão não encontrado ou já ativo.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "CreditCard", cardId, "restore", { before: card });
   return "RESTORED";
 }
@@ -258,7 +269,8 @@ export async function archiveOrDeleteDebt(
   database: LifecycleClient,
   context: AuditContext,
   debtId: string,
-  effectiveAt = new Date(),
+  effectiveAt: Date,
+  expectedVersion: number,
 ): Promise<LifecycleResult> {
   const debt = await database.debt.findFirstOrThrow({ where: { id: debtId, workspaceId: context.workspaceId } });
   const paymentCount = await database.transaction.count({
@@ -267,27 +279,27 @@ export async function archiveOrDeleteDebt(
 
   if (paymentCount === 0) {
     await appendAudit(database, context, "Debt", debtId, "delete", { before: debt, reason: "unpaid" });
-    const { count } = await database.debt.deleteMany({ where: { id: debtId, workspaceId: context.workspaceId } });
-    assertExactlyOne(count, "Dívida não encontrada.");
+    const { count } = await database.debt.deleteMany({ where: { id: debtId, version: expectedVersion, workspaceId: context.workspaceId } });
+    assertLifecycleVersion(count);
     return "DELETED";
   }
 
   const { count } = await database.debt.updateMany({
-    where: { active: true, id: debtId, workspaceId: context.workspaceId },
+    where: { active: true, id: debtId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: false, canceledAt: effectiveAt, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Dívida não encontrada ou já encerrada.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "Debt", debtId, "archive", { before: debt, reason: "has_payments" });
   return "ARCHIVED";
 }
 
-export async function restoreDebt(database: LifecycleClient, context: AuditContext, debtId: string): Promise<LifecycleResult> {
+export async function restoreDebt(database: LifecycleClient, context: AuditContext, debtId: string, expectedVersion: number): Promise<LifecycleResult> {
   const debt = await database.debt.findFirstOrThrow({ where: { id: debtId, workspaceId: context.workspaceId } });
   const { count } = await database.debt.updateMany({
-    where: { active: false, id: debtId, workspaceId: context.workspaceId },
+    where: { active: false, id: debtId, version: expectedVersion, workspaceId: context.workspaceId },
     data: { active: true, canceledAt: null, updatedByEditorId: context.editorId, version: { increment: 1 } },
   });
-  assertExactlyOne(count, "Dívida não encontrada ou já ativa.");
+  assertLifecycleVersion(count);
   await appendAudit(database, context, "Debt", debtId, "restore", { before: debt });
   return "RESTORED";
 }

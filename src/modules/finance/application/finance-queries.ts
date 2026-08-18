@@ -457,6 +457,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     const personDebt = debtInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
     const personCardInstallments = cardInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
     const personInvestments = investments.filter((investment) => investment.personEditorId === person.id);
+    const personInvestmentAccounts = personAccounts.filter(({ type }) => type === "INVESTMENT");
     const transactionIncome = sumMoney(personTransactions.filter(({ status, type }) => type === "INCOME" && status === "SETTLED").map(({ amount }) => amount));
     const receivableTransactions = sumMoney(personDirectTransactions.filter(({ status, type }) => type === "INCOME" && status === "PENDING").map(({ amount }) => amount));
     const salaryReceivable = sumMoney(personSalaryOccurrences.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
@@ -469,7 +470,8 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
     const cardPending = sumMoney(personCardInstallments.filter(({ status }) => status === "OPEN").map(({ amount }) => amount));
     const cardPaid = sumMoney(personCardInstallments.filter(({ status }) => status === "PAID").map(({ amount }) => amount));
     const available = sumMoney(personAccounts.filter(({ type }) => type !== "INVESTMENT").map(({ balance }) => balance));
-    const investmentRecords = sumMoney(personInvestments.map(({ amount }) => amount));
+    const investmentRecords = sumMoney(personInvestments.filter(({ accountId }) => !accountId).map(({ amount }) => amount));
+    const invested = money(investmentRecords.plus(sumMoney(personInvestmentAccounts.map(({ balance }) => balance))));
     const paid = sumMoney(
       personDirectTransactions
         .filter(({ status, type }) => status === "SETTLED" && type === "EXPENSE")
@@ -490,7 +492,7 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
         available,
         expenses: transactionExpenses.plus(fixedTotal).plus(debtTotal).plus(cardTotal),
         income: transactionIncome,
-        investments: investmentRecords,
+        investments: invested,
         paid,
         pending: pendingTransactions.plus(fixedPending).plus(debtPending).plus(cardPending),
         receivable: receivableTransactions.plus(salaryReceivable),

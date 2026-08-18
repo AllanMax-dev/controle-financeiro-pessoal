@@ -102,7 +102,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
   test("conta sem histórico é excluída", async () => {
     const fixture = await createFixture("unused-account");
     const account = await createAccount(fixture.workspace.id, fixture.editor.id, "Conta vazia");
-    const result = await database!.$transaction((transaction) => archiveOrDeleteAccount(transaction, fixture.context, account.id));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteAccount(transaction, fixture.context, account.id, account.version));
 
     expect(result).toBe("DELETED");
     expect(await database!.financialAccount.findUnique({ where: { id: account.id } })).toBeNull();
@@ -130,7 +130,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
       },
     });
     const before = await getFinanceOverview(fixture.workspace.id, "2026-08");
-    const result = await database!.$transaction((transaction) => archiveOrDeleteAccount(transaction, fixture.context, account.id));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteAccount(transaction, fixture.context, account.id, account.version));
     const archivedAccount = await database!.financialAccount.findUniqueOrThrow({ where: { id: account.id } });
     const after = await getFinanceOverview(fixture.workspace.id, "2026-08");
 
@@ -206,7 +206,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
         workspaceId: fixture.workspace.id,
       },
     });
-    const result = await database!.$transaction((transaction) => archiveOrDeleteSalary(transaction, fixture.context, salary.id, effectiveAt));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteSalary(transaction, fixture.context, salary.id, effectiveAt, salary.version));
 
     expect(result).toBe("ARCHIVED");
     expect(await database!.salary.findUniqueOrThrow({ where: { id: salary.id } })).toMatchObject({ active: false, archivedAt: new Date("2026-08-31T00:00:00.000Z") });
@@ -241,7 +241,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
         workspaceId: fixture.workspace.id,
       },
     });
-    const result = await database!.$transaction((transaction) => archiveOrDeleteFixedExpense(transaction, fixture.context, fixedExpense.id, effectiveAt));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteFixedExpense(transaction, fixture.context, fixedExpense.id, effectiveAt, fixedExpense.version));
 
     expect(result).toBe("ARCHIVED");
     expect(await database!.fixedExpense.findUniqueOrThrow({ where: { id: fixedExpense.id } })).toMatchObject({ active: false, endedAt: new Date("2026-08-31T00:00:00.000Z") });
@@ -307,7 +307,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
         workspaceId: fixture.workspace.id,
       },
     });
-    const result = await database!.$transaction((transaction) => archiveOrDeleteCreditCard(transaction, fixture.context, card.id));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteCreditCard(transaction, fixture.context, card.id, card.version));
 
     expect(result).toBe("ARCHIVED");
     expect((await database!.creditCard.findUniqueOrThrow({ where: { id: card.id } })).active).toBe(false);
@@ -356,7 +356,7 @@ integrationTest("ciclo de vida financeiro com PostgreSQL real", () => {
         workspaceId: fixture.workspace.id,
       },
     });
-    const result = await database!.$transaction((transaction) => archiveOrDeleteDebt(transaction, fixture.context, debt.id, effectiveAt));
+    const result = await database!.$transaction((transaction) => archiveOrDeleteDebt(transaction, fixture.context, debt.id, effectiveAt, debt.version));
 
     expect(result).toBe("ARCHIVED");
     expect((await database!.debt.findUniqueOrThrow({ where: { id: debt.id } })).active).toBe(false);

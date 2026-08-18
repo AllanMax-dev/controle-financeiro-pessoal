@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { assertAccountForPerson, assertOptimisticUpdate } from "@/modules/finance/application/financial-consistency";
 import { appendAudit, type AuditContext } from "@/modules/finance/application/finance-lifecycle";
 import { addMonths, buildSalaryOccurrencePlan, fixedExpenseDueDate } from "@/modules/finance/domain/finance-calculations";
 import { money } from "@/modules/shared/domain/money";
@@ -26,6 +27,7 @@ export async function updateSalaryRule(
     amount: ReturnType<typeof money>;
     categoryId: string | null;
     description: string;
+    expectedVersion: number;
     frequency: "FORTNIGHTLY" | "MONTHLY";
     notes: string | null;
     paymentDay: number;
@@ -39,6 +41,7 @@ export async function updateSalaryRule(
     where: { active: true, id: input.salaryId, workspaceId: context.workspaceId },
     include: { transactions: { orderBy: { competenceDate: "desc" }, take: 1 } },
   });
+  await assertAccountForPerson(transaction, context.workspaceId, input.personEditorId, input.accountId, true);
   const hasHistory = current.transactions.length > 0;
   const structuralChanged = current.personEditorId !== input.personEditorId ||
     !money(current.amount).equals(input.amount) ||
@@ -50,10 +53,11 @@ export async function updateSalaryRule(
 
   if (hasHistory && structuralChanged) {
     const startMonth = nextRuleStart(input.selectedMonth, input.startMonth, current.transactions[0]!.competenceDate);
-    await transaction.salary.update({
-      where: { id: current.id },
+    const archived = await transaction.salary.updateMany({
+      where: { id: current.id, version: input.expectedVersion, workspaceId: context.workspaceId },
       data: { active: false, archivedAt: dayBefore(startMonth), updatedByEditorId: context.editorId, version: { increment: 1 } },
     });
+    assertOptimisticUpdate(archived.count);
     const nextRule = await transaction.salary.create({
       data: {
         accountId: input.accountId,
@@ -74,8 +78,8 @@ export async function updateSalaryRule(
     return { id: nextRule.id, result: "VERSIONED" as const };
   }
 
-  await transaction.salary.update({
-    where: { id: current.id },
+  const updated = await transaction.salary.updateMany({
+    where: { id: current.id, version: input.expectedVersion, workspaceId: context.workspaceId },
     data: {
       accountId: input.accountId,
       amount: input.amount,
@@ -90,6 +94,7 @@ export async function updateSalaryRule(
       version: { increment: 1 },
     },
   });
+  assertOptimisticUpdate(updated.count);
   await appendAudit(transaction, context, "Salary", current.id, "update", { before: current });
   return { id: current.id, result: "UPDATED" as const };
 }
@@ -103,6 +108,7 @@ export async function updateFixedExpenseRule(
     categoryId: string | null;
     description: string;
     dueDay: number;
+    expectedVersion: number;
     fixedExpenseId: string;
     notes: string | null;
     personEditorId: string;
@@ -114,6 +120,7 @@ export async function updateFixedExpenseRule(
     where: { active: true, id: input.fixedExpenseId, workspaceId: context.workspaceId },
     include: { transactions: { orderBy: { competenceDate: "desc" }, take: 1 } },
   });
+  await assertAccountForPerson(transaction, context.workspaceId, input.personEditorId, input.accountId);
   const hasHistory = current.transactions.length > 0;
   const structuralChanged = current.personEditorId !== input.personEditorId ||
     !money(current.amount).equals(input.amount) ||
@@ -124,10 +131,11 @@ export async function updateFixedExpenseRule(
 
   if (hasHistory && structuralChanged) {
     const startMonth = nextRuleStart(input.selectedMonth, input.startMonth, current.transactions[0]!.competenceDate);
-    await transaction.fixedExpense.update({
-      where: { id: current.id },
+    const archived = await transaction.fixedExpense.updateMany({
+      where: { id: current.id, version: input.expectedVersion, workspaceId: context.workspaceId },
       data: { active: false, endedAt: dayBefore(startMonth), updatedByEditorId: context.editorId, version: { increment: 1 } },
     });
+    assertOptimisticUpdate(archived.count);
     const nextRule = await transaction.fixedExpense.create({
       data: {
         accountId: input.accountId,
@@ -147,8 +155,8 @@ export async function updateFixedExpenseRule(
     return { id: nextRule.id, result: "VERSIONED" as const };
   }
 
-  await transaction.fixedExpense.update({
-    where: { id: current.id },
+  const updated = await transaction.fixedExpense.updateMany({
+    where: { id: current.id, version: input.expectedVersion, workspaceId: context.workspaceId },
     data: {
       accountId: input.accountId,
       amount: input.amount,
@@ -162,24 +170,9 @@ export async function updateFixedExpenseRule(
       version: { increment: 1 },
     },
   });
+  assertOptimisticUpdate(updated.count);
   await appendAudit(transaction, context, "FixedExpense", current.id, "update", { before: current });
   return { id: current.id, result: "UPDATED" as const };
-}
-
-async function assertOccurrenceAccount(
-  transaction: Prisma.TransactionClient,
-  workspaceId: string,
-  personEditorId: string,
-  accountId: string,
-) {
-  const account = await transaction.financialAccount.findFirst({
-    where: { active: true, id: accountId, personEditorId, workspaceId },
-    select: { id: true },
-  });
-
-  if (!account) {
-    throw new Error("Conta invalida para a pessoa selecionada.");
-  }
 }
 
 async function assertOccurrenceCategory(
@@ -223,7 +216,7 @@ export async function confirmSalaryOccurrence(
   if (!occurrence || !salary.accountId) {
     throw new Error("Vencimento invalido para esse salario.");
   }
-  await assertOccurrenceAccount(transaction, context.workspaceId, salary.personEditorId, salary.accountId);
+  await assertAccountForPerson(transaction, context.workspaceId, salary.personEditorId, salary.accountId, true);
   await assertOccurrenceCategory(transaction, context.workspaceId, salary.categoryId, "INCOME");
   const existing = await transaction.transaction.findUnique({
     where: { salaryId_competenceDate: { competenceDate: dueDate, salaryId: salary.id } },
@@ -297,7 +290,7 @@ export async function payFixedExpenseOccurrence(
   if (!input.amount.equals(fixedExpense.amount)) {
     throw new Error("Pagamento parcial de gasto fixo ainda nao suportado.");
   }
-  await assertOccurrenceAccount(transaction, context.workspaceId, fixedExpense.personEditorId, input.accountId);
+  await assertAccountForPerson(transaction, context.workspaceId, fixedExpense.personEditorId, input.accountId, true);
   await assertOccurrenceCategory(transaction, context.workspaceId, fixedExpense.categoryId, "EXPENSE");
   const existing = await transaction.transaction.findUnique({
     where: { fixedExpenseId_competenceDate: { competenceDate: input.dueDate, fixedExpenseId: fixedExpense.id } },

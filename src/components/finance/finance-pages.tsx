@@ -313,6 +313,7 @@ function DeleteForm({
   month,
   returnTo,
   summaryLabel = "Excluir",
+  version,
 }: {
   action: FormAction;
   buttonLabel?: string;
@@ -323,11 +324,13 @@ function DeleteForm({
   month: string;
   returnTo: string;
   summaryLabel?: string;
+  version?: number;
 }) {
   return (
     <form action={action} className="delete-form">
       <ReturnFields month={month} returnTo={returnTo} />
       <input name={idName} type="hidden" value={idValue} />
+      {version === undefined ? null : <input name="version" type="hidden" value={version} />}
       <details className="destructive-confirm">
         <summary>{summaryLabel}</summary>
         <div>
@@ -340,11 +343,12 @@ function DeleteForm({
   );
 }
 
-function RestoreForm({ action, idName, idValue, month, returnTo }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string }) {
+function RestoreForm({ action, idName, idValue, month, returnTo, version }: { action: FormAction; idName: string; idValue: string; month: string; returnTo: string; version?: number }) {
   return (
     <form action={action}>
       <ReturnFields month={month} returnTo={returnTo} />
       <input name={idName} type="hidden" value={idValue} />
+      {version === undefined ? null : <input name="version" type="hidden" value={version} />}
       <button className="finance-secondary" type="submit">Restaurar</button>
     </form>
   );
@@ -605,6 +609,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
             <form action={updateAccountAction} className="finance-edit-form">
               <ReturnFields month={month} returnTo="/bancos" />
               <input name="accountId" type="hidden" value={account.id} />
+              <input name="version" type="hidden" value={account.version} />
               <PersonSelect defaultValue={account.personEditorId} people={options.people} />
               <TextInput defaultValue={account.institution} label="Instituição" name="institution" required={false} />
               <TextInput defaultValue={account.name} label="Nome" name="name" />
@@ -673,6 +678,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
             month={month}
             returnTo="/bancos"
             summaryLabel="Arquivar"
+            version={account.version}
           />
         </ItemActions>
       </li>
@@ -737,7 +743,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
                   <span><strong>{account.name}</strong><small>{account.personEditor.displayName} · histórico preservado</small></span>
                   <b>{formatCurrency(account.balance)}</b>
                 </div>
-                <RestoreForm action={restoreAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" />
+                <RestoreForm action={restoreAccountAction} idName="accountId" idValue={account.id} month={month} returnTo="/bancos" version={account.version} />
               </li>
             ))}
           </ul>
@@ -820,6 +826,7 @@ export function TransactionPageContent({ kind, month, options, overview, title }
                   <form action={updateTransactionAction} className="finance-edit-form">
                     <ReturnFields month={month} returnTo={returnPath} />
                     <input name="transactionId" type="hidden" value={transaction.id} />
+                    <input name="version" type="hidden" value={transaction.version} />
                     <input name="type" type="hidden" value={kind} />
                     <PersonSelect defaultValue={transaction.personEditorId} people={options.people} />
                     <TextInput defaultValue={transaction.description} label="Descricao" name="description" />
@@ -918,6 +925,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         <form action={updateFixedExpenseAction} className="finance-edit-form">
           <ReturnFields month={month} returnTo="/despesas-fixas" />
           <input name="fixedExpenseId" type="hidden" value={expense.id} />
+          <input name="version" type="hidden" value={expense.version} />
           <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
           <TextInput defaultValue={expense.description} label="Descricao" name="description" />
           <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
@@ -939,6 +947,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
         month={month}
         returnTo="/despesas-fixas"
         summaryLabel="Encerrar"
+        version={expense.version}
       />
       </>
       ) : null}
@@ -1017,7 +1026,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
                   <span><strong>{expense.description}</strong><small>{expense.personEditor.displayName} · histórico preservado</small></span>
                   <b>{formatCurrency(expense.amount)}</b>
                 </div>
-                <RestoreForm action={restoreFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" />
+                <RestoreForm action={restoreFixedExpenseAction} idName="fixedExpenseId" idValue={expense.id} month={month} returnTo="/despesas-fixas" version={expense.version} />
               </li>
             ))}
           </ul>
@@ -1141,6 +1150,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                 <form action={updateSalaryAction} className="finance-edit-form">
                   <ReturnFields month={month} returnTo="/recebimentos" />
                   <input name="salaryId" type="hidden" value={salary.id} />
+                  <input name="version" type="hidden" value={salary.version} />
                   <PersonSelect defaultValue={salary.personEditorId} people={options.people} />
                   <TextInput defaultValue={salary.description} label="Descricao" name="description" />
                   <MoneyInput defaultValue={moneyInputValue(salary.amount)} label="Valor mensal liquido" />
@@ -1169,6 +1179,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                 month={month}
                 returnTo="/recebimentos"
                 summaryLabel="Encerrar"
+                version={salary.version}
               />
             </ItemActions>
           </li>
@@ -1185,7 +1196,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
                   <span><strong>{salary.description}</strong><small>{salary.personEditor.displayName} · histórico preservado</small></span>
                   <b>{formatCurrency(salary.amount)}</b>
                 </div>
-                <RestoreForm action={restoreSalaryAction} idName="salaryId" idValue={salary.id} month={month} returnTo="/recebimentos" />
+                <RestoreForm action={restoreSalaryAction} idName="salaryId" idValue={salary.id} month={month} returnTo="/recebimentos" version={salary.version} />
               </li>
             ))}
           </ul>
@@ -1332,6 +1343,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                 <form action={updateFixedExpenseAction} className="finance-edit-form">
                   <ReturnFields month={month} returnTo={returnTo} />
                   <input name="fixedExpenseId" type="hidden" value={expense.id} />
+                  <input name="version" type="hidden" value={expense.version} />
                   <PersonSelect defaultValue={expense.personEditorId} people={options.people} />
                   <TextInput defaultValue={expense.description} label="Descrição" name="description" />
                   <MoneyInput defaultValue={moneyInputValue(expense.amount)} label="Valor" />
@@ -1343,7 +1355,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
               </EditDetails>
-              <DeleteForm action={deleteFixedExpenseAction} buttonLabel="Confirmar" confirmDescription="O histórico pago será preservado." confirmTitle="Encerrar ou excluir este gasto?" idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} summaryLabel="Encerrar" />
+              <DeleteForm action={deleteFixedExpenseAction} buttonLabel="Confirmar" confirmDescription="O histórico pago será preservado." confirmTitle="Encerrar ou excluir este gasto?" idName="fixedExpenseId" idValue={expense.id} month={month} returnTo={returnTo} summaryLabel="Encerrar" version={expense.version} />
               </>
               ) : null}
             </ItemActions>
@@ -1602,6 +1614,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <form action={updateDebtMetadataAction} className="finance-edit-form">
                               <ReturnFields month={month} returnTo="/dividas" />
                               <input name="debtId" type="hidden" value={debt.id} />
+                              <input name="version" type="hidden" value={debt.version} />
                               <TextInput defaultValue={debt.description} label="Descricao" name="description" />
                               <NotesField defaultValue={debt.notes} />
                               <button className="finance-secondary" type="submit">Salvar metadados</button>
@@ -1610,6 +1623,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                             <form action={updateDebtAction} className="finance-edit-form">
                             <ReturnFields month={month} returnTo="/dividas" />
                             <input name="debtId" type="hidden" value={debt.id} />
+                            <input name="version" type="hidden" value={debt.version} />
                             <PersonSelect defaultValue={debt.personEditorId} people={options.people} />
                             <TextInput defaultValue={debt.description} label="Descricao" name="description" />
                             <MoneyInput defaultValue={moneyInputValue(debt.totalAmount)} label="Valor total" name="totalAmount" />
@@ -1636,6 +1650,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                           <form action={cancelDebtFutureInstallmentsAction} className="inline-payment-form">
                             <ReturnFields month={month} returnTo="/dividas" />
                             <input name="debtId" type="hidden" value={debt.id} />
+                            <input name="version" type="hidden" value={debt.version} />
                             <TextInput defaultValue={`${month}-01`} label="Cancelar a partir de" name="cancelFrom" type="date" />
                             <button className="finance-secondary" type="submit">Cancelar parcelas</button>
                           </form>
@@ -1647,6 +1662,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                           <form action={refinanceDebtAction} className="finance-edit-form">
                             <ReturnFields month={month} returnTo="/dividas" />
                             <input name="debtId" type="hidden" value={debt.id} />
+                            <input name="version" type="hidden" value={debt.version} />
                             <TextInput defaultValue={`${debt.description} refinanciada`} label="Nova descricao" name="description" />
                             <MoneyInput defaultValue={moneyInputValue(remainingTotal)} label="Novo valor" name="totalAmount" />
                             <TextInput defaultValue={`${month}-01`} label="Data do refinanciamento" name="startDate" type="date" />
@@ -1675,6 +1691,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                           month={month}
                           returnTo={returnTo}
                           summaryLabel="Encerrar"
+                          version={debt.version}
                         />
                       </ItemActions>
                     </div>
@@ -1744,6 +1761,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                       <form action={updateCreditCardAction} className="finance-edit-form">
                         <ReturnFields month={month} returnTo={returnTo} />
                         <input name="cardId" type="hidden" value={card.id} />
+                        <input name="version" type="hidden" value={card.version} />
                         <PersonSelect defaultValue={card.personEditorId} people={options.people} />
                         <TextInput defaultValue={card.name} label="Nome" name="name" />
                         <TextInput defaultValue={card.institution} label="Instituição" name="institution" required={false} />
@@ -1755,7 +1773,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                         <button className="finance-secondary" type="submit">Salvar</button>
                       </form>
                     </EditDetails>
-                    <DeleteForm action={deleteCreditCardAction} buttonLabel="Confirmar" confirmDescription="Compras e faturas existentes serão preservadas." confirmTitle="Arquivar ou excluir este cartão?" idName="cardId" idValue={card.id} month={month} returnTo={returnTo} summaryLabel="Arquivar" />
+                    <DeleteForm action={deleteCreditCardAction} buttonLabel="Confirmar" confirmDescription="Compras e faturas existentes serão preservadas." confirmTitle="Arquivar ou excluir este cartão?" idName="cardId" idValue={card.id} month={month} returnTo={returnTo} summaryLabel="Arquivar" version={card.version} />
                   </ItemActions>
                 </div>
               </details>
@@ -1942,7 +1960,7 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
                   <span><strong>{debt.description}</strong><small>{debt.personEditor.displayName} · pagamentos preservados</small></span>
                   <b>{formatCurrency(debt.totalAmount)}</b>
                 </div>
-                <RestoreForm action={restoreDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo={returnTo} />
+                <RestoreForm action={restoreDebtAction} idName="debtId" idValue={debt.id} month={month} returnTo={returnTo} version={debt.version} />
               </li>
             ))}
           </ul>
@@ -2088,6 +2106,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                   <form action={updateCreditCardAction} className="finance-edit-form">
                     <ReturnFields month={month} returnTo="/cartoes" />
                     <input name="cardId" type="hidden" value={card.id} />
+                    <input name="version" type="hidden" value={card.version} />
                     <PersonSelect defaultValue={card.personEditorId} people={options.people} />
                     <TextInput defaultValue={card.name} label="Nome" name="name" />
                     <TextInput defaultValue={card.institution} label="Instituicao" name="institution" required={false} />
@@ -2109,6 +2128,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                   month={month}
                   returnTo="/cartoes"
                   summaryLabel="Arquivar"
+                  version={card.version}
                 />
               </ItemActions>
             </li>
@@ -2289,7 +2309,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
                   <span><strong>{card.name}</strong><small>{card.personEditor.displayName} · faturas preservadas</small></span>
                   <b>{formatCurrency(card.invoiceAmount)}</b>
                 </div>
-                <RestoreForm action={restoreCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" />
+                <RestoreForm action={restoreCreditCardAction} idName="cardId" idValue={card.id} month={month} returnTo="/cartoes" version={card.version} />
               </li>
             ))}
           </ul>
@@ -2309,7 +2329,7 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
           <TextInput label="Nome" name="name" />
           <MoneyInput label="Meta" name="targetAmount" />
           <TextInput label="Prazo" name="deadline" required={false} type="date" />
-          <AccountSelect accounts={options.accounts} label="Conta vinculada" />
+          <AccountSelect accounts={options.accounts.filter(({ type }) => type === "INVESTMENT")} label="Conta de investimento vinculada" />
           <NotesField />
           <button className="finance-primary" type="submit">Criar cofrinho</button>
         </form>
@@ -2467,7 +2487,7 @@ export function InvestmentsPageContent({ month, options, overview }: { month: st
                   <TextInput defaultValue={investment.institution} label="Instituicao" name="institution" required={false} />
                   <MoneyInput defaultValue={moneyInputValue(investment.amount)} label="Valor atual" />
                   <TextInput defaultValue={toDateInputValue(investment.referenceDate)} label="Data de referencia" name="referenceDate" type="date" />
-                  <AccountSelect accounts={options.accounts} defaultValue={investment.accountId} label="Conta vinculada" />
+                  <AccountSelect accounts={options.accounts.filter(({ type }) => type === "INVESTMENT")} defaultValue={investment.accountId} label="Conta de investimento vinculada" />
                   <NotesField defaultValue={investment.notes} />
                   <button className="finance-secondary" type="submit">Salvar</button>
                 </form>
@@ -2536,6 +2556,7 @@ export function TransfersPageContent({ month, options, overview }: { month: stri
                 <form action={updateTransferAction} className="finance-edit-form">
                   <ReturnFields month={month} returnTo="/transferencias" />
                   <input name="transferId" type="hidden" value={transfer.id} />
+                  <input name="version" type="hidden" value={transfer.version} />
                   <AccountSelect accounts={options.accounts} defaultValue={transfer.sourceAccountId} label="Origem" name="sourceAccountId" optional={false} />
                   <AccountSelect accounts={options.accounts} defaultValue={transfer.destinationAccountId} label="Destino" name="destinationAccountId" optional={false} />
                   <MoneyInput defaultValue={moneyInputValue(transfer.amount)} label="Valor" />

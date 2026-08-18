@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { assertAccountForPerson, assertOptimisticUpdate } from "@/modules/finance/application/financial-consistency";
 import { appendAudit, type AuditContext } from "@/modules/finance/application/finance-lifecycle";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
@@ -45,13 +46,7 @@ export async function payDebtInstallment(
     throw new Error("Pagamento parcial de parcela ainda nao suportado.");
   }
   await assertDebtIntegrity(transaction, context.workspaceId, installment.debtId);
-  const account = await transaction.financialAccount.findFirst({
-    where: { active: true, id: input.accountId, personEditorId: installment.personEditorId, workspaceId: context.workspaceId },
-    select: { id: true },
-  });
-  if (!account) {
-    throw new Error("Conta invalida para a pessoa selecionada.");
-  }
+  await assertAccountForPerson(transaction, context.workspaceId, installment.personEditorId, input.accountId, true);
   if (installment.debt.categoryId) {
     const category = await transaction.category.findFirst({
       where: { active: true, id: installment.debt.categoryId, kind: "EXPENSE", workspaceId: context.workspaceId },
@@ -136,6 +131,7 @@ export async function cancelDebtFutureInstallments(
   context: AuditContext,
   debtId: string,
   cancelFrom: Date,
+  expectedVersion: number,
 ) {
   await transaction.debt.findFirstOrThrow({ where: { active: true, id: debtId, workspaceId: context.workspaceId } });
   const installments = await transaction.debtInstallment.findMany({
@@ -155,6 +151,11 @@ export async function cancelDebtFutureInstallments(
     where: { installmentId: { in: installmentIds }, workspaceId: context.workspaceId },
     data: { paidAt: null, status: "CANCELED" },
   });
+  const updatedDebt = await transaction.debt.updateMany({
+    where: { active: true, id: debtId, version: expectedVersion, workspaceId: context.workspaceId },
+    data: { updatedByEditorId: context.editorId, version: { increment: 1 } },
+  });
+  assertOptimisticUpdate(updatedDebt.count);
   await appendAudit(transaction, context, "Debt", debtId, "cancel_future_installments", { cancelFrom, installmentIds });
 
   return installmentIds;

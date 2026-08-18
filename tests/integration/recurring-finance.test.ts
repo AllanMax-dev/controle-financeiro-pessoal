@@ -162,6 +162,7 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
       amount: money(5000),
       categoryId: fixture.incomeCategory.id,
       description: "Salário reajustado",
+      expectedVersion: salary.version,
       frequency: "MONTHLY",
       notes: null,
       paymentDay: 20,
@@ -184,7 +185,8 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
     expect(septemberOverview.salaryOccurrences.map(({ amount }) => amount.toString())).toEqual(["5000"]);
 
     await database!.$transaction((transaction) => confirmSalaryOccurrence(transaction, fixture.context, newRule.id, new Date("2026-09-20T00:00:00.000Z")));
-    await database!.$transaction((transaction) => archiveOrDeleteSalary(transaction, fixture.context, newRule.id, september));
+    const confirmedSalary = await database!.salary.findUniqueOrThrow({ where: { id: newRule.id } });
+    await database!.$transaction((transaction) => archiveOrDeleteSalary(transaction, fixture.context, newRule.id, september, confirmedSalary.version));
     expect((await getFinanceOverview(fixture.workspace.id, "2026-09")).salaryOccurrences).toHaveLength(1);
     expect((await getFinanceOverview(fixture.workspace.id, "2026-10")).salaryOccurrences).toHaveLength(0);
   });
@@ -221,6 +223,7 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
       categoryId: fixture.expenseCategory.id,
       description: "Aluguel reajustado",
       dueDay: 15,
+      expectedVersion: fixedExpense.version,
       fixedExpenseId: fixedExpense.id,
       notes: null,
       personEditorId: fixture.allan.id,
@@ -245,7 +248,8 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
       fixedExpenseId: version.id,
       paidAt: septemberDueDate,
     }));
-    await database!.$transaction((transaction) => archiveOrDeleteFixedExpense(transaction, fixture.context, version.id, september));
+    const paidFixedExpense = await database!.fixedExpense.findUniqueOrThrow({ where: { id: version.id } });
+    await database!.$transaction((transaction) => archiveOrDeleteFixedExpense(transaction, fixture.context, version.id, september, paidFixedExpense.version));
     expect((await getFinanceOverview(fixture.workspace.id, "2026-09")).fixedExpenseOccurrences[0]?.status).toBe("SETTLED");
     expect((await getFinanceOverview(fixture.workspace.id, "2026-10")).fixedExpenseOccurrences).toHaveLength(0);
   });
@@ -284,6 +288,7 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
       fixture.context,
       monthly.debt.id,
       new Date("2026-09-01T00:00:00.000Z"),
+      monthly.debt.version,
     ));
     expect(canceled).toHaveLength(2);
     await database!.$transaction((transaction) => assertDebtIntegrity(transaction, fixture.workspace.id, monthly.debt.id));
@@ -299,7 +304,8 @@ integrationTest("regras recorrentes e dívidas com PostgreSQL real", () => {
       notes: null,
       paidAt: new Date("2026-08-10T00:00:00.000Z"),
     }));
-    expect(await database!.$transaction((transaction) => archiveOrDeleteDebt(transaction, fixture.context, debt.id, new Date("2026-08-18T00:00:00.000Z")))).toBe("ARCHIVED");
+    const paidDebt = await database!.debt.findUniqueOrThrow({ where: { id: debt.id } });
+    expect(await database!.$transaction((transaction) => archiveOrDeleteDebt(transaction, fixture.context, debt.id, new Date("2026-08-18T00:00:00.000Z"), paidDebt.version))).toBe("ARCHIVED");
 
     const overview = await getFinanceOverview(fixture.workspace.id, "2026-08");
     expect(overview.debtInstallments[0]?.status).toBe("PAID");
