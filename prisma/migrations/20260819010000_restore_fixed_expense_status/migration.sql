@@ -1,0 +1,1 @@
+ALTER TABLE "FixedExpense" ADD COLUMN IF NOT EXISTS "status" "TransactionStatus" NOT NULL DEFAULT 'PENDING';
