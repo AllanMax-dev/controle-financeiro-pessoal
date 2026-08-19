@@ -27,20 +27,24 @@ type Options = Awaited<ReturnType<typeof getFinanceOptions>>;
 
 const personColors = ["#6f4dd7", "#d73a12", "#1d7f4a"];
 
-function ReturnFields({ month, returnTo }: { month: string; returnTo: string }) {
+function ReturnFields({ month, returnTo, view }: { month: string; returnTo: string; view?: string }) {
+  const target = `${returnTo}?month=${encodeURIComponent(month)}${view ? `&view=${encodeURIComponent(view)}` : ""}`;
+
   return (
     <>
-      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="returnTo" type="hidden" value={target} />
       <input name="month" type="hidden" value={month} />
     </>
   );
 }
 
-function PersonSelect({ people }: { people: Options["people"] }) {
+function PersonSelect({ activeView, people }: { activeView?: string; people: Options["people"] }) {
+  const selectedPersonId = activeView && activeView !== "casal" ? activeView : undefined;
+
   return (
     <label className="finance-field">
       <span>Pessoa</span>
-      <select name="personEditorId" required>
+      <select defaultValue={selectedPersonId} name="personEditorId" required>
         {people.map((person) => (
           <option key={person.id} value={person.id}>
             {person.name}
@@ -112,10 +116,10 @@ function NotesField() {
   );
 }
 
-function CategoryInlineForm({ kind, month, returnTo }: { kind: "EXPENSE" | "INCOME"; month: string; returnTo: string }) {
+function CategoryInlineForm({ kind, month, returnTo, view }: { kind: "EXPENSE" | "INCOME"; month: string; returnTo: string; view?: string }) {
   return (
     <form action={createCategoryAction} className="inline-category-form">
-      <ReturnFields month={month} returnTo={returnTo} />
+      <ReturnFields month={month} returnTo={returnTo} view={view} />
       <input name="kind" type="hidden" value={kind} />
       <input name="name" placeholder="+ Nova categoria" required type="text" />
       <input aria-label="Cor" defaultValue={kind === "INCOME" ? "#1d7f4a" : "#d73a12"} name="color" type="color" />
@@ -124,7 +128,7 @@ function CategoryInlineForm({ kind, month, returnTo }: { kind: "EXPENSE" | "INCO
   );
 }
 
-export function PageHeader({ month, subtitle, title }: { month: string; subtitle: string; title: string }) {
+export function PageHeader({ month, subtitle, title, view }: { month: string; subtitle: string; title: string; view?: string }) {
   return (
     <section className="finance-page-header">
       <div>
@@ -136,6 +140,7 @@ export function PageHeader({ month, subtitle, title }: { month: string; subtitle
           <span>Mês</span>
           <input defaultValue={month} name="month" type="month" />
         </label>
+        {view ? <input name="view" type="hidden" value={view} /> : null}
         <button type="submit">Aplicar</button>
       </form>
     </section>
@@ -156,12 +161,38 @@ export function PersonTabs({ month, overview }: { month: string; overview: Overv
   );
 }
 
+function MonthlyFlowSummary({ overview }: { overview: Overview }) {
+  const cards = [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson];
+
+  return (
+    <section className="snapshot-grid" aria-label="Valores mensais a pagar e a receber">
+      {cards.map((card, index) => (
+        <article className="snapshot-card" key={card.id} style={{ "--tone": personColors[index % personColors.length] } as CSSProperties}>
+          <span>{card.name}</span>
+          <strong>{formatCurrency(card.total.pending)}</strong>
+          <small>A pagar no mês</small>
+          <dl>
+            <div>
+              <dt>A receber</dt>
+              <dd>{formatCurrency(card.total.income)}</dd>
+            </div>
+            <div>
+              <dt>Saldo</dt>
+              <dd>{formatCurrency(card.total.available)}</dd>
+            </div>
+          </dl>
+        </article>
+      ))}
+    </section>
+  );
+}
+
 export function DashboardPageContent({ month, overview }: { month: string; overview: Overview }) {
   const cards = [{ id: "casal", name: "Casal", total: overview.coupleTotal }, ...overview.totalsByPerson];
 
   return (
     <>
-      <PageHeader month={month} subtitle="Resumo financeiro pessoal" title="Dashboard" />
+      <PageHeader month={month} subtitle="Resumo financeiro pessoal" title="Dashboard" view={overview.activeView} />
       <PersonTabs month={month} overview={overview} />
       <section className="snapshot-grid" aria-label="Resumo Allan, Mayara e Casal">
         {cards.map((card, index) => (
@@ -234,10 +265,12 @@ export function DashboardPageContent({ month, overview }: { month: string; overv
   );
 }
 
-function WorkspacePage({ children, formTitle, listTitle, month, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; subtitle: string; title: string }) {
+function WorkspacePage({ children, formTitle, listTitle, month, overview, subtitle, title }: { children: ReactNode; formTitle: string; listTitle: string; month: string; overview: Overview; subtitle: string; title: string }) {
   return (
     <>
-      <PageHeader month={month} subtitle={subtitle} title={title} />
+      <PageHeader month={month} subtitle={subtitle} title={title} view={overview.activeView} />
+      <PersonTabs month={month} overview={overview} />
+      <MonthlyFlowSummary overview={overview} />
       <section className="finance-workspace">
         <article className="finance-panel">
           <h2>{formTitle}</h2>
@@ -255,10 +288,10 @@ function WorkspacePage({ children, formTitle, listTitle, month, subtitle, title 
 export function BanksPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Nova conta" listTitle="Contas cadastradas" month={month} subtitle="Bancos e dinheiro" title="Bancos">
+      <WorkspacePage formTitle="Nova conta" listTitle="Contas cadastradas" month={month} overview={overview} subtitle="Bancos e dinheiro" title="Bancos">
         <form action={createAccountAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/bancos" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/bancos" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Instituição" name="institution" required={false} />
           <TextInput label="Nome" name="name" placeholder="Conta principal" />
           <label className="finance-field">
@@ -288,7 +321,7 @@ export function BanksPageContent({ month, options, overview }: { month: string; 
         ))}
       </ul>
       <form action={createBalanceAdjustmentAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/bancos" />
+        <ReturnFields month={month} returnTo="/bancos" view={overview.activeView} />
         <AccountSelect accounts={options.accounts} label="Conta para ajustar" name="accountId" optional={false} />
         <MoneyInput label="Saldo real hoje" name="targetBalance" />
         <TextInput label="Data" name="effectiveAt" type="date" />
@@ -304,11 +337,11 @@ export function TransactionPageContent({ kind, month, options, overview, title }
 
   return (
     <>
-      <WorkspacePage formTitle={kind === "INCOME" ? "Registrar recebimento" : "Adicionar lançamento"} listTitle="Lançamentos do mês" month={month} subtitle="Movimentações mensais" title={title}>
+      <WorkspacePage formTitle={kind === "INCOME" ? "Registrar recebimento" : "Adicionar lançamento"} listTitle="Lançamentos do mês" month={month} overview={overview} subtitle="Movimentações mensais" title={title}>
         <form action={createTransactionAction} className="finance-form">
-          <ReturnFields month={month} returnTo={returnPath} />
+          <ReturnFields month={month} returnTo={returnPath} view={overview.activeView} />
           <input name="type" type="hidden" value={kind} />
-          <PersonSelect people={options.people} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Descrição" name="description" />
           <MoneyInput label="Valor" />
           <TextInput label="Data" name="date" type="date" />
@@ -324,7 +357,7 @@ export function TransactionPageContent({ kind, month, options, overview, title }
           <NotesField />
           <button className="finance-primary" type="submit">{kind === "INCOME" ? "Registrar recebimento" : "Adicionar lançamento"}</button>
         </form>
-        <CategoryInlineForm kind={kind} month={month} returnTo={returnPath} />
+        <CategoryInlineForm kind={kind} month={month} returnTo={returnPath} view={overview.activeView} />
       </WorkspacePage>
       <ul className="finance-list detached-list">
         {overview.transactions
@@ -346,10 +379,10 @@ export function TransactionPageContent({ kind, month, options, overview, title }
 export function FixedExpensesPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Novo gasto fixo" listTitle="Recorrências ativas" month={month} subtitle="Compromissos recorrentes" title="Gastos fixos">
+      <WorkspacePage formTitle="Novo gasto fixo" listTitle="Recorrências ativas" month={month} overview={overview} subtitle="Compromissos recorrentes" title="Gastos fixos">
         <form action={createFixedExpenseAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/despesas-fixas" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/despesas-fixas" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Descrição" name="description" />
           <MoneyInput label="Valor" />
           <TextInput label="Mês inicial" name="startMonth" type="month" />
@@ -376,7 +409,7 @@ export function FixedExpensesPageContent({ month, options, overview }: { month: 
             </span>
             <b>{formatCurrency(expense.amount)}</b>
             <form action={archiveFixedExpenseAction}>
-              <ReturnFields month={month} returnTo="/despesas-fixas" />
+              <ReturnFields month={month} returnTo="/despesas-fixas" view={overview.activeView} />
               <input name="fixedExpenseId" type="hidden" value={expense.id} />
               <button className="finance-secondary" type="submit">Encerrar</button>
             </form>
@@ -392,9 +425,9 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
     <>
       <TransactionPageContent kind="INCOME" month={month} options={options} overview={overview} title="Recebimentos" />
       <form action={createSalaryAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/recebimentos" />
+        <ReturnFields month={month} returnTo="/recebimentos" view={overview.activeView} />
         <h2>Salário recorrente</h2>
-        <PersonSelect people={options.people} />
+        <PersonSelect activeView={overview.activeView} people={options.people} />
         <TextInput label="Descrição" name="description" placeholder="Salário" />
         <MoneyInput label="Valor" />
         <TextInput label="Mês inicial" name="startMonth" type="month" />
@@ -419,7 +452,7 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
             </span>
             <b>{formatCurrency(salary.amount)}</b>
             <form action={archiveSalaryAction}>
-              <ReturnFields month={month} returnTo="/recebimentos" />
+              <ReturnFields month={month} returnTo="/recebimentos" view={overview.activeView} />
               <input name="salaryId" type="hidden" value={salary.id} />
               <button className="finance-secondary" type="submit">Encerrar</button>
             </form>
@@ -433,10 +466,10 @@ export function ReceiptsPageContent({ month, options, overview }: { month: strin
 export function DebtsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Nova dívida" listTitle="Parcelas do mês" month={month} subtitle="Parcelas determinísticas" title="Dívidas">
+      <WorkspacePage formTitle="Nova dívida" listTitle="Parcelas do mês" month={month} overview={overview} subtitle="Parcelas determinísticas" title="Dívidas">
         <form action={createDebtAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/dividas" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/dividas" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Descrição" name="description" />
           <MoneyInput label="Valor total" name="totalAmount" />
           <TextInput label="Data inicial" name="startDate" type="date" />
@@ -472,10 +505,10 @@ export function DebtsPageContent({ month, options, overview }: { month: string; 
 export function CardsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Novo cartão" listTitle="Seus cartões" month={month} subtitle="Faturas e limite" title="Cartões de crédito">
+      <WorkspacePage formTitle="Novo cartão" listTitle="Seus cartões" month={month} overview={overview} subtitle="Faturas e limite" title="Cartões de crédito">
         <form action={createCreditCardAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/cartoes" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/cartoes" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Nome" name="name" />
           <TextInput label="Instituição" name="institution" required={false} />
           <MoneyInput label="Limite" name="limit" />
@@ -495,7 +528,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
             <progress max={Number(card.limit)} value={Number(card.committed)} />
             {card.invoiceId ? (
               <form action={payCreditCardInvoiceAction} className="inline-payment-form">
-                <ReturnFields month={month} returnTo="/cartoes" />
+                <ReturnFields month={month} returnTo="/cartoes" view={overview.activeView} />
                 <input name="invoiceId" type="hidden" value={card.invoiceId} />
                 <MoneyInput label="Pagamento" name="amount" />
                 <TextInput label="Data" name="paidAt" type="date" />
@@ -507,7 +540,7 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
         ))}
       </ul>
       <form action={createCreditCardPurchaseAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/cartoes" />
+        <ReturnFields month={month} returnTo="/cartoes" view={overview.activeView} />
         <h2>Compra no cartão</h2>
         <label className="finance-field">
           <span>Cartão</span>
@@ -534,10 +567,10 @@ export function CardsPageContent({ month, options, overview }: { month: string; 
 export function GoalsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Novo cofrinho" listTitle="Metas" month={month} subtitle="Reservas sem duplicar patrimônio" title="Cofrinhos">
+      <WorkspacePage formTitle="Novo cofrinho" listTitle="Metas" month={month} overview={overview} subtitle="Reservas sem duplicar patrimônio" title="Cofrinhos">
         <form action={createSavingsGoalAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/cofrinhos" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/cofrinhos" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Nome" name="name" />
           <MoneyInput label="Meta" name="targetAmount" />
           <TextInput label="Prazo" name="deadline" required={false} type="date" />
@@ -557,7 +590,7 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
         ))}
       </ul>
       <form action={createSavingsGoalMovementAction} className="finance-form compact-card">
-        <ReturnFields month={month} returnTo="/cofrinhos" />
+        <ReturnFields month={month} returnTo="/cofrinhos" view={overview.activeView} />
         <h2>Movimentar cofrinho</h2>
         <label className="finance-field">
           <span>Cofrinho</span>
@@ -588,10 +621,10 @@ export function GoalsPageContent({ month, options, overview }: { month: string; 
 export function InvestmentsPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Novo investimento" listTitle="Investimentos" month={month} subtitle="Separados do saldo disponível" title="Investimentos">
+      <WorkspacePage formTitle="Novo investimento" listTitle="Investimentos" month={month} overview={overview} subtitle="Separados do saldo disponível" title="Investimentos">
         <form action={createInvestmentAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/investimentos" />
-          <PersonSelect people={options.people} />
+          <ReturnFields month={month} returnTo="/investimentos" view={overview.activeView} />
+          <PersonSelect activeView={overview.activeView} people={options.people} />
           <TextInput label="Nome" name="name" />
           <TextInput label="Instituição" name="institution" required={false} />
           <MoneyInput label="Valor atual" />
@@ -619,9 +652,9 @@ export function InvestmentsPageContent({ month, options, overview }: { month: st
 export function TransfersPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <WorkspacePage formTitle="Nova transferência" listTitle="Transferências" month={month} subtitle="Não altera patrimônio do casal" title="Transferências">
+      <WorkspacePage formTitle="Nova transferência" listTitle="Transferências" month={month} overview={overview} subtitle="Não altera patrimônio do casal" title="Transferências">
         <form action={createTransferAction} className="finance-form">
-          <ReturnFields month={month} returnTo="/transferencias" />
+          <ReturnFields month={month} returnTo="/transferencias" view={overview.activeView} />
           <AccountSelect accounts={options.accounts} label="Origem" name="sourceAccountId" optional={false} />
           <AccountSelect accounts={options.accounts} label="Destino" name="destinationAccountId" optional={false} />
           <MoneyInput label="Valor" />
@@ -645,15 +678,17 @@ export function TransfersPageContent({ month, options, overview }: { month: stri
   );
 }
 
-export function CategoriesPageContent({ month, options }: { month: string; options: Options }) {
+export function CategoriesPageContent({ month, options, overview }: { month: string; options: Options; overview: Overview }) {
   return (
     <>
-      <PageHeader month={month} subtitle="Globais ao sistema" title="Categorias" />
+      <PageHeader month={month} subtitle="Globais ao sistema" title="Categorias" view={overview.activeView} />
+      <PersonTabs month={month} overview={overview} />
+      <MonthlyFlowSummary overview={overview} />
       <section className="finance-workspace">
         <article className="finance-panel">
           <h2>Nova categoria</h2>
-          <CategoryInlineForm kind="EXPENSE" month={month} returnTo="/categorias" />
-          <CategoryInlineForm kind="INCOME" month={month} returnTo="/categorias" />
+          <CategoryInlineForm kind="EXPENSE" month={month} returnTo="/categorias" view={overview.activeView} />
+          <CategoryInlineForm kind="INCOME" month={month} returnTo="/categorias" view={overview.activeView} />
         </article>
         <article className="finance-panel">
           <h2>Categorias compartilhadas</h2>

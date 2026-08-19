@@ -291,40 +291,43 @@ export async function getFinanceOverview(workspaceId: string, month: string, vie
   const coupleTotal = sumPersonTotals(totalsByPerson.map(({ total }) => total));
   const activeView = view === "casal" || !people.some(({ id }) => id === view) ? "casal" : view;
   const visiblePersonIds = activeView === "casal" ? people.map(({ id }) => id) : [activeView];
+  const isVisiblePerson = (personEditorId: string) => visiblePersonIds.includes(personEditorId);
+  const cardsWithDetails = cards.map((card) => {
+    const invoice = invoices.find(({ cardId }) => cardId === card.id);
+    const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
+
+    return {
+      ...card,
+      committed,
+      invoiceId: invoice?.id ?? null,
+      invoiceAmount: invoice?.amount ?? money(0),
+      invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
+      invoicePaidAmount: invoice?.paidAmount ?? money(0),
+      invoiceStatus: invoice?.status ?? "OPEN",
+      limitAvailable: money(card.limit.minus(committed)),
+    };
+  });
+  const visibleTransfers = transfers.filter((transfer) => activeView === "casal" || isVisiblePerson(transfer.sourceAccount.personEditorId) || isVisiblePerson(transfer.destinationAccount.personEditorId));
 
   return {
-    accounts,
+    accounts: accounts.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
     activeView,
-    cardInstallments,
-    cards: cards.map((card) => {
-      const invoice = invoices.find(({ cardId }) => cardId === card.id);
-      const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
-
-      return {
-        ...card,
-        committed,
-        invoiceId: invoice?.id ?? null,
-        invoiceAmount: invoice?.amount ?? money(0),
-        invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
-        invoicePaidAmount: invoice?.paidAmount ?? money(0),
-        invoiceStatus: invoice?.status ?? "OPEN",
-        limitAvailable: money(card.limit.minus(committed)),
-      };
-    }),
+    cardInstallments: cardInstallments.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
+    cards: cardsWithDetails.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
     categories,
     coupleTotal,
-    debtInstallments,
-    fixedExpenses,
+    debtInstallments: debtInstallments.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
+    fixedExpenses: fixedExpenses.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
     goals: goals.map((goal) => ({
       ...goal,
       currentAmount: goalTotals.get(goal.id) ?? money(0),
-    })),
-    investments,
+    })).filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
+    investments: investments.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
     month,
     people,
-    salaries,
+    salaries: salaries.filter(({ personEditorId }) => isVisiblePerson(personEditorId)),
     transactions: transactions.filter(({ personEditorId }) => visiblePersonIds.includes(personEditorId)),
-    transfers,
+    transfers: visibleTransfers,
     totalsByPerson,
   };
 }
