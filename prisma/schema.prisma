@@ -60,7 +60,6 @@ enum CreditCardInvoiceStatus {
 
 enum CreditCardPurchaseInstallmentStatus {
   OPEN
-  PAID
   CANCELED
 }
 
@@ -92,11 +91,9 @@ model Workspace {
   salaries       Salary[]
   debts          Debt[]
   installments   DebtInstallment[]
-  installmentShares DebtInstallmentShare[]
   creditCards    CreditCard[]
   cardPurchases  CreditCardPurchase[]
   cardInstallments CreditCardInstallment[]
-  cardInstallmentShares CreditCardInstallmentShare[]
   cardInvoices   CreditCardInvoice[]
   cardPayments   CreditCardInvoicePayment[]
   savingsGoals   SavingsGoal[]
@@ -123,11 +120,9 @@ model Editor {
   salaries       Salary[]
   debts          Debt[]
   installments   DebtInstallment[]
-  installmentShares DebtInstallmentShare[]
   creditCards    CreditCard[]
   cardPurchases  CreditCardPurchase[]
   cardInstallments CreditCardInstallment[]
-  cardInstallmentShares CreditCardInstallmentShare[]
   cardInvoices   CreditCardInvoice[]
   cardPayments   CreditCardInvoicePayment[]
   savingsGoals   SavingsGoal[]
@@ -231,7 +226,6 @@ model Transaction {
   categoryId     String?     @db.Uuid
   fixedExpenseId String?     @db.Uuid
   salaryId       String?     @db.Uuid
-  debtInstallmentId String?  @unique @db.Uuid
   creditCardInstallmentId String? @unique @db.Uuid
   description    String      @db.VarChar(160)
   type           TransactionType
@@ -253,11 +247,8 @@ model Transaction {
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   fixedExpense   FixedExpense? @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
   salary         Salary?     @relation(fields: [salaryId], references: [id], onDelete: SetNull)
-  debtInstallment DebtInstallment? @relation(fields: [debtInstallmentId], references: [id], onDelete: SetNull)
   creditCardInstallment CreditCardInstallment? @relation(fields: [creditCardInstallmentId], references: [id], onDelete: SetNull)
 
-  @@unique([fixedExpenseId, competenceDate])
-  @@unique([salaryId, competenceDate])
   @@index([workspaceId, personEditorId, competenceDate])
   @@index([workspaceId, type, status])
   @@index([workspaceId, accountId])
@@ -318,6 +309,7 @@ model FixedExpense {
   description    String      @db.VarChar(160)
   amount         Decimal     @db.Decimal(19, 2)
   dueDay         Int
+  status         TransactionStatus @default(PENDING)
   active         Boolean     @default(true)
   startMonth     DateTime    @db.Date
   endedAt        DateTime?   @db.Date
@@ -407,29 +399,9 @@ model DebtInstallment {
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   debt           Debt        @relation(fields: [debtId], references: [id], onDelete: Cascade)
   personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
-  transaction    Transaction?
-  shares         DebtInstallmentShare[]
 
   @@unique([debtId, number])
   @@index([workspaceId, personEditorId, dueDate])
-}
-
-model DebtInstallmentShare {
-  id             String      @id @default(uuid()) @db.Uuid
-  workspaceId    String      @db.Uuid
-  installmentId  String      @db.Uuid
-  personEditorId String      @db.Uuid
-  amount         Decimal     @db.Decimal(19, 2)
-  paidAt         DateTime?   @db.Date
-  status         DebtInstallmentStatus @default(PENDING)
-  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
-  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  installment    DebtInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
-  personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
-
-  @@unique([installmentId, personEditorId])
-  @@index([workspaceId, personEditorId, status])
 }
 
 model CreditCard {
@@ -470,7 +442,6 @@ model CreditCardPurchase {
   totalAmount    Decimal     @db.Decimal(19, 2)
   installmentCount Int
   purchaseDate   DateTime    @db.Date
-  firstDueDate   DateTime    @db.Date
   notes          String?     @db.Text
   canceledAt     DateTime?   @db.Date
   createdByEditorId String?  @db.Uuid
@@ -507,29 +478,10 @@ model CreditCardInstallment {
   personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
   category       Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   transaction    Transaction?
-  shares         CreditCardInstallmentShare[]
-  invoicePayment  CreditCardInvoicePayment?
 
   @@unique([purchaseId, number])
   @@index([workspaceId, personEditorId, dueMonth])
   @@index([workspaceId, cardId])
-}
-
-model CreditCardInstallmentShare {
-  id             String      @id @default(uuid()) @db.Uuid
-  workspaceId    String      @db.Uuid
-  installmentId  String      @db.Uuid
-  personEditorId String      @db.Uuid
-  amount         Decimal     @db.Decimal(19, 2)
-  status         CreditCardPurchaseInstallmentStatus @default(OPEN)
-  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
-  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  installment    CreditCardInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
-  personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
-
-  @@unique([installmentId, personEditorId])
-  @@index([workspaceId, personEditorId, status])
 }
 
 model CreditCardInvoice {
@@ -560,7 +512,6 @@ model CreditCardInvoicePayment {
   workspaceId    String      @db.Uuid
   invoiceId      String      @db.Uuid
   accountId      String      @db.Uuid
-  creditCardInstallmentId String? @unique @db.Uuid
   personEditorId String      @db.Uuid
   amount         Decimal     @db.Decimal(19, 2)
   paidAt         DateTime    @db.Date
@@ -570,12 +521,10 @@ model CreditCardInvoicePayment {
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   invoice        CreditCardInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   account        FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  installment    CreditCardInstallment? @relation(fields: [creditCardInstallmentId], references: [id], onDelete: SetNull)
   personEditor   Editor      @relation(fields: [personEditorId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, personEditorId, paidAt])
   @@index([workspaceId, accountId])
-  @@index([workspaceId, creditCardInstallmentId])
 }
 
 model SavingsGoal {

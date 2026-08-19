@@ -1,25 +1,8 @@
-import { redirect } from "next/navigation";
-
-import type { FinanceSearchParams } from "@/app/(workspace)/finance-route";
-
-function redirectToDebts(searchParams: FinanceSearchParams) {
-  const params = new URLSearchParams();
-  const month = Array.isArray(searchParams.month) ? searchParams.month[0] : searchParams.month;
-  const view = Array.isArray(searchParams.view) ? searchParams.view[0] : searchParams.view;
-
-  if (month) {
-    params.set("month", month);
-  }
-
-  if (view) {
-    params.set("view", view);
-  }
-
-  const query = params.toString();
-
-  redirect(query ? `/dividas?${query}` : "/dividas");
-}
+import { CardsPageContent } from "@/components/finance/finance-pages";
+import { loadFinanceRoute, type FinanceSearchParams } from "@/app/(workspace)/finance-route";
 
 export default async function CardsPage({ searchParams }: { searchParams: Promise<FinanceSearchParams> }) {
-  redirectToDebts(await searchParams);
+  const { month, options, overview } = await loadFinanceRoute(searchParams);
+
+  return <CardsPageContent month={month} options={options} overview={overview} />;
 }

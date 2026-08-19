@@ -2,15 +2,11 @@ import Decimal from "decimal.js";
 
 import { getDatabase } from "@/lib/db";
 import {
-  buildSalaryOccurrencePlan,
   buildPersonTotal,
   clampDayInMonth,
-  creditCardInstallmentIsOverdue,
-  fixedExpenseDueDate,
   monthBounds,
   sumPersonTotals,
 } from "@/modules/finance/domain/finance-calculations";
-import { calendarDateInTimeZone } from "@/modules/shared/domain/calendar";
 import { money, sumMoney } from "@/modules/shared/domain/money";
 
 export type FinanceAccess = {
@@ -25,12 +21,6 @@ export type PersonOption = {
 };
 
 export type DashboardView = "casal" | string;
-
-type FinanceSection = "accounts" | "balanceAdjustments" | "cards" | "categories" | "debts" | "fixedExpenses" | "goals" | "investments" | "salaries" | "transactions" | "transfers";
-
-const allFinanceSections = new Set<FinanceSection>([
-  "accounts", "balanceAdjustments", "cards", "categories", "debts", "fixedExpenses", "goals", "investments", "salaries", "transactions", "transfers",
-]);
 
 export function selectedMonthParam(value: string | string[] | undefined, fallback: string) {
   const month = Array.isArray(value) ? value[0] : value;
@@ -56,7 +46,7 @@ export async function getPeople(workspaceId: string): Promise<PersonOption[]> {
 
 export async function getFinanceOptions(workspaceId: string) {
   const database = getDatabase();
-  const [people, accounts, allCategories, cards, goals] = await Promise.all([
+  const [people, accounts, categories, cards, goals] = await Promise.all([
     getPeople(workspaceId),
     database.financialAccount.findMany({
       where: { active: true, workspaceId },
@@ -70,9 +60,9 @@ export async function getFinanceOptions(workspaceId: string) {
       },
     }),
     database.category.findMany({
-      where: { workspaceId },
+      where: { active: true, workspaceId },
       orderBy: [{ kind: "asc" }, { name: "asc" }],
-      select: { active: true, color: true, id: true, kind: true, name: true },
+      select: { color: true, id: true, kind: true, name: true },
     }),
     database.creditCard.findMany({
       where: { active: true, workspaceId },
@@ -86,17 +76,10 @@ export async function getFinanceOptions(workspaceId: string) {
     }),
   ]);
 
-  return {
-    accounts,
-    archivedCategories: allCategories.filter(({ active }) => !active),
-    cards,
-    categories: allCategories.filter(({ active }) => active),
-    goals,
-    people,
-  };
+  return { accounts, cards, categories, goals, people };
 }
 
-async function getAccountBalances(workspaceId: string, periodEnd?: Date) {
+async function getAccountBalances(workspaceId: string) {
   const database = getDatabase();
   const [accounts, transactions, transfers, adjustments, invoicePayments] = await Promise.all([
     database.financialAccount.findMany({
@@ -105,31 +88,23 @@ async function getAccountBalances(workspaceId: string, periodEnd?: Date) {
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
     }),
     database.transaction.findMany({
-      where: {
-        affectsBalance: true,
-        status: "SETTLED",
-        workspaceId,
-        OR: periodEnd ? [{ settledAt: { lt: periodEnd } }, { competenceDate: { lt: periodEnd }, settledAt: null }] : undefined,
-      },
+      where: { affectsBalance: true, status: "SETTLED", workspaceId },
       select: { accountId: true, amount: true, type: true },
     }),
     database.transfer.findMany({
-      where: { status: "SETTLED", transferDate: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
+      where: { status: "SETTLED", workspaceId },
       select: { amount: true, destinationAccountId: true, sourceAccountId: true },
     }),
     database.balanceAdjustment.findMany({
-      where: { effectiveAt: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
+      where: { workspaceId },
       select: { accountId: true, difference: true },
     }),
     database.creditCardInvoicePayment.findMany({
-      where: { paidAt: periodEnd ? { lt: periodEnd } : undefined, workspaceId },
+      where: { workspaceId },
       select: { accountId: true, amount: true },
     }),
   ]);
-  const balances = new Map(accounts.map((account) => [
-    account.id,
-    periodEnd && account.createdAt >= periodEnd ? money(0) : money(account.initialBalance),
-  ]));
+  const balances = new Map(accounts.map((account) => [account.id, money(account.initialBalance)]));
 
   for (const transaction of transactions) {
     if (!transaction.accountId) {
@@ -162,164 +137,107 @@ async function getAccountBalances(workspaceId: string, periodEnd?: Date) {
   }));
 }
 
-async function buildFinanceOverview(workspaceId: string, month: string, view: DashboardView, timeZone: string, sections: ReadonlySet<FinanceSection>) {
+function salaryExpectedAmount(salary: { amount: Decimal; frequency: "MONTHLY" | "FORTNIGHTLY" }) {
+  return salary.frequency === "FORTNIGHTLY" ? money(salary.amount.times(2)) : money(salary.amount);
+}
+
+export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal") {
   const database = getDatabase();
   const { end, start } = monthBounds(month);
-  const today = calendarDateInTimeZone(new Date(), timeZone);
   const [
     people,
     accounts,
     categories,
     transactions,
     fixedExpenses,
-    archivedFixedExpenses,
     salaries,
-    archivedSalaries,
-    debts,
-    archivedDebts,
     debtInstallments,
     cards,
     cardInstallments,
-    cardPurchases,
-    cardInvoiceBalances,
+    allOpenCardInstallments,
     invoices,
     goals,
-    goalMovementTotals,
-    visibleGoalMovements,
+    goalMovements,
     investments,
-    archivedInvestments,
     transfers,
-    balanceAdjustments,
   ] = await Promise.all([
     getPeople(workspaceId),
-    sections.has("accounts") ? getAccountBalances(workspaceId, end) : Promise.resolve([]),
-    sections.has("categories") ? database.category.findMany({ where: { workspaceId }, orderBy: { name: "asc" } }) : Promise.resolve([]),
-    sections.has("transactions") ? database.transaction.findMany({
+    getAccountBalances(workspaceId),
+    database.category.findMany({ where: { workspaceId }, orderBy: { name: "asc" } }),
+    database.transaction.findMany({
       where: { competenceDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
       include: { account: true, category: true, personEditor: true },
       orderBy: [{ competenceDate: "desc" }, { createdAt: "desc" }],
-    }) : Promise.resolve([]),
-    sections.has("fixedExpenses") ? database.fixedExpense.findMany({
+      take: 80,
+    }),
+    database.fixedExpense.findMany({
       where: {
+        active: true,
         startMonth: { lt: end },
         workspaceId,
         OR: [{ endedAt: null }, { endedAt: { gte: start } }],
       },
-      include: { account: true, category: true, personEditor: true },
+      include: { category: true, personEditor: true },
       orderBy: [{ dueDay: "asc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("fixedExpenses") ? database.fixedExpense.findMany({
-      where: { active: false, workspaceId },
-      include: { account: true, category: true, personEditor: true },
-      orderBy: [{ endedAt: "desc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("salaries") ? database.salary.findMany({
+    }),
+    database.salary.findMany({
       where: {
+        active: true,
         startMonth: { lt: end },
         workspaceId,
         OR: [{ archivedAt: null }, { archivedAt: { gte: start } }],
       },
-      include: { account: true, category: true, personEditor: true },
+      include: { personEditor: true },
       orderBy: [{ paymentDay: "asc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("salaries") ? database.salary.findMany({
-      where: { active: false, workspaceId },
-      include: { account: true, category: true, personEditor: true },
-      orderBy: [{ archivedAt: "desc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("debts") ? database.debt.findMany({
-      where: {
-        active: true,
-        workspaceId,
-      },
-      include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
-      orderBy: [{ firstDueDate: "asc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("debts") ? database.debt.findMany({
-      where: { active: false, workspaceId },
-      include: { category: true, installments: { include: { shares: { include: { personEditor: true } }, transaction: { select: { id: true } } }, orderBy: { number: "asc" } }, personEditor: true },
-      orderBy: [{ canceledAt: "desc" }, { description: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("debts") ? database.debtInstallment.findMany({
-      where: {
-        debt: { OR: [{ active: true }, { canceledAt: { gte: start } }] },
-        dueDate: { gte: start, lt: end },
-        status: { not: "CANCELED" },
-        workspaceId,
-      },
-      include: { debt: true, personEditor: true, shares: { include: { personEditor: true } }, transaction: { select: { id: true } } },
+    }),
+    database.debtInstallment.findMany({
+      where: { dueDate: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
+      include: { debt: true, personEditor: true },
       orderBy: [{ dueDate: "asc" }, { number: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("cards") ? database.creditCard.findMany({
+    }),
+    database.creditCard.findMany({
       where: { workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("cards") ? database.creditCardInstallment.findMany({
-      where: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId },
-      include: { card: true, personEditor: true, purchase: true, shares: { include: { personEditor: true } } },
+    }),
+    database.creditCardInstallment.findMany({
+      where: { dueMonth: { gte: start, lt: end }, status: "OPEN", workspaceId },
+      include: { card: true, personEditor: true, purchase: true },
       orderBy: [{ dueMonth: "asc" }, { createdAt: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("cards") ? database.creditCardPurchase.findMany({
-      where: {
-        installments: { some: { dueMonth: { gte: start, lt: end }, status: { not: "CANCELED" }, workspaceId } },
-        workspaceId,
-      },
-      include: {
-        card: true,
-        category: true,
-        installments: { include: { invoicePayment: { select: { accountId: true, amount: true, id: true, notes: true, paidAt: true } }, shares: { include: { personEditor: true } } }, orderBy: { number: "asc" } },
-        personEditor: true,
-      },
-      orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }],
-    }) : Promise.resolve([]),
-    sections.has("cards") ? database.creditCardInvoice.findMany({
-      where: { workspaceId },
-      select: { amount: true, cardId: true, paidAmount: true },
-    }) : Promise.resolve([]),
-    sections.has("cards") ? database.creditCardInvoice.findMany({
+    }),
+    database.creditCardInstallment.findMany({
+      where: { invoice: { is: { status: { not: "PAID" } } }, status: "OPEN", workspaceId },
+      select: { amount: true, cardId: true },
+    }),
+    database.creditCardInvoice.findMany({
       where: { month: start, workspaceId },
-      include: { card: true, payments: { orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }] }, personEditor: true },
+      include: { card: true, personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { dueDate: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("goals") ? database.savingsGoal.findMany({
+    }),
+    database.savingsGoal.findMany({
       where: { workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("goals") ? database.savingsGoalMovement.findMany({
+    }),
+    database.savingsGoalMovement.findMany({
       where: { workspaceId },
       select: { amount: true, goalId: true, type: true },
-    }) : Promise.resolve([]),
-    sections.has("goals") ? database.savingsGoalMovement.findMany({
-      where: { movementDate: { gte: start, lt: end }, workspaceId },
-      include: { account: true, goal: true, personEditor: true },
-      orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }],
-    }) : Promise.resolve([]),
-    sections.has("investments") ? database.investment.findMany({
+    }),
+    database.investment.findMany({
       where: { active: true, workspaceId },
       include: { personEditor: true },
       orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("investments") ? database.investment.findMany({
-      where: { active: false, workspaceId },
-      include: { personEditor: true },
-      orderBy: [{ personEditor: { displayName: "asc" } }, { name: "asc" }],
-    }) : Promise.resolve([]),
-    sections.has("transfers") ? database.transfer.findMany({
+    }),
+    database.transfer.findMany({
       where: { transferDate: { gte: start, lt: end }, workspaceId },
       include: { destinationAccount: true, sourceAccount: true },
       orderBy: [{ transferDate: "desc" }],
-    }) : Promise.resolve([]),
-    sections.has("balanceAdjustments") ? database.balanceAdjustment.findMany({
-      where: { effectiveAt: { gte: start, lt: end }, workspaceId },
-      include: { account: true, personEditor: true },
-      orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
-    }) : Promise.resolve([]),
+      take: 20,
+    }),
   ]);
   const goalTotals = new Map<string, Decimal>();
 
-  for (const movement of goalMovementTotals) {
+  for (const movement of goalMovements) {
     const current = goalTotals.get(movement.goalId) ?? money(0);
     goalTotals.set(
       movement.goalId,
@@ -327,170 +245,32 @@ async function buildFinanceOverview(workspaceId: string, month: string, view: Da
     );
   }
 
-  const cardInstallmentsWithCalendarStatus = cardInstallments.map((installment) => {
-    const isOverdue = creditCardInstallmentIsOverdue(installment.purchase.firstDueDate, installment.number, today, installment.status);
-
-    return {
-      ...installment,
-      isOverdue,
-      shares: installment.shares.map((share) => ({
-        ...share,
-        isOverdue: creditCardInstallmentIsOverdue(installment.purchase.firstDueDate, installment.number, today, share.status),
-      })),
-    };
-  });
-  const cardPurchasesWithCalendarStatus = cardPurchases.map((purchase) => ({
-    ...purchase,
-    installments: purchase.installments.map((installment) => {
-      const isOverdue = creditCardInstallmentIsOverdue(purchase.firstDueDate, installment.number, today, installment.status);
-
-      return {
-        ...installment,
-        isOverdue,
-        shares: installment.shares.map((share) => ({
-          ...share,
-          isOverdue: creditCardInstallmentIsOverdue(purchase.firstDueDate, installment.number, today, share.status),
-        })),
-      };
-    }),
-  }));
-  const salaryOccurrences = salaries.flatMap((salary) =>
-    buildSalaryOccurrencePlan(salary.amount, salary.frequency, start, salary.paymentDay)
-      .filter(({ dueDate }) => dueDate >= salary.startMonth && dueDate < end && (!salary.archivedAt || dueDate <= salary.archivedAt))
-      .map((occurrence) => {
-        const salaryTransaction = transactions.find(
-          (transaction) =>
-            transaction.salaryId === salary.id &&
-            transaction.type === "INCOME" &&
-            transaction.competenceDate.getTime() === occurrence.dueDate.getTime(),
-        );
-
-        return {
-          amount: salaryTransaction?.amount ?? occurrence.amount,
-          description: salary.description,
-          dueDate: occurrence.dueDate,
-          id: `${salary.id}-${occurrence.dueDate.toISOString().slice(0, 10)}-${occurrence.installmentNumber}`,
-          installmentNumber: occurrence.installmentNumber,
-          personEditor: salary.personEditor,
-          personEditorId: salary.personEditorId,
-          salaryId: salary.id,
-          status: salaryTransaction?.status === "SETTLED" ? "SETTLED" : "PENDING",
-          transactionId: salaryTransaction?.id ?? null,
-        };
-      }),
-  );
-  const fixedExpenseOccurrences = fixedExpenses.flatMap((fixedExpense) => {
-    const dueDate = fixedExpenseDueDate(start, fixedExpense.dueDay);
-
-    if (dueDate < fixedExpense.startMonth || (fixedExpense.endedAt && dueDate > fixedExpense.endedAt)) {
-      return [];
-    }
-    const fixedExpenseTransaction = transactions.find(
-      (transaction) =>
-        transaction.fixedExpenseId === fixedExpense.id &&
-        transaction.type === "EXPENSE" &&
-        transaction.competenceDate.getTime() === dueDate.getTime(),
-    );
-
-    return [{
-      account: fixedExpense.account,
-      accountId: fixedExpense.accountId,
-      amount: fixedExpenseTransaction?.amount ?? fixedExpense.amount,
-      category: fixedExpense.category,
-      categoryId: fixedExpense.categoryId,
-      description: fixedExpense.description,
-      dueDate,
-      fixedExpenseId: fixedExpense.id,
-      id: `${fixedExpense.id}-${dueDate.toISOString().slice(0, 10)}`,
-      notes: fixedExpense.notes,
-      personEditor: fixedExpense.personEditor,
-      personEditorId: fixedExpense.personEditorId,
-      status: fixedExpenseTransaction?.status === "SETTLED" ? "SETTLED" : "PENDING",
-      transactionId: fixedExpenseTransaction?.id ?? null,
-    }];
-  });
-  const debtInstallmentResponsibilities = debtInstallments.flatMap((installment) =>
-    installment.shares.length > 0
-      ? installment.shares.map((share) => ({
-          ...installment,
-          amount: share.amount,
-          id: `${installment.id}:${share.personEditorId}`,
-          installmentAmount: installment.amount,
-          rootInstallmentId: installment.id,
-          paidAt: share.paidAt,
-          personEditor: share.personEditor,
-          personEditorId: share.personEditorId,
-          status: share.status,
-        }))
-      : [{ ...installment, installmentAmount: installment.amount, rootInstallmentId: installment.id }],
-  );
-  const cardInstallmentResponsibilities = cardInstallmentsWithCalendarStatus.flatMap((installment) =>
-    installment.shares.length > 0
-      ? installment.shares.map((share) => ({
-          ...installment,
-          amount: share.amount,
-          id: `${installment.id}:${share.personEditorId}`,
-          personEditor: share.personEditor,
-          personEditorId: share.personEditorId,
-          status: share.status,
-        }))
-      : [installment],
-  );
-  const cardTotalsByPerson = people.map((person) => {
-    const installments = cardInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
-
-    return {
-      id: person.id,
-      name: person.name,
-      paid: sumMoney(installments.filter(({ status }) => status === "PAID").map(({ amount }) => amount)),
-      pending: sumMoney(installments.filter(({ status }) => status === "OPEN").map(({ amount }) => amount)),
-      total: sumMoney(installments.map(({ amount }) => amount)),
-    };
-  });
-  const cardCoupleTotal = {
-    id: "casal",
-    name: "Casal",
-    paid: sumMoney(cardTotalsByPerson.map(({ paid }) => paid)),
-    pending: sumMoney(cardTotalsByPerson.map(({ pending }) => pending)),
-    total: sumMoney(cardTotalsByPerson.map(({ total }) => total)),
-  };
-
   const totalsByPerson = people.map((person) => {
     const personAccounts = accounts.filter((account) => account.personEditorId === person.id && account.active);
     const personTransactions = transactions.filter((transaction) => transaction.personEditorId === person.id);
-    const personDirectTransactions = personTransactions.filter(
-      ({ creditCardInstallmentId, debtInstallmentId, fixedExpenseId, salaryId }) =>
-        !creditCardInstallmentId && !debtInstallmentId && !fixedExpenseId && !salaryId,
-    );
-    const personFixedOccurrences = fixedExpenseOccurrences.filter((fixedExpense) => fixedExpense.personEditorId === person.id);
-    const personSalaryOccurrences = salaryOccurrences.filter((salary) => salary.personEditorId === person.id);
-    const personDebt = debtInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
-    const personCardInstallments = cardInstallmentResponsibilities.filter((installment) => installment.personEditorId === person.id);
+    const personFixed = fixedExpenses.filter((fixedExpense) => fixedExpense.personEditorId === person.id);
+    const personSalaries = salaries.filter((salary) => salary.personEditorId === person.id);
+    const personDebt = debtInstallments.filter((installment) => installment.personEditorId === person.id);
+    const personCardInstallments = cardInstallments.filter((installment) => installment.personEditorId === person.id);
+    const personInvoices = invoices.filter((invoice) => invoice.personEditorId === person.id);
     const personInvestments = investments.filter((investment) => investment.personEditorId === person.id);
-    const personInvestmentAccounts = personAccounts.filter(({ type }) => type === "INVESTMENT");
-    const transactionIncome = sumMoney(personTransactions.filter(({ status, type }) => type === "INCOME" && status === "SETTLED").map(({ amount }) => amount));
-    const receivableTransactions = sumMoney(personDirectTransactions.filter(({ status, type }) => type === "INCOME" && status === "PENDING").map(({ amount }) => amount));
-    const salaryReceivable = sumMoney(personSalaryOccurrences.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
-    const transactionExpenses = sumMoney(personDirectTransactions.filter(({ type }) => type === "EXPENSE").map(({ amount }) => amount));
-    const fixedTotal = sumMoney(personFixedOccurrences.map(({ amount }) => amount));
-    const fixedPending = sumMoney(personFixedOccurrences.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
+    const transactionIncome = sumMoney(personTransactions.filter(({ type }) => type === "INCOME").map(({ amount }) => amount));
+    const transactionExpenses = sumMoney(personTransactions.filter(({ type }) => type === "EXPENSE").map(({ amount }) => amount));
+    const fixedTotal = sumMoney(personFixed.map(({ amount }) => amount));
+    const salaryTotal = sumMoney(personSalaries.map(salaryExpectedAmount));
     const debtTotal = sumMoney(personDebt.map(({ amount }) => amount));
-    const debtPending = sumMoney(personDebt.filter(({ status }) => status === "PENDING").map(({ amount }) => amount));
     const cardTotal = sumMoney(personCardInstallments.map(({ amount }) => amount));
-    const cardPending = sumMoney(personCardInstallments.filter(({ status }) => status === "OPEN").map(({ amount }) => amount));
-    const cardPaid = sumMoney(personCardInstallments.filter(({ status }) => status === "PAID").map(({ amount }) => amount));
+    const invoicePending = sumMoney(personInvoices.map((invoice) => money(invoice.amount).minus(invoice.paidAmount)));
     const available = sumMoney(personAccounts.filter(({ type }) => type !== "INVESTMENT").map(({ balance }) => balance));
-    const investmentRecords = sumMoney(personInvestments.filter(({ accountId }) => !accountId).map(({ amount }) => amount));
-    const invested = money(investmentRecords.plus(sumMoney(personInvestmentAccounts.map(({ balance }) => balance))));
+    const investmentAccounts = sumMoney(personAccounts.filter(({ type }) => type === "INVESTMENT").map(({ balance }) => balance));
+    const investmentRecords = sumMoney(personInvestments.map(({ amount }) => amount));
     const paid = sumMoney(
-      personDirectTransactions
+      personTransactions
         .filter(({ status, type }) => status === "SETTLED" && type === "EXPENSE")
         .map(({ amount }) => amount),
-    ).plus(sumMoney(personFixedOccurrences.filter(({ status }) => status === "SETTLED").map(({ amount }) => amount)))
-      .plus(sumMoney(personDebt.filter(({ status }) => status === "PAID").map(({ amount }) => amount)))
-      .plus(cardPaid);
+    );
     const pendingTransactions = sumMoney(
-      personDirectTransactions
+      personTransactions
         .filter(({ status, type }) => status === "PENDING" && type === "EXPENSE")
         .map(({ amount }) => amount),
     );
@@ -501,131 +281,52 @@ async function buildFinanceOverview(workspaceId: string, month: string, view: Da
       total: buildPersonTotal({
         available,
         expenses: transactionExpenses.plus(fixedTotal).plus(debtTotal).plus(cardTotal),
-        income: transactionIncome,
-        investments: invested,
+        income: transactionIncome.plus(salaryTotal),
+        investments: investmentAccounts.plus(investmentRecords),
         paid,
-        pending: pendingTransactions.plus(fixedPending).plus(debtPending).plus(cardPending),
-        receivable: receivableTransactions.plus(salaryReceivable),
+        pending: pendingTransactions.plus(fixedTotal).plus(debtTotal).plus(invoicePending),
       }),
     };
   });
   const coupleTotal = sumPersonTotals(totalsByPerson.map(({ total }) => total));
   const activeView = view === "casal" || !people.some(({ id }) => id === view) ? "casal" : view;
   const visiblePersonIds = activeView === "casal" ? people.map(({ id }) => id) : [activeView];
-  const personIsVisible = (personEditorId: string) => visiblePersonIds.includes(personEditorId);
-  const debtIsVisible = (debt: (typeof debts)[number]) =>
-    personIsVisible(debt.personEditorId) ||
-    debt.installments.some((installment) => installment.shares.some((share) => personIsVisible(share.personEditorId)));
-  const purchaseIsVisible = (purchase: (typeof cardPurchases)[number]) =>
-    personIsVisible(purchase.personEditorId) ||
-    purchase.installments.some((installment) => installment.shares.some((share) => personIsVisible(share.personEditorId)));
-  const cardsWithInvoices = cards.map((card) => {
-    const invoice = invoices.find(({ cardId }) => cardId === card.id);
-    const committed = sumMoney(
-      cardInvoiceBalances
-        .filter((invoiceBalance) => invoiceBalance.cardId === card.id)
-        .map((invoiceBalance) => money(invoiceBalance.amount).minus(invoiceBalance.paidAmount)),
-    );
 
-    return {
-      ...card,
-      committed,
-      invoiceId: invoice?.id ?? null,
-      invoiceAmount: invoice?.amount ?? money(0),
-      invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
-      invoicePaidAmount: invoice?.paidAmount ?? money(0),
-      invoicePayments: invoice?.payments ?? [],
-      invoiceStatus: invoice?.status ?? "OPEN",
-      limitAvailable: money(card.limit.minus(committed)),
-    };
-  });
-  const goalsWithTotals = goals.map((goal) => ({
-    ...goal,
-    currentAmount: goalTotals.get(goal.id) ?? money(0),
-  }));
   return {
-    accounts: accounts.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    accounts,
     activeView,
-    archivedCards: cardsWithInvoices.filter(({ active, personEditorId }) => !active && personIsVisible(personEditorId)),
-    cardInstallments: cardInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    cardCoupleTotal,
-    cardPurchases: cardPurchasesWithCalendarStatus.filter(purchaseIsVisible),
-    cardTotalsByPerson,
-    cards: cardsWithInvoices.filter(({ active, personEditorId }) => active && personIsVisible(personEditorId)),
+    cardInstallments,
+    cards: cards.map((card) => {
+      const invoice = invoices.find(({ cardId }) => cardId === card.id);
+      const committed = sumMoney(allOpenCardInstallments.filter(({ cardId }) => cardId === card.id).map(({ amount }) => amount));
+
+      return {
+        ...card,
+        committed,
+        invoiceId: invoice?.id ?? null,
+        invoiceAmount: invoice?.amount ?? money(0),
+        invoiceDueDate: invoice?.dueDate ?? clampDayInMonth(start, card.dueDay),
+        invoicePaidAmount: invoice?.paidAmount ?? money(0),
+        invoiceStatus: invoice?.status ?? "OPEN",
+        limitAvailable: money(card.limit.minus(committed)),
+      };
+    }),
     categories,
     coupleTotal,
-    balanceAdjustments: balanceAdjustments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    archivedDebts: archivedDebts.filter(debtIsVisible),
-    archivedFixedExpenses: archivedFixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    archivedInvestments: archivedInvestments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    archivedSalaries: archivedSalaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    debts: debts.filter(debtIsVisible),
-    debtInstallments: debtInstallmentResponsibilities.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    fixedExpenseOccurrences: fixedExpenseOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    fixedExpenses: fixedExpenses.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    goalMovements: visibleGoalMovements.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    archivedGoals: goalsWithTotals.filter(({ personEditorId, status }) => status === "ARCHIVED" && personIsVisible(personEditorId)),
-    goals: goalsWithTotals.filter(({ personEditorId, status }) => status !== "ARCHIVED" && personIsVisible(personEditorId)),
-    investments: investments.filter(({ personEditorId }) => personIsVisible(personEditorId)),
+    debtInstallments,
+    fixedExpenses,
+    goals: goals.map((goal) => ({
+      ...goal,
+      currentAmount: goalTotals.get(goal.id) ?? money(0),
+    })),
+    investments,
     month,
     people,
-    salaries: salaries.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    salaryOccurrences: salaryOccurrences.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    transactions: transactions.filter(({ personEditorId }) => personIsVisible(personEditorId)),
-    transfers: transfers.filter(
-      ({ destinationPersonEditorId, sourcePersonEditorId }) =>
-        personIsVisible(sourcePersonEditorId) || personIsVisible(destinationPersonEditorId),
-    ),
+    salaries,
+    transactions: transactions.filter(({ personEditorId }) => visiblePersonIds.includes(personEditorId)),
+    transfers,
     totalsByPerson,
   };
-}
-
-function pageSections(...sections: FinanceSection[]) {
-  return new Set<FinanceSection>(sections);
-}
-
-export async function getFinanceOverview(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, allFinanceSections);
-}
-
-export async function getDashboardData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, allFinanceSections);
-}
-
-export async function getDebtsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("cards", "debts", "fixedExpenses", "transactions"));
-}
-
-export async function getCardsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("cards"));
-}
-
-export async function getAccountsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("accounts", "balanceAdjustments", "investments"));
-}
-
-export async function getReceiptsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("salaries", "transactions"));
-}
-
-export async function getFixedExpensesPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("fixedExpenses", "transactions"));
-}
-
-export async function getSavingsGoalsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("goals"));
-}
-
-export async function getInvestmentsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("investments"));
-}
-
-export async function getTransactionsPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("transactions"));
-}
-
-export async function getTransfersPageData(workspaceId: string, month: string, view: DashboardView = "casal", timeZone = "America/Sao_Paulo") {
-  return buildFinanceOverview(workspaceId, month, view, timeZone, pageSections("transfers"));
 }
 
 export async function getAccountCurrentBalance(workspaceId: string, accountId: string) {

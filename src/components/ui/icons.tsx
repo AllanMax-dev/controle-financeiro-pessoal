@@ -119,13 +119,6 @@ const iconPaths = {
       <path d="M7 12H5" />
     </>
   ),
-  help: (
-    <>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M9.8 9.5a2.4 2.4 0 0 1 4.6.9c0 1.9-2.4 2.1-2.4 4" />
-      <path d="M12 17.5h.01" />
-    </>
-  ),
   investment: (
     <>
       <path d="M4 18h16" />
@@ -138,11 +131,6 @@ const iconPaths = {
       <path d="M4 7h16" />
       <path d="M4 12h16" />
       <path d="M4 17h16" />
-    </>
-  ),
-  moon: (
-    <>
-      <path d="M20 14.8A7.6 7.6 0 0 1 9.2 4 8.1 8.1 0 1 0 20 14.8Z" />
     </>
   ),
   planning: (
@@ -166,19 +154,6 @@ const iconPaths = {
     <>
       <circle cx="11" cy="11" r="6" />
       <path d="m16 16 4 4" />
-    </>
-  ),
-  sun: (
-    <>
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2" />
-      <path d="M12 20v2" />
-      <path d="m4.93 4.93 1.41 1.41" />
-      <path d="m17.66 17.66 1.41 1.41" />
-      <path d="M2 12h2" />
-      <path d="M20 12h2" />
-      <path d="m6.34 17.66-1.41 1.41" />
-      <path d="m19.07 4.93-1.41 1.41" />
     </>
   ),
   transfer: (

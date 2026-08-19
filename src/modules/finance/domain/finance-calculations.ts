@@ -9,7 +9,6 @@ export type PersonTotalInput = {
   investments: Decimal.Value;
   paid: Decimal.Value;
   pending: Decimal.Value;
-  receivable?: Decimal.Value;
 };
 
 export function monthBounds(month: string) {
@@ -33,13 +32,7 @@ export function dateFromInput(value: string) {
     throw new TypeError("Data inválida.");
   }
 
-  const date = new Date(`${value}T00:00:00.000Z`);
-
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new TypeError("Data inválida.");
-  }
-
-  return date;
+  return new Date(`${value}T00:00:00.000Z`);
 }
 
 export function monthStartFromInput(value: string) {
@@ -50,21 +43,8 @@ export function addMonths(date: Date, months: number) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, date.getUTCDate()));
 }
 
-export function monthlyDueDate(firstDueDate: Date, index: number) {
-  const monthStart = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth() + index, 1));
-
-  return clampDayInMonth(monthStart, firstDueDate.getUTCDate());
-}
-
-export type CreditCardInstallmentCalendarStatus = "OPEN" | "PAID" | "CANCELED";
-
-export function creditCardInstallmentIsOverdue(
-  firstDueDate: Date,
-  installmentNumber: number,
-  today: Date,
-  currentStatus: CreditCardInstallmentCalendarStatus,
-): boolean {
-  return currentStatus === "OPEN" && monthlyDueDate(firstDueDate, installmentNumber - 1).getTime() < today.getTime();
+export function addDays(date: Date, days: number) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 export function clampDayInMonth(month: Date, day: number) {
@@ -75,106 +55,14 @@ export function clampDayInMonth(month: Date, day: number) {
   return new Date(Date.UTC(year, monthNumber, Math.min(Math.max(day, 1), lastDay)));
 }
 
-export function fortnightlyDueDate(firstDueDate: Date, index: number) {
-  const monthStart = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth(), 1));
-  const firstHalf = clampDayInMonth(monthStart, 15);
-  const secondHalf = clampDayInMonth(monthStart, 30);
-  const firstSlot = firstDueDate.getTime() <= firstHalf.getTime() ? 0 : firstDueDate.getTime() <= secondHalf.getTime() ? 1 : 2;
-  const slot = firstSlot + index;
-  const dueMonth = new Date(Date.UTC(firstDueDate.getUTCFullYear(), firstDueDate.getUTCMonth() + Math.floor(slot / 2), 1));
-
-  return clampDayInMonth(dueMonth, slot % 2 === 0 ? 15 : 30);
-}
-
 export function installmentDueDate(firstDueDate: Date, index: number, frequency: "MONTHLY" | "FORTNIGHTLY") {
-  return frequency === "FORTNIGHTLY" ? fortnightlyDueDate(firstDueDate, index) : monthlyDueDate(firstDueDate, index);
-}
-
-export function fixedExpenseDueDate(monthStart: Date, dueDay: number) {
-  return clampDayInMonth(monthStart, dueDay);
-}
-
-export function salaryOccurrenceDates(monthStart: Date, paymentDay: number, frequency: "MONTHLY" | "FORTNIGHTLY") {
-  const firstPayment = clampDayInMonth(monthStart, paymentDay);
-
-  if (frequency === "MONTHLY") {
-    return [firstPayment];
-  }
-
-  const secondPayment = clampDayInMonth(monthStart, 31);
-
-  return firstPayment.getTime() === secondPayment.getTime()
-    ? [firstPayment]
-    : [firstPayment, secondPayment].sort((left, right) => left.getTime() - right.getTime());
-}
-
-export function buildSalaryOccurrencePlan(total: Decimal.Value, frequency: "MONTHLY" | "FORTNIGHTLY", monthStart: Date, paymentDay: number) {
-  const dueDates = salaryOccurrenceDates(monthStart, paymentDay, frequency);
-  const amounts = allocateMoney(total, dueDates.length);
-
-  return dueDates.map((dueDate, index) => ({
-    amount: amounts[index]!,
-    dueDate,
-    installmentNumber: index + 1,
-  }));
-}
-
-export function resolveInvoiceMonth(purchaseDate: Date, closingDay: number) {
-  const purchaseMonth = new Date(Date.UTC(purchaseDate.getUTCFullYear(), purchaseDate.getUTCMonth(), 1));
-  const closingDate = clampDayInMonth(purchaseMonth, closingDay);
-
-  return purchaseDate.getTime() <= closingDate.getTime() ? purchaseMonth : addMonths(purchaseMonth, 1);
-}
-
-export function creditCardFirstDueDate(purchaseDate: Date, closingDay: number, dueDay: number) {
-  const invoiceMonth = resolveInvoiceMonth(purchaseDate, closingDay);
-  const dueDate = clampDayInMonth(invoiceMonth, dueDay);
-
-  return dueDate.getTime() < purchaseDate.getTime() ? clampDayInMonth(addMonths(invoiceMonth, 1), dueDay) : dueDate;
+  return frequency === "FORTNIGHTLY" ? addDays(firstDueDate, index * 14) : addMonths(firstDueDate, index);
 }
 
 export function buildInstallmentPlan(total: Decimal.Value, count: number) {
   return allocateMoney(total, count).map((amount, index) => ({
     amount,
     number: index + 1,
-  }));
-}
-
-export function buildInstallmentSharePlan(
-  total: Decimal.Value,
-  count: number,
-  shares: { amount: Decimal.Value; personEditorId: string }[],
-) {
-  if (shares.length === 0) {
-    return [];
-  }
-  if (!sumMoney(shares.map(({ amount }) => amount)).equals(total)) {
-    throw new Error("A soma das responsabilidades deve ser igual ao valor total.");
-  }
-  const installments = buildInstallmentPlan(total, count);
-  const personPlans = shares.slice(0, -1).map((share) => buildInstallmentPlan(share.amount, count));
-
-  return installments.map((installment, installmentIndex) => {
-    const allocatedShares = shares.slice(0, -1).map((share, shareIndex) => ({
-      amount: personPlans[shareIndex]![installmentIndex]!.amount,
-      personEditorId: share.personEditorId,
-    }));
-    const allocatedAmount = sumMoney(allocatedShares.map(({ amount }) => amount));
-
-    return {
-      number: installment.number,
-      shares: [
-        ...allocatedShares,
-        { amount: money(installment.amount.minus(allocatedAmount)), personEditorId: shares.at(-1)!.personEditorId },
-      ],
-    };
-  });
-}
-
-export function buildEqualSharePlan(total: Decimal.Value, personEditorIds: string[]) {
-  return allocateMoney(total, personEditorIds.length).map((amount, index) => ({
-    amount,
-    personEditorId: personEditorIds[index]!,
   }));
 }
 
@@ -185,7 +73,6 @@ export function buildPersonTotal(input: PersonTotalInput) {
   const investments = money(input.investments);
   const paid = money(input.paid);
   const pending = money(input.pending);
-  const receivable = money(input.receivable ?? 0);
 
   return {
     available,
@@ -195,7 +82,6 @@ export function buildPersonTotal(input: PersonTotalInput) {
     net: money(income.minus(expenses)),
     paid,
     pending,
-    receivable,
     wealth: money(available.plus(investments)),
   };
 }
@@ -208,6 +94,5 @@ export function sumPersonTotals(values: PersonTotalInput[]) {
     investments: sumMoney(values.map(({ investments }) => investments)),
     paid: sumMoney(values.map(({ paid }) => paid)),
     pending: sumMoney(values.map(({ pending }) => pending)),
-    receivable: sumMoney(values.map(({ receivable }) => receivable ?? 0)),
   });
 }

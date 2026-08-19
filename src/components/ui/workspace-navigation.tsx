@@ -9,7 +9,9 @@ import { Icon, type IconName } from "@/components/ui/icons";
 
 const navigationItems = [
   { href: "/painel", icon: "dashboard", label: "Dashboard" },
+  { href: "/despesas-fixas", icon: "calendar", label: "Gastos fixos" },
   { href: "/gastos-variaveis", icon: "expense", label: "Gastos variáveis" },
+  { href: "/cartoes", icon: "card", label: "Cartões de crédito" },
   { href: "/recebimentos", icon: "income", label: "Recebimentos" },
   { href: "/dividas", icon: "debt", label: "Dívidas" },
   { href: "/cofrinhos", icon: "goal", label: "Cofrinhos" },
@@ -17,33 +19,13 @@ const navigationItems = [
   { href: "/investimentos", icon: "investment", label: "Investimentos" },
   { href: "/categorias", icon: "category", label: "Categorias" },
   { href: "/transferencias", icon: "transfer", label: "Transferências" },
-  { href: "/como-usar", icon: "help", label: "Como usar" },
 ] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
 
-const bottomNavigationItems = [
-  { href: "/painel", icon: "dashboard", label: "Início" },
-  { href: "/gastos-variaveis", icon: "expense", label: "Gastos" },
-  { href: "/recebimentos", icon: "income", label: "Receitas" },
-  { href: "/dividas", icon: "debt", label: "Dívidas" },
-] as const satisfies ReadonlyArray<{ href: string; icon: IconName; label: string }>;
-
-function hrefWithFilters(href: string, month: string | null, view: string | null): Route {
-  const params = new URLSearchParams();
-
-  if (month) {
-    params.set("month", month);
-  }
-
-  if (view) {
-    params.set("view", view);
-  }
-
-  const query = params.toString();
-
-  return query ? `${href}?${query}` as Route : href as Route;
+function hrefWithMonth(href: string, month: string | null): Route {
+  return month ? `${href}?month=${encodeURIComponent(month)}` as Route : href as Route;
 }
 
-function NavigationLinks({ month, onNavigate, view }: { month: string | null; onNavigate?: () => void; view: string | null }) {
+function NavigationLinks({ month, onNavigate }: { month: string | null; onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
@@ -53,7 +35,7 @@ function NavigationLinks({ month, onNavigate, view }: { month: string | null; on
 
         return (
           <li key={item.href}>
-            <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={hrefWithFilters(item.href, month, view)} onClick={onNavigate}>
+            <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={hrefWithMonth(item.href, month)} onClick={onNavigate}>
               <Icon name={item.icon} />
               <span>{item.label}</span>
             </Link>
@@ -64,70 +46,15 @@ function NavigationLinks({ month, onNavigate, view }: { month: string | null; on
   );
 }
 
-function BottomNavigation({ month, onMore, view }: { month: string | null; onMore: () => void; view: string | null }) {
-  const pathname = usePathname();
-
+function Brand({ month, workspaceName }: { month: string | null; workspaceName: string }) {
   return (
-    <nav className="mobile-bottom-nav" aria-label="Navegação rápida">
-      {bottomNavigationItems.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-        return (
-          <Link aria-current={active ? "page" : undefined} href={hrefWithFilters(item.href, month, view)} key={item.href}>
-            <Icon name={item.icon} />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
-      <button aria-label="Abrir mais opções" onClick={onMore} type="button">
-        <Icon name="menu" />
-        <span>Mais</span>
-      </button>
-    </nav>
-  );
-}
-
-function Brand({ month, view, workspaceName }: { month: string | null; view: string | null; workspaceName: string }) {
-  return (
-    <Link className="workspace-brand" href={hrefWithFilters("/painel", month, view)}>
+    <Link className="workspace-brand" href={hrefWithMonth("/painel", month)}>
       <span className="brand-mark">AM</span>
       <span>
         <strong>{workspaceName}</strong>
         <small>Allan · Mayara · Casal</small>
       </span>
     </Link>
-  );
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") {
-      return "light";
-    }
-
-    return window.localStorage.getItem("finance-theme") === "dark" ? "dark" : "light";
-  });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-
-  const nextTheme = theme === "dark" ? "light" : "dark";
-
-  return (
-    <button
-      aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo noturno"}
-      className="theme-toggle"
-      onClick={() => {
-        window.localStorage.setItem("finance-theme", nextTheme);
-        setTheme(nextTheme);
-      }}
-      suppressHydrationWarning
-      type="button"
-    >
-      <Icon name={theme === "dark" ? "sun" : "moon"} />
-      <span>{theme === "dark" ? "Modo claro" : "Modo noturno"}</span>
-    </button>
   );
 }
 
@@ -139,16 +66,11 @@ export function WorkspaceNavigation({
   workspaceName: string;
 }) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentMonth = searchParams.get("month");
-  const currentView = searchParams.get("view");
   const drawerId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
-  const activeItem = navigationItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  const pageTitle = activeItem?.label ?? "Dashboard";
-  const showCreateAction = !["/painel", "/como-usar"].some((href) => pathname === href || pathname.startsWith(`${href}/`));
 
   useEffect(() => {
     if (!open) {
@@ -175,14 +97,13 @@ export function WorkspaceNavigation({
   return (
     <>
       <aside className="workspace-sidebar">
-        <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
+        <Brand month={currentMonth} workspaceName={workspaceName} />
         <div className="operator-card">
           <span>Operando como</span>
           <strong>{editorName}</strong>
         </div>
-        <ThemeToggle />
         <nav aria-label="Navegação principal">
-          <NavigationLinks month={currentMonth} view={currentView} />
+          <NavigationLinks month={currentMonth} />
         </nav>
       </aside>
 
@@ -190,24 +111,15 @@ export function WorkspaceNavigation({
         <button aria-controls={drawerId} aria-expanded={open} aria-label="Abrir menu" onClick={() => setOpen(true)} ref={triggerButtonRef} type="button">
           <Icon name="menu" />
         </button>
-        <strong className="mobile-page-title">{pageTitle}</strong>
-        {showCreateAction ? (
-          <a aria-label={`Adicionar em ${pageTitle}`} className="mobile-add-action" href="#finance-create">
-            <Icon name="add" />
-          </a>
-        ) : (
-          <span aria-hidden="true" className="mobile-topbar-spacer" />
-        )}
+        <Brand month={currentMonth} workspaceName={workspaceName} />
       </header>
-
-      <BottomNavigation month={currentMonth} onMore={() => setOpen(true)} view={currentView} />
 
       {open ? (
         <div className="drawer-layer">
           <button aria-label="Fechar menu" className="drawer-backdrop" onClick={() => setOpen(false)} type="button" />
           <aside aria-label="Menu de navegação" aria-modal="true" className="mobile-drawer" id={drawerId} role="dialog">
             <div className="drawer-head">
-              <Brand month={currentMonth} view={currentView} workspaceName={workspaceName} />
+              <Brand month={currentMonth} workspaceName={workspaceName} />
               <button aria-label="Fechar menu" onClick={() => setOpen(false)} ref={closeButtonRef} type="button">
                 <Icon name="close" />
               </button>
@@ -216,9 +128,8 @@ export function WorkspaceNavigation({
               <span>Operando como</span>
               <strong>{editorName}</strong>
             </div>
-            <ThemeToggle />
             <nav aria-label="Navegação principal">
-              <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} view={currentView} />
+              <NavigationLinks month={currentMonth} onNavigate={() => setOpen(false)} />
             </nav>
           </aside>
         </div>
