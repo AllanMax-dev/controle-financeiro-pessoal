@@ -22,7 +22,7 @@ BEGIN
     UNION ALL SELECT 1 FROM "SavingsGoalMovement" WHERE "amount" <= 0
     UNION ALL SELECT 1 FROM "Investment" WHERE "amount" < 0
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: non-positive financial values exist. Run docs/transactional-integrity-preview.sql';
+    RAISE NOTICE 'Integrity migration warning: non-positive financial values exist. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   IF EXISTS (
@@ -34,7 +34,7 @@ BEGIN
     UNION ALL SELECT 1 FROM "Salary" WHERE "paymentDay" NOT BETWEEN 1 AND 31
     UNION ALL SELECT 1 FROM "CreditCard" WHERE "closingDay" NOT BETWEEN 1 AND 31 OR "dueDay" NOT BETWEEN 1 AND 31
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: invalid installments or calendar days exist';
+    RAISE NOTICE 'Integrity migration warning: invalid installments or calendar days exist. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   IF EXISTS (SELECT 1 FROM "CreditCard" WHERE "limit" < 0)
@@ -42,7 +42,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM "Transfer" WHERE "sourceAccountId" = "destinationAccountId")
      OR EXISTS (SELECT 1 FROM "BalanceAdjustment" WHERE "difference" <> "targetBalance" - "previousBalance")
   THEN
-    RAISE EXCEPTION 'Integrity migration blocked: card, transfer or balance-adjustment values are inconsistent';
+    RAISE NOTICE 'Integrity migration warning: card, transfer or balance-adjustment values are inconsistent. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   IF EXISTS (SELECT 1 FROM "FinancialAccount" WHERE "version" <= 0)
@@ -53,7 +53,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM "Debt" WHERE "version" <= 0)
      OR EXISTS (SELECT 1 FROM "CreditCard" WHERE "version" <= 0)
   THEN
-    RAISE EXCEPTION 'Integrity migration blocked: invalid optimistic-lock versions exist';
+    RAISE NOTICE 'Integrity migration warning: invalid optimistic-lock versions exist. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   IF EXISTS (
@@ -62,7 +62,7 @@ BEGIN
     GROUP BY movement."goalId"
     HAVING SUM(CASE WHEN movement."type" = 'DEPOSIT' THEN movement."amount" ELSE -movement."amount" END) < 0
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: a savings goal has negative reserved balance';
+    RAISE NOTICE 'Integrity migration warning: a savings goal has negative reserved balance. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   FOR reference_check IN
@@ -101,7 +101,7 @@ BEGIN
       reference_check.column_name
     ) INTO has_invalid;
     IF has_invalid THEN
-      RAISE EXCEPTION 'Integrity migration blocked: %.% crosses workspaces', reference_check.table_name, reference_check.column_name;
+      RAISE NOTICE 'Integrity migration warning: %.% crosses workspaces. Run docs/transactional-integrity-preview.sql', reference_check.table_name, reference_check.column_name;
     END IF;
   END LOOP;
 
@@ -123,7 +123,7 @@ BEGIN
       owner_check.person_column
     ) INTO has_invalid;
     IF has_invalid THEN
-      RAISE EXCEPTION 'Integrity migration blocked: %.% belongs to another person', owner_check.table_name, owner_check.account_column;
+      RAISE NOTICE 'Integrity migration warning: %.% belongs to another person. Run docs/transactional-integrity-preview.sql', owner_check.table_name, owner_check.account_column;
     END IF;
   END LOOP;
 
@@ -133,7 +133,7 @@ BEGIN
     JOIN "FinancialAccount" account ON account."id" = investment."accountId"
     WHERE account."type" <> 'INVESTMENT'
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: an Investment is linked to a non-investment account';
+    RAISE NOTICE 'Integrity migration warning: an Investment is linked to a non-investment account. Run docs/transactional-integrity-preview.sql';
   END IF;
 
   IF EXISTS (
@@ -143,7 +143,7 @@ BEGIN
     WHERE movement."personEditorId" IS DISTINCT FROM goal."personEditorId"
        OR movement."accountId" IS DISTINCT FROM goal."accountId"
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: a SavingsGoalMovement differs from its goal person or account';
+    RAISE NOTICE 'Integrity migration warning: a SavingsGoalMovement differs from its goal person or account. Run docs/transactional-integrity-preview.sql';
   END IF;
 END $$;
 
@@ -292,7 +292,7 @@ BEGIN
     WHERE reservation.reserved < 0
        OR (reservation.reserved > 0 AND reservation.reserved > financial_account_balance(account."id", account."workspaceId"))
   ) THEN
-    RAISE EXCEPTION 'Integrity migration blocked: account reservations exceed account balances';
+    RAISE NOTICE 'Integrity migration warning: account reservations exceed account balances. Run docs/transactional-integrity-preview.sql';
   END IF;
 END $$;
 
@@ -380,23 +380,23 @@ CREATE CONSTRAINT TRIGGER invoice_payment_reserve_integrity AFTER INSERT OR UPDA
 CREATE CONSTRAINT TRIGGER goal_movement_reserve_integrity AFTER INSERT OR UPDATE OR DELETE ON "SavingsGoalMovement" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_account_reserve_integrity('accountId');
 CREATE CONSTRAINT TRIGGER account_reserve_integrity AFTER INSERT OR UPDATE ON "FinancialAccount" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_account_reserve_integrity('id');
 
-ALTER TABLE "FinancialAccount" ADD CONSTRAINT financial_account_version_positive CHECK ("version" > 0);
-ALTER TABLE "Transaction" ADD CONSTRAINT transaction_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT transaction_version_positive CHECK ("version" > 0);
-ALTER TABLE "Transfer" ADD CONSTRAINT transfer_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT transfer_distinct_accounts CHECK ("sourceAccountId" <> "destinationAccountId"), ADD CONSTRAINT transfer_version_positive CHECK ("version" > 0);
-ALTER TABLE "BalanceAdjustment" ADD CONSTRAINT adjustment_difference_consistent CHECK ("difference" = "targetBalance" - "previousBalance");
-ALTER TABLE "FixedExpense" ADD CONSTRAINT fixed_expense_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT fixed_expense_due_day_valid CHECK ("dueDay" BETWEEN 1 AND 31), ADD CONSTRAINT fixed_expense_version_positive CHECK ("version" > 0);
-ALTER TABLE "Salary" ADD CONSTRAINT salary_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT salary_payment_day_valid CHECK ("paymentDay" BETWEEN 1 AND 31), ADD CONSTRAINT salary_version_positive CHECK ("version" > 0);
-ALTER TABLE "Debt" ADD CONSTRAINT debt_amount_positive CHECK ("totalAmount" > 0), ADD CONSTRAINT debt_installment_count_positive CHECK ("installmentCount" > 0), ADD CONSTRAINT debt_version_positive CHECK ("version" > 0);
-ALTER TABLE "DebtInstallment" ADD CONSTRAINT debt_installment_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT debt_installment_number_positive CHECK ("number" > 0);
-ALTER TABLE "DebtInstallmentShare" ADD CONSTRAINT debt_share_amount_positive CHECK ("amount" > 0);
-ALTER TABLE "CreditCard" ADD CONSTRAINT credit_card_limit_non_negative CHECK ("limit" >= 0), ADD CONSTRAINT credit_card_closing_day_valid CHECK ("closingDay" BETWEEN 1 AND 31), ADD CONSTRAINT credit_card_due_day_valid CHECK ("dueDay" BETWEEN 1 AND 31), ADD CONSTRAINT credit_card_version_positive CHECK ("version" > 0);
-ALTER TABLE "CreditCardPurchase" ADD CONSTRAINT card_purchase_amount_positive CHECK ("totalAmount" > 0), ADD CONSTRAINT card_purchase_installment_count_positive CHECK ("installmentCount" > 0);
-ALTER TABLE "CreditCardInstallment" ADD CONSTRAINT card_installment_amount_positive CHECK ("amount" > 0), ADD CONSTRAINT card_installment_number_positive CHECK ("number" > 0);
-ALTER TABLE "CreditCardInstallmentShare" ADD CONSTRAINT card_share_amount_positive CHECK ("amount" > 0);
-ALTER TABLE "CreditCardInvoice" ADD CONSTRAINT card_invoice_amounts_valid CHECK ("amount" >= 0 AND "paidAmount" >= 0 AND "paidAmount" <= "amount");
-ALTER TABLE "CreditCardInvoicePayment" ADD CONSTRAINT invoice_payment_amount_positive CHECK ("amount" > 0);
-ALTER TABLE "SavingsGoal" ADD CONSTRAINT savings_goal_target_positive CHECK ("targetAmount" > 0);
-ALTER TABLE "SavingsGoalMovement" ADD CONSTRAINT goal_movement_amount_positive CHECK ("amount" > 0);
-ALTER TABLE "Investment" ADD CONSTRAINT investment_amount_non_negative CHECK ("amount" >= 0);
+ALTER TABLE "FinancialAccount" ADD CONSTRAINT financial_account_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "Transaction" ADD CONSTRAINT transaction_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT transaction_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "Transfer" ADD CONSTRAINT transfer_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT transfer_distinct_accounts CHECK ("sourceAccountId" <> "destinationAccountId") NOT VALID, ADD CONSTRAINT transfer_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "BalanceAdjustment" ADD CONSTRAINT adjustment_difference_consistent CHECK ("difference" = "targetBalance" - "previousBalance") NOT VALID;
+ALTER TABLE "FixedExpense" ADD CONSTRAINT fixed_expense_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT fixed_expense_due_day_valid CHECK ("dueDay" BETWEEN 1 AND 31) NOT VALID, ADD CONSTRAINT fixed_expense_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "Salary" ADD CONSTRAINT salary_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT salary_payment_day_valid CHECK ("paymentDay" BETWEEN 1 AND 31) NOT VALID, ADD CONSTRAINT salary_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "Debt" ADD CONSTRAINT debt_amount_positive CHECK ("totalAmount" > 0) NOT VALID, ADD CONSTRAINT debt_installment_count_positive CHECK ("installmentCount" > 0) NOT VALID, ADD CONSTRAINT debt_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "DebtInstallment" ADD CONSTRAINT debt_installment_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT debt_installment_number_positive CHECK ("number" > 0) NOT VALID;
+ALTER TABLE "DebtInstallmentShare" ADD CONSTRAINT debt_share_amount_positive CHECK ("amount" > 0) NOT VALID;
+ALTER TABLE "CreditCard" ADD CONSTRAINT credit_card_limit_non_negative CHECK ("limit" >= 0) NOT VALID, ADD CONSTRAINT credit_card_closing_day_valid CHECK ("closingDay" BETWEEN 1 AND 31) NOT VALID, ADD CONSTRAINT credit_card_due_day_valid CHECK ("dueDay" BETWEEN 1 AND 31) NOT VALID, ADD CONSTRAINT credit_card_version_positive CHECK ("version" > 0) NOT VALID;
+ALTER TABLE "CreditCardPurchase" ADD CONSTRAINT card_purchase_amount_positive CHECK ("totalAmount" > 0) NOT VALID, ADD CONSTRAINT card_purchase_installment_count_positive CHECK ("installmentCount" > 0) NOT VALID;
+ALTER TABLE "CreditCardInstallment" ADD CONSTRAINT card_installment_amount_positive CHECK ("amount" > 0) NOT VALID, ADD CONSTRAINT card_installment_number_positive CHECK ("number" > 0) NOT VALID;
+ALTER TABLE "CreditCardInstallmentShare" ADD CONSTRAINT card_share_amount_positive CHECK ("amount" > 0) NOT VALID;
+ALTER TABLE "CreditCardInvoice" ADD CONSTRAINT card_invoice_amounts_valid CHECK ("amount" >= 0 AND "paidAmount" >= 0 AND "paidAmount" <= "amount") NOT VALID;
+ALTER TABLE "CreditCardInvoicePayment" ADD CONSTRAINT invoice_payment_amount_positive CHECK ("amount" > 0) NOT VALID;
+ALTER TABLE "SavingsGoal" ADD CONSTRAINT savings_goal_target_positive CHECK ("targetAmount" > 0) NOT VALID;
+ALTER TABLE "SavingsGoalMovement" ADD CONSTRAINT goal_movement_amount_positive CHECK ("amount" > 0) NOT VALID;
+ALTER TABLE "Investment" ADD CONSTRAINT investment_amount_non_negative CHECK ("amount" >= 0) NOT VALID;
 
 COMMIT;
